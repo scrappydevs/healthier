@@ -151,7 +151,7 @@ struct MedicationAnalyticsView: View {
     }
 
     // MARK: - Weekly Trend Section
-
+    
     private var weeklyTrendSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             Text("WEEKLY TREND")
@@ -184,6 +184,49 @@ struct MedicationAnalyticsView: View {
         .padding(AppTheme.Spacing.md)
         .background(Color.cardBackground)
         .cornerRadius(AppTheme.CornerRadius.md)
+    }
+    
+    // MARK: - Active Medications Section
+    
+    private var activeMedicationsSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            Text("ACTIVE MEDICATIONS")
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
+                .tracking(1)
+            
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppTheme.Spacing.md) {
+                ForEach(viewModel.activeMedications) { medication in
+                    Button {
+                        selectedMedicationForDetail = medication
+                    } label: {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                            HStack {
+                                Image(systemName: "pills.fill")
+                                    .foregroundColor(.appPrimary)
+                                Spacer()
+                                Text("\(Int(viewModel.getAdherenceRate(for: medication)))%")
+                                    .font(AppTheme.Typography.headline)
+                                    .foregroundColor(adherenceColor(viewModel.getAdherenceRate(for: medication) / 100))
+                            }
+                            
+                            Text(medication.name)
+                                .font(AppTheme.Typography.body)
+                                .foregroundColor(.textPrimary)
+                                .lineLimit(1)
+                            
+                            Text(medication.dosage)
+                                .font(AppTheme.Typography.caption)
+                                .foregroundColor(.textSecondary)
+                        }
+                        .padding(AppTheme.Spacing.md)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppTheme.CornerRadius.md)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Streak Section

@@ -55,7 +55,7 @@ class AuthService: ObservableObject {
     
     private func setupAuthStateListener() {
         authStateListener = Task {
-            for await state in await supabase.auth.authStateChanges {
+            for await state in supabase.auth.authStateChanges {
                 await handleAuthStateChange(state.event, session: state.session)
             }
         }
