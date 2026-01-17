@@ -262,29 +262,35 @@ struct PillVerificationView: View {
             // Status Icon - based on both medication match AND dose correctness
             statusIconSection(result)
 
-            // Pill Count Section (always show if we have a detected count)
-            if let detected = result.detectedPillCount {
-                pillCountSection(detected: detected, expected: medication.expectedPillCount, isCorrect: result.isCorrectDose)
-            }
+            if !canConfirm {
+                // Pill Count Section (always show if we have a detected count)
+                if let detected = result.detectedPillCount {
+                    pillCountSection(detected: detected, expected: medication.expectedPillCount, isCorrect: result.isCorrectDose)
+                }
 
-            // Dosage Warning (if any)
-            if let warning = result.dosageWarning {
-                dosageWarningSection(warning: warning, isOverdose: (result.detectedPillCount ?? 0) > medication.expectedPillCount)
+                // Dosage Warning (if any)
+                if let warning = result.dosageWarning {
+                    dosageWarningSection(warning: warning, isOverdose: (result.detectedPillCount ?? 0) > medication.expectedPillCount)
+                }
             }
 
             // Medication match info
             if result.isMatch {
                 medicationMatchSection(result)
             } else {
-                medicationMismatchSection(result)
+                if !canConfirm {
+                    medicationMismatchSection(result)
+                }
             }
 
-            // Recommendation
-            recommendationSection(result)
+            if !canConfirm {
+                // Recommendation
+                recommendationSection(result)
 
-            // Warnings
-            if !result.warnings.isEmpty {
-                warningsSection(result.warnings)
+                // Warnings
+                if !result.warnings.isEmpty {
+                    warningsSection(result.warnings)
+                }
             }
 
             // Action Buttons
@@ -307,10 +313,12 @@ struct PillVerificationView: View {
                     .foregroundColor(canConfirm ? .success : .error)
             }
 
-            Text(statusText(result))
-                .font(AppTheme.Typography.title2)
-                .foregroundColor(canConfirm ? .success : .error)
-                .multilineTextAlignment(.center)
+            if !canConfirm {
+                Text(statusText(result))
+                    .font(AppTheme.Typography.title2)
+                    .foregroundColor(.error)
+                    .multilineTextAlignment(.center)
+            }
         }
     }
 

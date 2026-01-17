@@ -11,12 +11,15 @@ import Combine
 @MainActor
 class MedicationRepository: ObservableObject {
     @Published var medications: [Medication] = []
+    
+    private let supabaseService: SupabaseService?
 
     // In-memory storage (will be replaced with Core Data/SwiftData)
     private var storage: [Medication] = []
 
     // MARK: - Initialization
-    init() {
+    init(supabaseService: SupabaseService? = nil) {
+        self.supabaseService = supabaseService
         loadSampleData()
     }
 
@@ -88,6 +91,28 @@ class MedicationRepository: ObservableObject {
         storage[index].takenLog.append(log)
         storage[index].updatedAt = Date()
         updatePublished()
+        
+        // Persist to Supabase
+        if let supabaseService = supabaseService,
+           let userId = supabaseService.getCurrentUserId() {
+            Task {
+                let supabaseLog = SupabaseMedicationLog(
+                    id: log.id,
+                    medicationId: log.medicationId,
+                    userId: userId,
+                    takenAt: log.takenAt,
+                    wasOnTime: log.wasOnTime,
+                    notes: log.notes,
+                    createdAt: Date()
+                )
+                
+                do {
+                    try await supabaseService.logMedicationTaken(supabaseLog)
+                } catch {
+                    print("Failed to sync medication log to Supabase: \(error)")
+                }
+            }
+        }
     }
 
     /// Get medication logs for a specific medication

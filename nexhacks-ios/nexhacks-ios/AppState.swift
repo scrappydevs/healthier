@@ -65,7 +65,7 @@ class AppState: ObservableObject {
         
         // Initialize Repositories
         self.userRepository = UserRepository(supabaseService: supabaseService)
-        self.medicationRepository = MedicationRepository()
+        self.medicationRepository = MedicationRepository(supabaseService: supabaseService)
         self.mealRepository = MealRepository(supabaseService: supabaseService)
         self.exerciseRepository = ExerciseRepository()
         self.roomRepository = RoomRepository()
