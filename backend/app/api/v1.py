@@ -162,6 +162,126 @@ async def update_patient(
 
 
 # ============================================
+# PATIENT MEALS (from iOS app)
+# ============================================
+
+@router.get("/patients/{patient_id}/meals")
+async def get_patient_meals(
+    patient_id: UUID,
+    date: Optional[str] = Query(None, description="Filter by date (YYYY-MM-DD)"),
+    db: Client = Depends(get_db),
+):
+    """Get meals logged by a patient via the iOS app."""
+    # First get the patient's user_id
+    patient_response = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+    if not patient_response.data:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    user_id = patient_response.data.get("user_id")
+    if not user_id:
+        return {"meals": [], "total": 0}
+    
+    # Query meals by user_id
+    query = db.table("meals").select("*").eq("user_id", user_id).order("consumed_at", desc=True)
+    
+    if date:
+        # Filter by date (start and end of day)
+        query = query.gte("consumed_at", f"{date}T00:00:00").lt("consumed_at", f"{date}T23:59:59")
+    
+    response = query.execute()
+    meals = response.data or []
+    
+    return {
+        "meals": meals,
+        "total": len(meals),
+    }
+
+
+# ============================================
+# PATIENT EXERCISES (from iOS app)
+# ============================================
+
+@router.get("/patients/{patient_id}/exercises")
+async def get_patient_exercises(
+    patient_id: UUID,
+    date: Optional[str] = Query(None, description="Filter by date (YYYY-MM-DD)"),
+    db: Client = Depends(get_db),
+):
+    """Get exercises logged by a patient via the iOS app."""
+    # First get the patient's user_id
+    patient_response = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+    if not patient_response.data:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    user_id = patient_response.data.get("user_id")
+    if not user_id:
+        return {"exercises": [], "total": 0, "summary": {"total_minutes": 0, "total_calories": 0}}
+    
+    # Query exercises by user_id (using the new user_id column)
+    query = db.table("exercises").select("*").eq("user_id", user_id).order("logged_at", desc=True)
+    
+    if date:
+        query = query.gte("logged_at", f"{date}T00:00:00").lt("logged_at", f"{date}T23:59:59")
+    
+    response = query.execute()
+    exercises = response.data or []
+    
+    # Calculate summary
+    total_minutes = sum(e.get("duration_minutes") or 0 for e in exercises)
+    total_calories = sum(e.get("calories_burned") or 0 for e in exercises)
+    
+    return {
+        "exercises": exercises,
+        "total": len(exercises),
+        "summary": {
+            "total_minutes": total_minutes,
+            "total_calories": total_calories,
+        },
+    }
+
+
+# ============================================
+# PATIENT MEDICATIONS (from iOS app)
+# ============================================
+
+@router.get("/patients/{patient_id}/medications")
+async def get_patient_medications(
+    patient_id: UUID,
+    db: Client = Depends(get_db),
+):
+    """Get medications and logs for a patient via the iOS app."""
+    # First get the patient's user_id
+    patient_response = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+    if not patient_response.data:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    user_id = patient_response.data.get("user_id")
+    if not user_id:
+        return {"medications": [], "total": 0}
+    
+    # Query medications by user_id
+    meds_response = db.table("medications").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    medications = meds_response.data or []
+    
+    # For each medication, get recent logs
+    for med in medications:
+        logs_response = db.table("medication_logs").select("*").eq(
+            "medication_id", med.get("id")
+        ).order("taken_at", desc=True).limit(10).execute()
+        med["recent_logs"] = logs_response.data or []
+        
+        # Calculate adherence for this medication
+        total_logs = len(logs_response.data or [])
+        on_time_logs = len([l for l in (logs_response.data or []) if l.get("was_on_time")])
+        med["adherence_rate"] = round((on_time_logs / total_logs * 100) if total_logs > 0 else 100, 1)
+    
+    return {
+        "medications": medications,
+        "total": len(medications),
+    }
+
+
+# ============================================
 # ALERTS
 # ============================================
 

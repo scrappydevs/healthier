@@ -124,6 +124,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [toggleChat, toggleSidebar]);
 
+  // Handle cache invalidation from AI chat
+  const handleCacheInvalidate = useCallback((keys: string[]) => {
+    console.log('🔄 Cache invalidated:', keys);
+    // Dispatch custom event for components to refresh their data
+    window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
+      detail: { keys, timestamp: Date.now() }
+    }));
+  }, []);
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar - white background */}
@@ -281,7 +290,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             onMouseDown={handleMouseDown}
           />
           
-          <ChatSidebar isCollapsed={!isChatOpen} onClose={closeChat} />
+          <ChatSidebar 
+            isCollapsed={!isChatOpen} 
+            onClose={closeChat} 
+            onCacheInvalidate={handleCacheInvalidate}
+          />
         </div>
       </div>
 
