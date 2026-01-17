@@ -12,7 +12,7 @@ struct MedicationTabView: View {
     @State private var showingAddMedication = false
     @State private var showingScanMedication = false
     @State private var selectedMedication: Medication?
-    @State private var showingAnalytics = false
+    @State private var showingHistory = false
 
     var body: some View {
         NavigationView {
@@ -23,16 +23,16 @@ struct MedicationTabView: View {
                 .background(Color.appBackground)
                 .navigationBarHidden(true)
                 
-                // Floating action button for analytics
+                // Floating action button for logs history
                 VStack {
                     Spacer()
                     HStack {
                         Spacer()
                         
                         Button {
-                            showingAnalytics = true
+                            showingHistory = true
                         } label: {
-                            Image(systemName: "chart.bar.fill")
+                            Image(systemName: "list.bullet.clipboard.fill")
                                 .font(.title2)
                                 .foregroundColor(.white)
                                 .frame(width: 56, height: 56)
@@ -57,21 +57,9 @@ struct MedicationTabView: View {
             .sheet(item: $selectedMedication) { medication in
                 MedicationDetailView(viewModel: viewModel, medication: medication)
             }
-            .sheet(isPresented: $showingAnalytics) {
-                NavigationView {
-                    MedicationAnalyticsView(viewModel: viewModel)
-                        .navigationTitle("Analytics")
-                        .navigationBarTitleDisplayMode(.large)
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Button("Done") {
-                                    showingAnalytics = false
-                                }
-                            }
-                        }
-                }
+            .sheet(isPresented: $showingHistory) {
+                MedicationHistoryView(viewModel: viewModel)
             }
         }
     }
 }
-
