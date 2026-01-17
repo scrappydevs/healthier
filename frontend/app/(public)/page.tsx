@@ -7,7 +7,7 @@ export default function LandingPage() {
       {/* Navbar */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-sage-100">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <Link href="/" className="text-3xl font-light text-sage-900 tracking-tight" style={{ fontFamily: 'SF Pro Display, -apple-system, sans-serif' }}>
+          <Link href="/" className="text-3xl font-bold text-sage-900 tracking-tight" style={{ fontFamily: 'var(--font-inter-tight), -apple-system, sans-serif' }}>
             Healthier
           </Link>
 
