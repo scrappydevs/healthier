@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Search, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { getPatients, type Patient } from "@/lib/api";
 
 export default function PatientsPage() {
+  const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -157,6 +159,7 @@ export default function PatientsPage() {
               return (
                 <div
                   key={patient.id}
+                  onClick={() => router.push(`/dashboard/patients/${patient.id}`)}
                   className="px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center justify-between">

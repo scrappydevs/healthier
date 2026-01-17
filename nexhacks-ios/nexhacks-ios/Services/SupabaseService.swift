@@ -287,6 +287,146 @@ class SupabaseService: ObservableObject {
         
         return response.first
     }
+    
+    // MARK: - Journal Entry Operations
+    
+    /// Get patient_id from user_id
+    private func getPatientId(userId: UUID) async throws -> UUID {
+        struct PatientIdResponse: Codable {
+            let id: UUID
+        }
+        
+        let response: [PatientIdResponse] = try await supabase
+            .from("patients")
+            .select("id")
+            .eq("user_id", value: userId.uuidString)
+            .execute()
+            .value
+        
+        guard let patient = response.first else {
+            throw NSError(domain: "SupabaseService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Patient not found for user"])
+        }
+        
+        return patient.id
+    }
+    
+    func createJournalEntry(_ entry: JournalEntry, userId: UUID = defaultUserId) async throws {
+        let patientId = try await getPatientId(userId: userId)
+        
+        let journalLog = SupabaseJournalLog(
+            id: entry.id,
+            patientId: patientId,
+            transcript: entry.transcript,
+            voiceTranscription: nil,
+            durationSeconds: entry.duration.map { Double($0) },
+            tags: entry.tags,
+            mood: nil,
+            sentimentScore: nil,
+            aiAnalysis: nil,
+            metadata: nil,
+            loggedAt: entry.date,
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt
+        )
+        
+        try await supabase
+            .from("journal_logs")
+            .insert(journalLog)
+            .execute()
+    }
+    
+    func updateJournalEntry(_ entry: JournalEntry, userId: UUID = defaultUserId) async throws {
+        let patientId = try await getPatientId(userId: userId)
+        
+        let journalLog = SupabaseJournalLog(
+            id: entry.id,
+            patientId: patientId,
+            transcript: entry.transcript,
+            voiceTranscription: nil,
+            durationSeconds: entry.duration.map { Double($0) },
+            tags: entry.tags,
+            mood: nil,
+            sentimentScore: nil,
+            aiAnalysis: nil,
+            metadata: nil,
+            loggedAt: entry.date,
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt
+        )
+        
+        try await supabase
+            .from("journal_logs")
+            .update(journalLog)
+            .eq("id", value: entry.id.uuidString)
+            .execute()
+    }
+    
+    func deleteJournalEntry(_ id: UUID) async throws {
+        try await supabase
+            .from("journal_logs")
+            .delete()
+            .eq("id", value: id.uuidString)
+            .execute()
+    }
+    
+    func fetchJournalEntries(userId: UUID = defaultUserId) async throws -> [JournalEntry] {
+        let patientId = try await getPatientId(userId: userId)
+        
+        let response: [SupabaseJournalLog] = try await supabase
+            .from("journal_logs")
+            .select()
+            .eq("patient_id", value: patientId.uuidString)
+            .order("logged_at", ascending: false)
+            .execute()
+            .value
+        
+        return response.map { log in
+            JournalEntry(
+                id: log.id,
+                transcript: log.transcript,
+                date: log.loggedAt,
+                duration: log.durationSeconds.map { TimeInterval($0) },
+                tags: log.tags ?? [],
+                createdAt: log.createdAt,
+                updatedAt: log.updatedAt
+            )
+        }
+    }
+    
+    func getJournalContextForQuestion(_ question: String, userId: UUID = defaultUserId, limit: Int = 10) async throws -> [JournalEntry] {
+        let patientId = try await getPatientId(userId: userId)
+        
+        // Use full-text search on transcript - search for entries containing question keywords
+        // For now, fetch recent entries and filter client-side
+        // In production, you'd use PostgreSQL full-text search or vector similarity
+        let response: [SupabaseJournalLog] = try await supabase
+            .from("journal_logs")
+            .select()
+            .eq("patient_id", value: patientId.uuidString)
+            .order("logged_at", ascending: false)
+            .limit(limit * 2)
+            .execute()
+            .value
+        
+        // Filter entries that contain question keywords
+        let keywords = question.lowercased().components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+        let filtered = response.filter { log in
+            let transcriptLower = log.transcript.lowercased()
+            return keywords.isEmpty || keywords.allSatisfy { transcriptLower.contains($0) }
+        }
+        
+        return Array(filtered.prefix(limit)).map { log in
+            JournalEntry(
+                id: log.id,
+                transcript: log.transcript,
+                date: log.loggedAt,
+                duration: log.durationSeconds.map { TimeInterval($0) },
+                tags: log.tags ?? [],
+                createdAt: log.createdAt,
+                updatedAt: log.updatedAt
+            )
+        }
+    }
 }
 
 // MARK: - Supabase Data Models
@@ -456,6 +596,38 @@ struct SupabaseDailySummary: Codable {
         case totalExerciseMinutes = "total_exercise_minutes"
         case medicationsTaken = "medications_taken"
         case medicationsScheduled = "medications_scheduled"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct SupabaseJournalLog: Codable {
+    let id: UUID
+    let patientId: UUID
+    let transcript: String
+    var voiceTranscription: String?
+    var durationSeconds: Double?
+    var tags: [String]?
+    var mood: String?
+    var sentimentScore: Double?
+    var aiAnalysis: String?  // JSONB stored as JSON string for simplicity
+    var metadata: String?    // JSONB stored as JSON string for simplicity
+    let loggedAt: Date
+    let createdAt: Date
+    var updatedAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case patientId = "patient_id"
+        case transcript
+        case voiceTranscription = "voice_transcription"
+        case durationSeconds = "duration_seconds"
+        case tags
+        case mood
+        case sentimentScore = "sentiment_score"
+        case aiAnalysis = "ai_analysis"
+        case metadata
+        case loggedAt = "logged_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

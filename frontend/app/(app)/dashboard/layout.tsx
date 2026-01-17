@@ -140,7 +140,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         )}>
           {sidebarOpen ? (
             <>
-              <Link href="/" className="text-lg font-semibold text-foreground tracking-tight">
+              <Link href="/" className="text-2xl font-bold text-foreground tracking-tight" style={{ fontFamily: 'var(--font-inter-tight), -apple-system, sans-serif' }}>
                 healthier
               </Link>
               <Button

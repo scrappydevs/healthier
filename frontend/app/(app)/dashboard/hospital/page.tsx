@@ -1,12 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { SpaceViewer } from '@/components/hospital/SpaceViewer';
 import { rooms, roomStatusColors, roomTypeLabels, getRoomStats, type Room, type RoomStatus } from '@/components/hospital/rooms';
 import { hazardSeverityColors, hazardTypeLabels, getActiveHazards, type Hazard } from '@/components/hospital/hazards';
-import { ActivityFeed, type ActivityEvent } from '@/components/hospital/ActivityFeed';
-import { generateMockEvents, generateVitalCheckEvent, generateAlertEvent, generateMedicationEvent } from '@/components/hospital/events';
-import AIChat from '@/components/hospital/AIChat';
 
 type ViewMode = 'map' | 'heatmap' | 'hazards';
 
@@ -17,12 +14,6 @@ export default function HospitalViewPage() {
   // Selected item for detail panel
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [selectedHazard, setSelectedHazard] = useState<Hazard | null>(null);
-
-  // Activity events
-  const [events, setEvents] = useState<ActivityEvent[]>([]);
-
-  // Cache version for refreshing data
-  const [cacheVersion, setCacheVersion] = useState(0);
 
   // Stats
   const activeHazards = getActiveHazards();
@@ -35,35 +26,6 @@ export default function HospitalViewPage() {
     critical: roomStats.critical,
     attention: roomStats.attention,
   };
-
-  // Initialize mock events
-  useEffect(() => {
-    setEvents(generateMockEvents());
-  }, []);
-
-  // Simulate live events every 15-30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const eventGenerators = [generateVitalCheckEvent, generateAlertEvent, generateMedicationEvent];
-      const generator = eventGenerators[Math.floor(Math.random() * eventGenerators.length)];
-      const newEvent = generator();
-      
-      setEvents(prev => [newEvent, ...prev].slice(0, 50)); // Keep last 50 events
-    }, 15000 + Math.random() * 15000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Handle cache invalidation from AI chat
-  const handleCacheInvalidate = useCallback((keys: string[]) => {
-    console.log('🔄 Cache invalidated:', keys);
-    setCacheVersion(v => v + 1);
-    
-    // Dispatch custom event for other components
-    window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
-      detail: { keys, timestamp: Date.now() }
-    }));
-  }, []);
 
   const handleRoomClick = useCallback((room: Room) => {
     setSelectedRoom(room);
@@ -105,15 +67,15 @@ export default function HospitalViewPage() {
           <p className="text-xs text-neutral-500 mt-1">active</p>
         </div>
         <div className="bg-white rounded-lg shadow-sm p-4">
-          <p className="label-uppercase text-neutral-500 mb-1">Events</p>
-          <p className="text-2xl font-light text-neutral-950">{events.length}</p>
-          <p className="text-xs text-neutral-500 mt-1">logged today</p>
+          <p className="label-uppercase text-neutral-500 mb-1">Attention</p>
+          <p className="text-2xl font-light text-amber-600">{roomCounts.attention}</p>
+          <p className="text-xs text-neutral-500 mt-1">need review</p>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 flex gap-4 min-h-0">
-        {/* Left: Floor Plan Viewer */}
+        {/* Center: Floor Plan Viewer */}
         <div className="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
           {/* View Mode Tabs */}
           <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
@@ -162,10 +124,10 @@ export default function HospitalViewPage() {
           </div>
         </div>
 
-        {/* Right: Activity Feed + Details */}
-        <div className="w-96 flex flex-col gap-4">
-          {/* Detail Panel (shows when room/hazard selected) */}
-          {(selectedRoom || selectedHazard) && (
+        {/* Right: Detail Panel */}
+        {(selectedRoom || selectedHazard) && (
+          <div className="w-96 flex flex-col gap-4">
+            {/* Detail Panel (shows when room/hazard selected) */}
             <div className="bg-white rounded-lg shadow-sm p-4 shrink-0">
               <div className="flex items-center justify-between mb-3">
                 <p className="label-uppercase text-neutral-950">
@@ -240,17 +202,9 @@ export default function HospitalViewPage() {
                 </div>
               )}
             </div>
-          )}
-
-          {/* Activity Feed */}
-          <div className="flex-1 min-h-0">
-            <ActivityFeed events={events} />
           </div>
-        </div>
+        )}
       </div>
-
-      {/* AI Chat Sidebar */}
-      <AIChat onCacheInvalidate={handleCacheInvalidate} />
     </div>
   );
 }
