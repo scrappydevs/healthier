@@ -11,7 +11,9 @@ struct VoiceJournalView: View {
     @ObservedObject var viewModel: JournalViewModel
     @Environment(\.dismiss) var dismiss
     @State private var waveformAmplitude: CGFloat = 0.5
-    @State private var currentTime: Date = Date()
+    @State private var elapsedSeconds: Int = 0
+    
+    let recordingTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -44,7 +46,7 @@ struct VoiceJournalView: View {
                 VStack(spacing: AppTheme.Spacing.xs) {
                     waveformVisualization
                     
-                    Text(formatRecordingTime())
+                    Text(formatTime(elapsedSeconds))
                         .font(AppTheme.Typography.caption)
                         .foregroundColor(.textSecondary)
                         .monospacedDigit()
@@ -61,13 +63,22 @@ struct VoiceJournalView: View {
             .padding(AppTheme.Spacing.md)
         }
         .onAppear {
+            elapsedSeconds = 0
             Task {
                 await viewModel.startRecording()
             }
         }
-        .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
-            currentTime = Date()
+        .onReceive(recordingTimer) { _ in
+            if case .listening = viewModel.recordingState {
+                elapsedSeconds += 1
+            }
         }
+    }
+    
+    private func formatTime(_ totalSeconds: Int) -> String {
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
     
 
@@ -215,19 +226,6 @@ struct VoiceJournalView: View {
         .cornerRadius(AppTheme.CornerRadius.md)
     }
     
-    private func formatRecordingTime() -> String {
-        let elapsed: TimeInterval
-        if let startTime = viewModel.currentEntryStartTime {
-            elapsed = currentTime.timeIntervalSince(startTime)
-        } else if let duration = viewModel.lastRecordingDuration {
-            elapsed = duration
-        } else {
-            return "00:00"
-        }
-        let minutes = Int(elapsed) / 60
-        let seconds = Int(elapsed) % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
 
     private var controlButtons: some View {
         VStack(spacing: AppTheme.Spacing.md) {
