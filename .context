@@ -1,0 +1,185 @@
+NEXHACKS STUDY - PROJECT CONTEXT
+=================================
+
+PROJECT NAME: PillPal (working title)
+
+PROBLEM STATEMENT
+-----------------
+Medication non-adherence is a critical healthcare issue, especially among elderly populations. Studies show that 50% of patients do not take medications as prescribed, leading to 125,000 preventable deaths annually in the US alone. The elderly face unique challenges: cognitive decline, complex multi-drug regimens, vision/hearing impairments, and social isolation.
+
+Current solutions (pill organizers, phone alarms) fail because they lack:
+- Personalized guidance through complex medication schedules
+- Verification that medication was actually taken
+- Connection to caregivers/clinicians for oversight
+- Holistic health tracking (diet, exercise) that affects medication efficacy
+
+TARGET USERS
+------------
+Primary: Elderly patients (65+) with chronic conditions requiring multiple daily medications
+Secondary: Clinicians, caregivers, and family members who monitor patient health
+
+USER NEEDS (ELDERLY)
+--------------------
+- Simple, calm interface with large text and high contrast
+- Voice-first interaction (reduces need for fine motor control)
+- Gentle reminders that don't feel intrusive
+- Clear visual confirmation of what to take and when
+- Minimal cognitive load (one action at a time)
+- Ability to track food and exercise with voice/photo input
+
+USER NEEDS (CLINICIANS)
+-----------------------
+- Real-time adherence data across patient population
+- Critical alerts for missed doses or concerning patterns
+- Trend visualization for medication compliance
+- Food/exercise logs to correlate with health outcomes
+- Easy patient onboarding and medication schedule management
+
+SOLUTION OVERVIEW
+-----------------
+Two-part system:
+
+1. iOS Mobile App (Patient-Facing)
+   - Minimal, calm design centered on a pill canister visual
+   - Voice agent that walks patients through medication taking
+   - Push notifications for medication reminders
+   - Voice-guided food photography and exercise logging
+   - Large touch targets, high contrast, readable fonts
+
+2. Web Dashboard (Clinician-Facing)
+   - Left sidebar navigation for different sections
+   - Top navbar with search, notifications, profile
+   - Patient list with adherence scores
+   - Individual patient detail views with trends
+   - Critical alerts panel for immediate attention
+   - Food/exercise logs with timeline view
+
+DATA ARCHITECTURE
+-----------------
+Database: Supabase (PostgreSQL)
+
+Core Tables:
+- users (patients and clinicians)
+- medications (drug info, dosage, frequency)
+- medication_schedules (patient-specific schedules)
+- medication_logs (actual taken events)
+- food_logs (photos, voice transcriptions, timestamps)
+- exercise_logs (type, duration, voice notes)
+- alerts (missed doses, concerning patterns)
+
+KEY FEATURES
+------------
+iOS App:
+- Voice agent integration (likely OpenAI Realtime API or similar)
+- Push notifications via APNs
+- Camera integration for food photos
+- Simple gesture-based interactions
+- Offline-capable with sync
+
+Web Dashboard:
+- Real-time updates via Supabase subscriptions
+- Data visualization (charts, trends)
+- Patient management CRUD
+- Alert management and acknowledgment
+- Export capabilities for reports
+
+DESIGN PRINCIPLES
+-----------------
+For Elderly Users:
+- Minimum 16px base font, 18-20px preferred for body text
+- High contrast ratios (WCAG AAA where possible)
+- No reliance on color alone for information
+- Large touch targets (minimum 44x44px)
+- Consistent navigation patterns
+- Voice as primary input method
+- Visual feedback for all actions
+- Calm color palette (avoid harsh colors)
+
+For Clinician Dashboard:
+- Information density balanced with clarity
+- Quick actions accessible without deep navigation
+- Clear data hierarchy
+- Responsive for tablet use during rounds
+- Keyboard shortcuts for power users
+
+TECH STACK
+----------
+Frontend (Web): Next.js 16, TypeScript, Tailwind CSS
+Backend: FastAPI, Python 3.11+, Pydantic
+Database: Supabase (PostgreSQL + Auth + Realtime)
+iOS App: React Native or Swift (TBD based on voice requirements)
+Voice: OpenAI Realtime API or similar
+Secrets: Infisical
+
+FOLDER STRUCTURE
+----------------
+nexhacks-study/
+├── frontend/          # Next.js web dashboard
+├── backend/           # FastAPI server
+├── mobile-app/        # iOS patient app
+├── mobile-dash/       # Mobile clinician dashboard (optional)
+├── .context           # This file
+├── .cursorrules       # Development standards
+└── package.json       # Root scripts
+
+RESEARCH NOTES
+--------------
+Medication Adherence Statistics:
+- 20-30% of prescriptions never filled
+- 50% of medications not taken as prescribed
+- Poor adherence causes 10% of hospitalizations
+- $100-300 billion annual cost to US healthcare system
+
+Elderly-Specific Challenges:
+- 40% of adults 65+ take 5+ medications daily
+- Cognitive decline affects medication management
+- Vision impairment makes reading labels difficult
+- Hearing loss impacts phone-based reminders
+- Social isolation reduces accountability
+
+Voice Interface Benefits for Elderly:
+- Reduces need for reading small text
+- Natural interaction pattern (like talking to a person)
+- Can provide step-by-step guidance
+- Confirms understanding through conversation
+- Reduces anxiety around technology
+
+Clinician Dashboard Best Practices:
+- Prioritize actionable information
+- Use progressive disclosure for details
+- Support quick scanning of patient lists
+- Highlight anomalies and urgent items
+- Enable efficient batch operations
+
+ACCEPTANCE CRITERIA (MVP)
+-------------------------
+iOS App:
+- [ ] User can receive push notification reminder
+- [ ] Voice agent can guide through taking one medication
+- [ ] User can confirm medication was taken
+- [ ] User can take photo of food with voice description
+- [ ] Data syncs to Supabase
+
+Web Dashboard:
+- [ ] Clinician can log in
+- [ ] Dashboard shows patient list with adherence scores
+- [ ] Can view individual patient medication history
+- [ ] Can see critical alerts
+- [ ] Can view food/exercise logs
+
+Backend:
+- [ ] Auth via Supabase
+- [ ] CRUD for patients, medications, schedules
+- [ ] Logging endpoints for medications, food, exercise
+- [ ] Alert generation logic
+- [ ] Real-time subscriptions for dashboard
+
+FUTURE CONSIDERATIONS
+---------------------
+- Integration with pharmacy systems for refill alerts
+- Family member companion app
+- Wearable integration (Apple Watch)
+- Smart pill bottle sensors
+- Telehealth appointment scheduling
+- Multi-language voice support
+- Offline voice processing for privacy

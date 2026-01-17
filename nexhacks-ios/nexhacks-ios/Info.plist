@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraReactionEffectGesturesEnabledDefault</key>
+	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>We need camera access to scan your rooms and create 3D models using AR.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>We need access to save scanned room models to your photo library.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to provide indoor positioning and location tracking features.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We need microphone access for voice journaling.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>We need speech recognition to transcribe your journal entries.</string>
+</dict>
+</plist>

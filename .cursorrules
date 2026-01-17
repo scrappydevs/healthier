@@ -1,0 +1,110 @@
+NEXHACKS STUDY - CURSOR RULES
+SENIOR ENGINEERING STANDARDS FOR HACKATHON DEVELOPMENT
+
+NON-NEGOTIABLES (CRITICAL - FOLLOW STRICTLY)
+1) ABSOLUTELY NO MARKDOWN IN ASSISTANT MESSAGES. Plain text only. No asterisks, no backticks for emphasis, no formatting.
+2) NO EXTRA FILES. Do not create README.md, CONTRIBUTING.md, docs/, or any documentation files unless explicitly requested.
+3) No clutter. Be concise, direct, and high-signal.
+4) No garbage. No dead code, no commented-out blocks, no placeholder hacks, no "TODO later" without a concrete next step.
+5) Keep code straightforward and modular. Prefer small, composable units over cleverness.
+6) Double-check work. Especially for big features and big changes: re-read requirements, review diffs, run checks, and smoke test.
+
+SENIOR ENGINEERING DEFAULTS
+1) Correctness first: trace execution, validate inputs at boundaries, handle errors explicitly (no silent failures).
+2) Maintainability: readable names, simple control flow, consistent patterns, minimal surface area.
+3) Risk management: de-risk early, avoid broad refactors, ship in small coherent steps, keep changes reviewable.
+4) Observability: add targeted logs while debugging, remove or downgrade noisy logs after verification.
+5) Security: never commit secrets, avoid leaking sensitive data in logs, follow least-privilege and safe defaults.
+
+MODULAR DESIGN RULES (KEEP IT BORING)
+1) Single responsibility per module/component/function. If it has "and" in the name, split it.
+2) Design the interface first (types, inputs/outputs, errors). Keep interfaces small and stable.
+3) Prefer pure functions and explicit dependencies. Avoid hidden globals and side effects.
+4) Keep files small and cohesive. Split by feature/domain, not by random utility buckets.
+5) Frontend: separate data fetching/state from presentational components. Backend: separate routing, validation, and business logic (service layer).
+
+LARGE CHANGE PROTOCOL (WHEN CHANGES ARE WIDE OR RISKY)
+1) Write a brief plan: scope, assumptions, data flow, and acceptance criteria.
+2) Implement the hardest/riskiest piece first to de-risk.
+3) Keep diffs tight: avoid drive-by refactors, delete unused code, and keep naming consistent.
+4) Verify: run lint/typecheck/tests, and do a manual smoke test for the critical flows.
+5) Review the diff as if you were a reviewer: look for unintended changes, edge cases, and regressions.
+
+UI / UX STANDARDS (CLEAN, ELEGANT, USABLE)
+1) Optimize for usability and clarity: strong hierarchy, consistent spacing, and obvious interactions.
+2) Typography: use system fonts or Inter. font-light for body, font-normal for labels. No novelty fonts.
+3) Accessibility is not optional: sufficient contrast, visible focus states, keyboard navigation, and correct ARIA where needed.
+4) States: loading/empty/error/success must exist and look intentional. Disable during submit and show feedback.
+5) Responsiveness: test common breakpoints. No layout jumps, no clipped content, no tiny tap targets.
+6) Keep UI calm: avoid gratuitous animations, excessive shadows, and visual noise.
+
+TECH STACK GUIDELINES
+
+NEXT.JS
+1) Use the App Router (frontend/app).
+2) Prefer Server Components by default. Use "use client" only when needed.
+3) Add loading and error states where users can get stuck.
+4) Keep components small and feature-oriented.
+
+FASTAPI
+1) Use Pydantic models for request/response validation.
+2) Organize routes by domain/feature.
+3) Use dependency injection for shared concerns.
+4) Raise HTTPException for errors; do not swallow exceptions.
+5) Prefer async/await for I/O.
+
+TAILWIND CSS (CRITICAL - USE PROPERLY)
+1) USE TAILWIND CLASSES DIRECTLY. Do not use CSS variables like var(--ink) in className. Use Tailwind's color system.
+2) Define colors in tailwind.config.ts, not in globals.css with CSS variables.
+3) Use Tailwind's built-in colors (slate, neutral, blue, emerald, amber, red) or extend in config.
+4) Consistent spacing: use Tailwind's spacing scale (p-4, p-6, gap-4, gap-6). Avoid arbitrary values.
+5) Typography: text-xs for labels (uppercase tracking-wider), text-sm for body, text-lg/text-xl for headings.
+6) Borders: border for light, border-2 for strong/brutalist. Use border-neutral-200 or border-neutral-950.
+7) NO @apply except for truly repeated patterns. Prefer direct utility classes.
+8) NO inline styles. Everything should be Tailwind classes.
+9) Color convention: neutral-950 for text, neutral-50/white for backgrounds, primary-700 for accents.
+
+DESIGN SYSTEM (BRUTALIST/EDITORIAL STYLE)
+1) Light font weights: font-light for most text, font-normal for labels and buttons.
+2) Uppercase labels: text-xs font-normal uppercase tracking-wider for section headers and labels.
+3) Strong borders: border-2 border-neutral-950 for cards and containers.
+4) No rounded corners: rounded-none or very minimal rounding.
+5) Minimal shadows: avoid box shadows, use borders for definition.
+6) High contrast: neutral-950 text on neutral-50 backgrounds.
+7) Clean whitespace: generous padding (p-6, p-8) and spacing (gap-6, space-y-8).
+
+SECRETS MANAGEMENT (INFISICAL)
+1) Use Infisical CLI to inject secrets at runtime (not Python SDK - it is deprecated)
+2) Store secrets in project-specific Infisical workspace
+3) Run with: infisical run --env=dev -- your-command
+4) For local dev without Infisical: use .env file as fallback
+5) Frontend: Use NEXT_PUBLIC_ prefix only for truly public values
+6) Never commit .env files with real secrets to git
+7) Keep env.example updated with placeholder values
+
+DEBUGGING WORKFLOW
+1) Observe: actual vs expected behavior.
+2) Hypothesize: the smallest set of plausible causes.
+3) Test: add minimal instrumentation/logging to prove or disprove.
+4) Fix: the smallest correct change.
+5) Verify: run checks and confirm behavior end-to-end.
+6) Clean up: remove debug code, add regression tests when appropriate.
+
+CODE REVIEW CHECKLIST (BEFORE YOU SAY "DONE")
+1) Does it solve the actual problem and match the requested shape?
+2) Is it simple, modular, and consistent with existing patterns?
+3) Are edge cases and failure modes handled?
+4) Are inputs validated and errors explicit?
+5) Are there any security or privacy risks?
+6) For UI: does it look clean, readable, and usable (states + accessibility)?
+7) For big changes: were checks run and a smoke test performed?
+
+WHEN YOU'RE STUCK
+1) Re-read the requirement and the error output carefully.
+2) Trace the execution path (don't guess).
+3) Reduce to a minimal reproduction.
+4) Check official docs, then search the exact error message.
+5) Add targeted logging/breakpoints to validate assumptions.
+6) Take a short break and retry with fresh eyes.
+
+ABSOLUTELY NO MARKDOWN OR EXTRA FILES!

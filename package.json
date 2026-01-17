@@ -1,0 +1,28 @@
+{
+  "name": "healthier",
+  "version": "1.0.0",
+  "description": "Healthier - Medication adherence platform for elderly care",
+  "scripts": {
+    "dev": "concurrently --names \"INFISICAL,FRONTEND,BACKEND\" --prefix-colors \"yellow,cyan,magenta\" \"npm run dev:secrets\" \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:secrets": "infisical run --env=dev -- node -e \"console.log('Secrets injected from Infisical'); setInterval(() => {}, 1000000)\"",
+    "dev:frontend": "cd frontend && infisical run --env=dev -- npm run dev",
+    "dev:backend": "cd backend && source venv/bin/activate && infisical run --env=dev -- uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:local": "concurrently --names \"FRONTEND,BACKEND\" --prefix-colors \"cyan,magenta\" \"cd frontend && npm run dev\" \"cd backend && source venv/bin/activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000\"",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm run start",
+    "lint": "cd frontend && npm run lint",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && pip install -r requirements.txt"
+  },
+  "keywords": [
+    "nextjs",
+    "fastapi",
+    "hackathon",
+    "healthcare",
+    "medication"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
