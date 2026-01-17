@@ -7,12 +7,16 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Calendar,
   Plus,
   Pill,
   Utensils,
   Activity,
-  X
+  X,
+  BookOpen,
+  Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
@@ -21,9 +25,17 @@ import {
   getPatientMeals,
   getPatientExercises,
   getPatientMedications,
+  getPatientJournal,
   getPills,
+  generateDailySummary,
+  createPatientPlan,
+  generateJournalSummary,
+  generateMealSummary,
+  generateExerciseSummary,
   type Patient,
-  type Pill as PillType
+  type Pill as PillType,
+  type DailySummaryResponse,
+  type JournalEntry
 } from "@/lib/api";
 import { FoodSection } from "@/components/patient/FoodSection";
 import { ExerciseSection } from "@/components/patient/ExerciseSection";
@@ -57,7 +69,9 @@ export default function DashboardPage() {
           setSelectedPatient(patientsRes.patients[0]);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load data");
+        const errorMessage = err instanceof Error ? err.message : "Failed to load data";
+        console.error("Failed to fetch patients:", err);
+        setError(errorMessage);
       } finally {
         setIsLoading(false);
       }
@@ -481,31 +495,137 @@ function PlansContent({ patient }: { patient: Patient }) {
 }
 
 function OverviewContent({ patient }: { patient: Patient }) {
-  const [todayStats, setTodayStats] = useState({ meals: 0, exercises: 0 });
+  const [meals, setMeals] = useState<Array<{
+    id: string;
+    name: string;
+    meal_type: string;
+    consumed_at: string;
+    image_url: string | null;
+    total_calories: number;
+    total_protein?: number | null;
+    total_carbs?: number | null;
+    total_fat?: number | null;
+    ai_analysis?: string | null;
+  }>>([]);
+  const [exercises, setExercises] = useState<Array<{
+    id: string;
+    exercise_type: string;
+    name?: string | null;
+    duration_minutes: number | null;
+    calories_burned: number | null;
+    logged_at: string;
+    intensity?: string | null;
+    notes?: string | null;
+  }>>([]);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [aiSummary, setAiSummary] = useState<DailySummaryResponse | null>(null);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
+  const [mealsExpanded, setMealsExpanded] = useState(false);
+  const [exercisesExpanded, setExercisesExpanded] = useState(false);
+  const [journalExpanded, setJournalExpanded] = useState(true);
+  const [expandedJournalEntries, setExpandedJournalEntries] = useState<Set<string>>(new Set());
+  const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set());
+  const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
+  const [journalSummaries, setJournalSummaries] = useState<Record<string, string>>({});
+  const [mealSummaries, setMealSummaries] = useState<Record<string, string>>({});
+  const [exerciseSummaries, setExerciseSummaries] = useState<Record<string, string>>({});
+  const [lastDataHash, setLastDataHash] = useState("");
   const todayDate = new Date().toISOString().split("T")[0];
 
+  // Fetch all data
   useEffect(() => {
-    async function fetchTodayStats() {
+    async function fetchTodayData() {
       setIsLoading(true);
       try {
-        const [mealsRes, exercisesRes] = await Promise.all([
+        const [mealsRes, exercisesRes, journalRes] = await Promise.all([
           getPatientMeals(patient.id, todayDate),
           getPatientExercises(patient.id, todayDate),
+          getPatientJournal(patient.id, todayDate, todayDate),
         ]);
         
-        setTodayStats({
+        setMeals(mealsRes.meals);
+        setExercises(exercisesRes.exercises);
+        setJournalEntries(journalRes.entries);
+        
+        // Generate summaries for new entries
+        const summaries: Record<string, string> = {};
+        for (const entry of journalRes.entries) {
+          if (entry.ai_analysis && typeof entry.ai_analysis === "object" && "summary" in entry.ai_analysis) {
+            summaries[entry.id] = String(entry.ai_analysis.summary);
+          } else {
+            try {
+              const summaryRes = await generateJournalSummary(entry.id);
+              summaries[entry.id] = summaryRes.summary;
+            } catch {
+              // Fallback to first sentence
+              const firstSentence = entry.transcript.split(/[.!?]/)[0];
+              summaries[entry.id] = firstSentence.length > 100 ? firstSentence.slice(0, 100) + "..." : firstSentence;
+            }
+          }
+        }
+        setJournalSummaries(summaries);
+        
+        // Generate summaries for meals
+        const mealSums: Record<string, string> = {};
+        for (const meal of mealsRes.meals) {
+          try {
+            const summaryRes = await generateMealSummary(meal.id);
+            mealSums[meal.id] = summaryRes.summary;
+          } catch {
+            mealSums[meal.id] = `${meal.name} - ${meal.total_calories} cal`;
+          }
+        }
+        setMealSummaries(mealSums);
+        
+        // Generate summaries for exercises
+        const exerciseSums: Record<string, string> = {};
+        for (const exercise of exercisesRes.exercises) {
+          try {
+            const summaryRes = await generateExerciseSummary(exercise.id);
+            exerciseSums[exercise.id] = summaryRes.summary;
+          } catch {
+            exerciseSums[exercise.id] = `${exercise.exercise_type || (exercise as any).name || "Exercise"} - ${exercise.duration_minutes || 0} min`;
+          }
+        }
+        setExerciseSummaries(exerciseSums);
+        
+        // Create hash of data to detect changes
+        const dataHash = JSON.stringify({
           meals: mealsRes.meals.length,
           exercises: exercisesRes.exercises.length,
+          journal: journalRes.entries.length,
         });
+        setLastDataHash(dataHash);
       } catch {
         // Ignore errors
       } finally {
         setIsLoading(false);
       }
     }
-    fetchTodayStats();
+    fetchTodayData();
   }, [patient.id, todayDate]);
+
+  // Auto-generate summary when there's activity and no summary yet
+  useEffect(() => {
+    const hasActivity = meals.length > 0 || exercises.length > 0 || journalEntries.length > 0;
+    if (hasActivity && !aiSummary && !isGeneratingSummary && !isLoading) {
+      handleGenerateSummary();
+    }
+  }, [meals.length, exercises.length, journalEntries.length, isLoading]);
+
+  const handleGenerateSummary = async () => {
+    setIsGeneratingSummary(true);
+    try {
+      const summary = await generateDailySummary(patient.id, todayDate);
+      setAiSummary(summary);
+    } catch {
+      // Ignore errors
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
 
   const getStatusFromAdherence = (rate: number): "good" | "warning" | "critical" => {
     if (rate >= 85) return "good";
@@ -515,54 +635,496 @@ function OverviewContent({ patient }: { patient: Patient }) {
 
   const status = getStatusFromAdherence(patient.adherence_rate);
 
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  };
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return "";
+    if (seconds < 60) return `${seconds}s`;
+    return `${Math.round(seconds / 60)}m`;
+  };
+
+  const mealTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      breakfast: "Breakfast",
+      lunch: "Lunch",
+      dinner: "Dinner",
+      snack: "Snack",
+    };
+    return labels[type] || type;
+  };
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case "high": return "bg-red-50 border-red-200 text-red-800";
+      case "medium": return "bg-amber-50 border-amber-200 text-amber-800";
+      case "low": return "bg-slate-50 border-slate-200 text-slate-700";
+      default: return "bg-slate-50 border-slate-200 text-slate-700";
+    }
+  };
+
+  const getMoodEmoji = (mood: string | null) => {
+    switch (mood) {
+      case "very_positive": return "😊";
+      case "positive": return "🙂";
+      case "neutral": return "😐";
+      case "negative": return "😔";
+      case "very_negative": return "😢";
+      default: return "📝";
+    }
+  };
+
+  const getJournalSummary = (transcript: string): string => {
+    // Try to get first sentence, or truncate to ~100 chars
+    const firstSentence = transcript.split(/[.!?]/)[0];
+    if (firstSentence && firstSentence.length < 120) {
+      return firstSentence.trim() + (transcript.length > firstSentence.length ? "..." : "");
+    }
+    // Truncate at word boundary
+    if (transcript.length <= 100) return transcript;
+    const truncated = transcript.slice(0, 100).replace(/\s+\S*$/, "");
+    return truncated + "...";
+  };
+
+  const toggleJournalEntry = (entryId: string) => {
+    setExpandedJournalEntries(prev => {
+      const next = new Set(prev);
+      if (next.has(entryId)) {
+        next.delete(entryId);
+      } else {
+        next.add(entryId);
+      }
+      return next;
+    });
+  };
+
+  const totalActivity = meals.length + exercises.length + journalEntries.length;
+
   return (
-    <div className="space-y-4">
-      {/* Today's Status */}
-      <div className="bg-white rounded-lg border p-4">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-          Today's Status
-        </h3>
-        
-        <div className="space-y-4">
-          {/* Overall Status */}
-          <div className="flex items-center justify-between pb-4 border-b">
-            <span className="text-sm text-muted-foreground">Overall Status</span>
+    <div className="space-y-3">
+      {/* Overall Status Bar */}
+      <div className="bg-white rounded-lg border p-3 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <StatusBadge status={status} />
+            <span className="text-sm text-foreground font-medium">{patient.full_name}</span>
           </div>
-
-          {/* Today's Activity */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Pill className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-foreground">Medications</span>
-              </div>
-              <span className="text-sm font-medium text-foreground">
-                {patient.medication_count > 0 ? `${Math.round(patient.adherence_rate)}% adherence` : "No medications"}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Utensils className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-foreground">Meals</span>
-              </div>
-              <span className="text-sm font-medium text-foreground">
-                {isLoading ? "—" : `${todayStats.meals} logged today`}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-foreground">Exercises</span>
-              </div>
-              <span className="text-sm font-medium text-foreground">
-                {isLoading ? "—" : `${todayStats.exercises} logged today`}
-              </span>
-            </div>
-          </div>
+          {patient.medication_count > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {Math.round(patient.adherence_rate)}% med adherence
+            </span>
+          )}
         </div>
+        <div className="text-xs text-muted-foreground">
+          {totalActivity} activities today
+        </div>
+      </div>
+
+      {/* Daily Summary - Collapsible */}
+      <div className="bg-gradient-to-r from-slate-50 to-white rounded-lg border">
+        <button
+          onClick={() => setSummaryExpanded(!summaryExpanded)}
+          className="w-full p-3 flex items-center justify-between hover:bg-muted/20 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium text-foreground">Daily Summary</span>
+            {isGeneratingSummary && (
+              <span className="text-xs text-muted-foreground animate-pulse">Generating...</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {aiSummary && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleGenerateSummary(); }}
+                className="text-xs text-primary hover:underline"
+              >
+                Refresh
+              </button>
+            )}
+            {summaryExpanded ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </div>
+        </button>
+
+        {summaryExpanded && (
+          <div className="px-3 pb-3 border-t">
+            {aiSummary ? (
+              <div className="space-y-3 pt-3">
+                <p className="text-sm text-foreground leading-relaxed">{aiSummary.summary}</p>
+                
+                {/* Quick Stats */}
+                <div className="grid grid-cols-4 gap-2 pt-2">
+                  <div className="text-center p-2 bg-muted/30 rounded">
+                    <p className="text-base font-semibold text-foreground">{aiSummary.stats.meals}</p>
+                    <p className="text-[10px] text-muted-foreground uppercase">Meals</p>
+                  </div>
+                  <div className="text-center p-2 bg-muted/30 rounded">
+                    <p className="text-base font-semibold text-foreground">{aiSummary.stats.exercises}</p>
+                    <p className="text-[10px] text-muted-foreground uppercase">Exercise</p>
+                  </div>
+                  <div className="text-center p-2 bg-muted/30 rounded">
+                    <p className="text-base font-semibold text-foreground">{aiSummary.stats.adherence_percent}%</p>
+                    <p className="text-[10px] text-muted-foreground uppercase">Meds</p>
+                  </div>
+                  <div className="text-center p-2 bg-muted/30 rounded">
+                    <p className="text-base font-semibold text-foreground">{aiSummary.stats.journal_entries}</p>
+                    <p className="text-[10px] text-muted-foreground uppercase">Journal</p>
+                  </div>
+                </div>
+
+                {/* Alerts */}
+                {aiSummary.alerts.length > 0 && (
+                  <div className="space-y-2">
+                    {aiSummary.alerts.map((alert, idx) => (
+                      <div key={idx} className={`p-2 rounded border text-xs ${getSeverityColor(alert.severity)}`}>
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                          <span>{alert.message}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : totalActivity === 0 ? (
+              <p className="text-sm text-muted-foreground pt-3">No activity logged today yet.</p>
+            ) : (
+              <p className="text-sm text-muted-foreground pt-3 animate-pulse">Generating summary...</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Journal Entries - Most prominent */}
+      <div className="bg-white rounded-lg border">
+        <button
+          onClick={() => setJournalExpanded(!journalExpanded)}
+          className="w-full p-3 flex items-center justify-between hover:bg-muted/20 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground">Today's Journal</span>
+            <span className="text-xs text-muted-foreground">{journalEntries.length} entries</span>
+          </div>
+          {journalExpanded ? (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
+        </button>
+
+        {journalExpanded && (
+          <div className="border-t">
+            {isLoading ? (
+              <div className="p-3 text-sm text-muted-foreground">Loading...</div>
+            ) : journalEntries.length === 0 ? (
+              <div className="p-3 text-sm text-muted-foreground">No journal entries today</div>
+            ) : (
+              <div className="divide-y">
+                {journalEntries.map((entry) => {
+                  const isExpanded = expandedJournalEntries.has(entry.id);
+                  const summary = journalSummaries[entry.id] || getJournalSummary(entry.transcript);
+                  const hasMoreContent = entry.transcript.length > (summary.length || 0);
+                  
+                  return (
+                    <div 
+                      key={entry.id} 
+                      className={cn(
+                        "p-3 transition-colors",
+                        hasMoreContent && "cursor-pointer hover:bg-muted/20"
+                      )}
+                      onClick={() => hasMoreContent && toggleJournalEntry(entry.id)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="text-lg">{getMoodEmoji(entry.mood)}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium text-foreground">
+                              {formatTime(entry.logged_at)}
+                            </span>
+                            {entry.duration_seconds && (
+                              <span className="text-xs text-muted-foreground">
+                                {formatDuration(entry.duration_seconds)}
+                              </span>
+                            )}
+                            {hasMoreContent && (
+                              <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                {isExpanded ? "collapse" : "expand"}
+                              </span>
+                            )}
+                          </div>
+                          
+                          {/* Summary (always shown) */}
+                          <p className="text-sm text-foreground leading-relaxed">
+                            {summary}
+                          </p>
+                          
+                          {/* Full Transcript (expandable) */}
+                          {isExpanded && hasMoreContent && (
+                            <div className="mt-3 pt-3 border-t border-dashed">
+                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                                Full Transcript
+                              </p>
+                              <p className="text-sm text-muted-foreground leading-relaxed">
+                                {entry.transcript}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {entry.tags && entry.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {entry.tags.map((tag, i) => (
+                                <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted rounded">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Meals - Collapsible */}
+      <div className="bg-white rounded-lg border">
+        <button
+          onClick={() => setMealsExpanded(!mealsExpanded)}
+          className="w-full p-3 flex items-center justify-between hover:bg-muted/20 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Utensils className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground">Meals</span>
+            <span className="text-xs text-muted-foreground">{meals.length} logged</span>
+          </div>
+          {mealsExpanded ? (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
+        </button>
+
+        {mealsExpanded && (
+          <div className="border-t">
+            {isLoading ? (
+              <div className="p-3 text-sm text-muted-foreground">Loading...</div>
+            ) : meals.length === 0 ? (
+              <div className="p-3 text-sm text-muted-foreground">No meals logged today</div>
+            ) : (
+              <div className="divide-y">
+                {meals.map((meal) => {
+                  const isExpanded = expandedMeals.has(meal.id);
+                  const summary = mealSummaries[meal.id] || `${meal.name} - ${meal.total_calories} cal`;
+                  
+                  return (
+                    <div 
+                      key={meal.id} 
+                      className={cn(
+                        "p-3 transition-colors cursor-pointer hover:bg-muted/20",
+                      )}
+                      onClick={() => {
+                        const next = new Set(expandedMeals);
+                        if (next.has(meal.id)) {
+                          next.delete(meal.id);
+                        } else {
+                          next.add(meal.id);
+                        }
+                        setExpandedMeals(next);
+                      }}
+                    >
+                      <div className="flex items-start gap-3">
+                        {meal.image_url ? (
+                          <img
+                            src={meal.image_url}
+                            alt={meal.name}
+                            className="w-12 h-12 rounded object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
+                            <Utensils className="h-5 w-5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium text-foreground">
+                              {formatTime(meal.consumed_at)}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                              {isExpanded ? "collapse" : "expand"}
+                            </span>
+                          </div>
+                          
+                          {/* Summary */}
+                          <p className="text-sm text-foreground leading-relaxed">
+                            {summary}
+                          </p>
+                          
+                          {/* Full Details (expandable) */}
+                          {isExpanded && (
+                            <div className="mt-3 pt-3 border-t border-dashed">
+                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                                Full Details
+                              </p>
+                              <p className="text-sm font-medium text-foreground mb-1">{meal.name}</p>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span>{mealTypeLabel(meal.meal_type)}</span>
+                                {meal.total_calories > 0 && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{meal.total_calories} cal</span>
+                                  </>
+                                )}
+                                {meal.total_protein && meal.total_protein > 0 && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{meal.total_protein}g protein</span>
+                                  </>
+                                )}
+                                {meal.total_carbs && meal.total_carbs > 0 && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{meal.total_carbs}g carbs</span>
+                                  </>
+                                )}
+                                {meal.total_fat && meal.total_fat > 0 && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{meal.total_fat}g fat</span>
+                                  </>
+                                )}
+                              </div>
+                              {meal.ai_analysis && (
+                                <p className="text-xs text-muted-foreground mt-2">{meal.ai_analysis}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Exercises - Collapsible */}
+      <div className="bg-white rounded-lg border">
+        <button
+          onClick={() => setExercisesExpanded(!exercisesExpanded)}
+          className="w-full p-3 flex items-center justify-between hover:bg-muted/20 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground">Activity</span>
+            <span className="text-xs text-muted-foreground">{exercises.length} logged</span>
+          </div>
+          {exercisesExpanded ? (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
+        </button>
+
+        {exercisesExpanded && (
+          <div className="border-t">
+            {isLoading ? (
+              <div className="p-3 text-sm text-muted-foreground">Loading...</div>
+            ) : exercises.length === 0 ? (
+              <div className="p-3 text-sm text-muted-foreground">No exercises logged today</div>
+            ) : (
+              <div className="divide-y">
+                {exercises.map((exercise) => {
+                  const isExpanded = expandedExercises.has(exercise.id);
+                  const summary = exerciseSummaries[exercise.id] || `${exercise.exercise_type || exercise.name} - ${exercise.duration_minutes || 0} min`;
+                  
+                  return (
+                    <div 
+                      key={exercise.id} 
+                      className={cn(
+                        "p-3 transition-colors cursor-pointer hover:bg-muted/20",
+                      )}
+                      onClick={() => {
+                        const next = new Set(expandedExercises);
+                        if (next.has(exercise.id)) {
+                          next.delete(exercise.id);
+                        } else {
+                          next.add(exercise.id);
+                        }
+                        setExpandedExercises(next);
+                      }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
+                          <Activity className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium text-foreground">
+                              {formatTime(exercise.logged_at)}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                              {isExpanded ? "collapse" : "expand"}
+                            </span>
+                          </div>
+                          
+                          {/* Summary */}
+                          <p className="text-sm text-foreground leading-relaxed">
+                            {summary}
+                          </p>
+                          
+                          {/* Full Details (expandable) */}
+                          {isExpanded && (
+                            <div className="mt-3 pt-3 border-t border-dashed">
+                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                                Full Details
+                              </p>
+                              <p className="text-sm font-medium text-foreground mb-1">{exercise.exercise_type || exercise.name || "Exercise"}</p>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                {exercise.duration_minutes && (
+                                  <>
+                                    <span>{exercise.duration_minutes} min</span>
+                                  </>
+                                )}
+                                {exercise.calories_burned && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{exercise.calories_burned} cal burned</span>
+                                  </>
+                                )}
+                                {exercise.intensity && (
+                                  <>
+                                    <span>·</span>
+                                    <span className="capitalize">{exercise.intensity} intensity</span>
+                                  </>
+                                )}
+                              </div>
+                              {exercise.notes && (
+                                <p className="text-xs text-muted-foreground mt-2">{exercise.notes}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -684,43 +1246,45 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
 
 // Inline Diet Instruction Form
 function DietInstructionForm({ patientId, onClose }: { patientId: string; onClose: () => void }) {
-  const [instruction, setInstruction] = useState("");
-  const [mealType, setMealType] = useState("general");
+  const [notes, setNotes] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async () => {
-    console.log("Add diet instruction:", { patientId, instruction, mealType });
-    onClose();
+    if (!notes.trim()) {
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      await createPatientPlan(patientId, {
+        plan_type: "diet",
+        title: "Diet Plan",
+        notes: notes.trim(),
+        restrictions: [],
+      });
+      onClose();
+    } catch (err) {
+      console.error("Failed to save diet plan:", err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="space-y-3 pt-2 border-t">
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0">Type</label>
-        <select
-          value={mealType}
-          onChange={(e) => setMealType(e.target.value)}
-          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
-        >
-          <option value="general">General</option>
-          <option value="breakfast">Breakfast</option>
-          <option value="lunch">Lunch</option>
-          <option value="dinner">Dinner</option>
-          <option value="snack">Snack</option>
-        </select>
-      </div>
       <div className="flex items-start gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Notes</label>
+        <label className="text-xs text-muted-foreground w-20 shrink-0 pt-1">Notes</label>
         <textarea
-          value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          placeholder="e.g., Low sodium, avoid processed foods"
-          rows={2}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="e.g., Avoid fried food, limit sodium, no processed foods..."
+          rows={3}
           className="flex-1 px-2 py-1.5 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
         />
       </div>
       <div className="flex items-center gap-2 pt-2">
-        <Button size="sm" className="h-7 text-xs" onClick={handleSubmit}>
-          Save
+        <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={isSaving || !notes.trim()}>
+          {isSaving ? "Saving..." : "Save Plan"}
         </Button>
         <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
           Cancel
@@ -732,26 +1296,46 @@ function DietInstructionForm({ patientId, onClose }: { patientId: string; onClos
 
 // Inline Exercise Plan Form
 function ExercisePlanForm({ patientId, onClose }: { patientId: string; onClose: () => void }) {
+  const [title, setTitle] = useState("");
   const [exerciseType, setExerciseType] = useState("");
-  const [duration, setDuration] = useState("30");
-  const [selectedDays, setSelectedDays] = useState<string[]>(["Mon", "Wed", "Fri"]);
+  const [minutesTarget, setMinutesTarget] = useState("30");
+  const [daysPerWeek, setDaysPerWeek] = useState("3");
   const [notes, setNotes] = useState("");
-
-  const toggleDay = (day: string) => {
-    setSelectedDays(prev => 
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
-    );
-  };
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async () => {
-    console.log("Add exercise plan:", { patientId, exerciseType, duration, selectedDays, notes });
-    onClose();
+    setIsSaving(true);
+    try {
+      await createPatientPlan(patientId, {
+        plan_type: "exercise",
+        title: title || `${exerciseType || "Exercise"} Plan`,
+        notes: notes.trim() || null,
+        exercise_minutes_target: minutesTarget ? parseInt(minutesTarget) : null,
+        exercise_days_per_week: daysPerWeek ? parseInt(daysPerWeek) : null,
+        goals: exerciseType ? [exerciseType] : [],
+      });
+      onClose();
+    } catch (err) {
+      console.error("Failed to save exercise plan:", err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="space-y-3 pt-2 border-t">
       <div className="flex items-center gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0">Type</label>
+        <label className="text-xs text-muted-foreground w-20 shrink-0">Title</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g., Daily Walking Plan"
+          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted-foreground w-20 shrink-0">Type</label>
         <select
           value={exerciseType}
           onChange={(e) => setExerciseType(e.target.value)}
@@ -764,52 +1348,45 @@ function ExercisePlanForm({ patientId, onClose }: { patientId: string; onClose: 
           <option value="cycling">Cycling</option>
           <option value="strength">Strength Training</option>
           <option value="yoga">Yoga</option>
+          <option value="tai_chi">Tai Chi</option>
+          <option value="gardening">Gardening</option>
         </select>
       </div>
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0">Duration</label>
-        <div className="flex items-center gap-1">
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted-foreground w-20 shrink-0">Mins/day</label>
           <input
             type="number"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
+            value={minutesTarget}
+            onChange={(e) => setMinutesTarget(e.target.value)}
             className="w-16 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
           />
-          <span className="text-xs text-muted-foreground">mins</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted-foreground">Days/week</label>
+          <input
+            type="number"
+            value={daysPerWeek}
+            onChange={(e) => setDaysPerWeek(e.target.value)}
+            min="1"
+            max="7"
+            className="w-12 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+          />
         </div>
       </div>
       <div className="flex items-start gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Days</label>
-        <div className="flex gap-1 flex-wrap">
-          {DAYS_OF_WEEK.map((day) => (
-            <button
-              key={day}
-              onClick={() => toggleDay(day)}
-              className={cn(
-                "w-7 h-6 text-[10px] rounded transition-colors",
-                selectedDays.includes(day) 
-                  ? "bg-slate-600 text-white" 
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
-              )}
-            >
-              {day[0]}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="flex items-start gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Notes</label>
-        <input
-          type="text"
+        <label className="text-xs text-muted-foreground w-20 shrink-0 pt-1">Notes</label>
+        <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Optional notes"
-          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+          placeholder="Additional instructions or goals..."
+          rows={2}
+          className="flex-1 px-2 py-1.5 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
         />
       </div>
       <div className="flex items-center gap-2 pt-2">
-        <Button size="sm" className="h-7 text-xs" onClick={handleSubmit}>
-          Save
+        <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={isSaving}>
+          {isSaving ? "Saving..." : "Save Plan"}
         </Button>
         <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
           Cancel

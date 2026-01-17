@@ -2,11 +2,15 @@
 
 from typing import Optional
 from uuid import UUID
+from datetime import date
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from supabase import Client
+from openai import OpenAI
 
 from app.core.database import get_db
+from app.core.config import get_settings
 from app.models import (
     PatientCreate,
     PatientUpdate,
@@ -19,6 +23,17 @@ from app.models import (
 from app.services import PatientService, AlertService
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
+
+
+def get_cerebras_client() -> Optional[OpenAI]:
+    """Get Cerebras client"""
+    settings = get_settings()
+    if not settings.cerebras_key:
+        return None
+    return OpenAI(
+        api_key=settings.cerebras_key,
+        base_url="https://api.cerebras.ai/v1"
+    )
 
 
 # ============================================
@@ -651,8 +666,8 @@ async def get_patient_journal(
 ):
     """Get journal entries for a patient, optionally filtered by date range."""
     query = db.table("journal_logs").select(
-        "id, patient_id, transcript, voice_transcription, duration_seconds, "
-        "tags, mood, sentiment_score, ai_analysis, logged_at, created_at"
+        "id, patient_id, transcript, duration_seconds, "
+        "tags, mood, sentiment_score, ai_analysis, metadata, logged_at, created_at"
     ).eq("patient_id", str(patient_id))
     
     if start_date:
@@ -666,3 +681,602 @@ async def get_patient_journal(
         "entries": response.data or [],
         "total": len(response.data or [])
     }
+
+
+# ============================================
+# DAILY AI SUMMARY
+# ============================================
+
+@router.post("/patients/{patient_id}/daily-summary")
+async def generate_daily_summary(
+    patient_id: UUID,
+    summary_date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format, defaults to today"),
+    db: Client = Depends(get_db)
+):
+    """Generate an AI-powered daily summary for a patient using Cerebras."""
+    
+    target_date = summary_date or date.today().isoformat()
+    
+    # Get patient info
+    patient_res = db.table("patients").select(
+        "id, user_id, age, gender, medical_conditions"
+    ).eq("id", str(patient_id)).single().execute()
+    
+    if not patient_res.data:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    patient = patient_res.data
+    user_id = patient.get("user_id")
+    
+    # Get patient name
+    user_res = db.table("users").select("full_name").eq("id", user_id).single().execute()
+    patient_name = user_res.data.get("full_name", "Patient") if user_res.data else "Patient"
+    
+    # Fetch all data for the day
+    date_start = f"{target_date}T00:00:00"
+    date_end = f"{target_date}T23:59:59"
+    
+    # Meals (via user_id)
+    meals_res = db.table("meals").select("*").eq("user_id", user_id).gte(
+        "consumed_at", date_start
+    ).lte("consumed_at", date_end).execute()
+    meals = meals_res.data or []
+    
+    # Exercises (via user_id)
+    exercises_res = db.table("exercises").select("*").eq("user_id", user_id).gte(
+        "logged_at", date_start
+    ).lte("logged_at", date_end).execute()
+    exercises = exercises_res.data or []
+    
+    # Medication logs (via patient_id)
+    pill_logs_res = db.table("pill_logs").select(
+        "*, patient_pills(pill_id, pills(name))"
+    ).eq("patient_id", str(patient_id)).gte(
+        "scheduled_time", date_start
+    ).lte("scheduled_time", date_end).execute()
+    pill_logs = pill_logs_res.data or []
+    
+    # Journal entries (via patient_id)
+    journal_res = db.table("journal_logs").select("*").eq(
+        "patient_id", str(patient_id)
+    ).gte("logged_at", date_start).lte("logged_at", date_end).execute()
+    journal_entries = journal_res.data or []
+    
+    # Get patient's care plans
+    plans_res = db.table("patient_plans").select("*").eq(
+        "patient_id", str(patient_id)
+    ).eq("is_active", True).execute()
+    plans = plans_res.data or []
+    
+    diet_plan = next((p for p in plans if p.get('plan_type') == 'diet'), None)
+    exercise_plan = next((p for p in plans if p.get('plan_type') == 'exercise'), None)
+    
+    # Calculate totals
+    total_calories = sum(m.get('total_calories', 0) or 0 for m in meals)
+    total_protein = sum(m.get('total_protein', 0) or 0 for m in meals)
+    total_carbs = sum(m.get('total_carbs', 0) or 0 for m in meals)
+    total_fat = sum(m.get('total_fat', 0) or 0 for m in meals)
+    total_exercise_min = sum(e.get('duration_minutes', 0) or 0 for e in exercises)
+    
+    # Build context for AI
+    context = f"""
+Patient: {patient_name}
+Age: {patient.get('age', 'Unknown')}
+Medical Conditions: {', '.join(patient.get('medical_conditions') or ['None listed'])}
+Date: {target_date}
+
+=== DOCTOR'S CARE PLANS ===
+"""
+    if diet_plan:
+        context += f"Diet Plan: {diet_plan.get('title', 'Active')}\n"
+        context += f"  Notes/Restrictions: {diet_plan.get('notes', 'None')}\n"
+    else:
+        context += "Diet Plan: None set\n"
+        
+    if exercise_plan:
+        context += f"Exercise Plan: {exercise_plan.get('title', 'Active')}\n"
+        context += f"  Notes: {exercise_plan.get('notes', 'None')}\n"
+        if exercise_plan.get('exercise_minutes_target'):
+            context += f"  Daily Target: {exercise_plan.get('exercise_minutes_target')} minutes\n"
+        if exercise_plan.get('exercise_days_per_week'):
+            context += f"  Days per Week: {exercise_plan.get('exercise_days_per_week')}\n"
+    else:
+        context += "Exercise Plan: None set\n"
+
+    context += f"\n=== MEALS ({len(meals)} logged) ===\n"
+    context += f"Total: {total_calories} cal, {total_protein}g protein, {total_carbs}g carbs, {total_fat}g fat\n"
+    
+    # Check for diet plan violations using AI
+    violations = []
+    if diet_plan and diet_plan.get('notes') and meals:
+        diet_notes = diet_plan.get('notes', '')
+        cerebras = get_cerebras_client()
+        
+        if cerebras:
+            for meal in meals:
+                meal_name = meal.get('name', 'Unknown')
+                meal_analysis = meal.get('ai_analysis', '') if meal.get('ai_analysis') else ''
+                meal_info = f"Meal: {meal_name}\nType: {meal.get('meal_type', 'meal')}\nAnalysis: {meal_analysis}"
+                
+                try:
+                    violation_check = cerebras.chat.completions.create(
+                        model="llama-3.3-70b",
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are a healthcare assistant. Determine if a meal violates dietary restrictions. Respond with only 'YES' if it violates, 'NO' if it doesn't."
+                            },
+                            {
+                                "role": "user",
+                                "content": f"Dietary restrictions: {diet_notes}\n\n{meal_info}\n\nDoes this meal violate the restrictions? Respond with only YES or NO."
+                            }
+                        ],
+                        temperature=0.1,
+                        max_tokens=10
+                    )
+                    
+                    response_text = violation_check.choices[0].message.content.strip().upper()
+                    if "YES" in response_text:
+                        violations.append({
+                            'meal': meal_name,
+                            'meal_id': meal.get('id'),
+                            'meal_type': meal.get('meal_type', 'meal'),
+                            'time': meal.get('consumed_at', '')[:16],
+                        })
+                except:
+                    # Fallback to keyword matching
+                    diet_lower = diet_notes.lower()
+                    meal_lower = f"{meal_name} {meal_analysis}".lower()
+                    restriction_keywords = ['fried', 'sodium', 'salt', 'processed', 'sugar', 'dairy', 'gluten', 'alcohol', 'avoid']
+                    for keyword in restriction_keywords:
+                        if keyword in diet_lower and any(kw in meal_lower for kw in ['fried', 'sodium', 'salt', 'processed', 'sugar', 'dairy', 'gluten', 'alcohol']):
+                            violations.append({
+                                'meal': meal_name,
+                                'meal_id': meal.get('id'),
+                                'meal_type': meal.get('meal_type', 'meal'),
+                                'time': meal.get('consumed_at', '')[:16],
+                            })
+                            break
+    
+    for meal in meals:
+        context += f"- {meal.get('meal_type', 'meal').title()}: {meal.get('name', 'Unknown')} ({meal.get('total_calories', 0)} cal, {meal.get('total_protein', 0)}g protein) at {meal.get('consumed_at', '')[:16]}\n"
+        if meal.get('ai_analysis'):
+            context += f"  Analysis: {meal.get('ai_analysis')[:100]}...\n"
+    
+    if violations:
+        context += f"\n=== DIET PLAN VIOLATIONS ===\n"
+        for v in violations:
+            context += f"- {v['meal_type'].title()}: {v['meal']} at {v['time']} - Violates dietary restrictions\n"
+    
+    context += f"\n=== EXERCISES ({len(exercises)} logged, {total_exercise_min} min total) ===\n"
+    for ex in exercises:
+        context += f"- {ex.get('exercise_type', ex.get('name', 'Exercise'))}: {ex.get('duration_minutes', 0)} min, {ex.get('calories_burned', 0)} cal burned\n"
+    
+    context += f"\n=== MEDICATIONS ===\n"
+    taken = sum(1 for p in pill_logs if p.get('status') == 'taken')
+    missed = sum(1 for p in pill_logs if p.get('status') == 'missed')
+    late = sum(1 for p in pill_logs if p.get('status') == 'late')
+    pending = sum(1 for p in pill_logs if p.get('status') == 'pending')
+    
+    for log in pill_logs:
+        pill_name = "Unknown"
+        if log.get('patient_pills') and log['patient_pills'].get('pills'):
+            pill_name = log['patient_pills']['pills'].get('name', 'Unknown')
+        context += f"- {pill_name}: {log.get('status', 'unknown')} (scheduled {log.get('scheduled_time', '')[:16]})\n"
+    
+    context += f"\n=== JOURNAL ENTRIES ({len(journal_entries)}) ===\n"
+    for entry in journal_entries:
+        mood = entry.get('mood', 'neutral')
+        transcript = entry.get('transcript', '')[:200]
+        context += f"- Mood: {mood}. Entry: {transcript}...\n"
+    
+    # Use Cerebras to generate summary
+    cerebras = get_cerebras_client()
+    if not cerebras:
+        return {
+            "summary": "AI summary unavailable - Cerebras not configured",
+            "alerts": [],
+            "stats": {
+                "meals": len(meals),
+                "exercises": len(exercises),
+                "medications_taken": taken,
+                "medications_missed": missed,
+                "medications_late": late,
+                "medications_pending": pending,
+                "journal_entries": len(journal_entries)
+            }
+        }
+    
+    prompt = f"""You are a healthcare assistant helping clinicians monitor elderly patients. Based on the following patient data for {target_date}, provide:
+
+1. A detailed summary (3-4 sentences) of the patient's day that includes:
+   - What they ate and whether it aligns with their diet plan restrictions (if set)
+   - Their exercise activity and how it compares to their goals (if set)
+   - Medication adherence
+   - Overall mood from journal entries
+   - IMPORTANT: If there are diet plan violations listed, mention them specifically in the summary
+2. Any concerns or alerts the clinician should be aware of (return as JSON array)
+   - Include alerts for diet plan violations if any are listed
+   - Include alerts for missed medications, poor nutrition, negative mood, no activity, etc.
+
+Patient Data:
+{context}
+
+Respond in this exact JSON format:
+{{
+  "summary": "Detailed summary including any diet plan violations...",
+  "alerts": [
+    {{"severity": "high|medium|low", "type": "missed_dose|low_adherence|nutrition|inactivity|mood|diet_violation|other", "message": "Alert message"}}
+  ]
+}}
+
+Only include alerts if there are genuine concerns. Be concise and compassionate."""
+
+    try:
+        response = cerebras.chat.completions.create(
+            model="llama-3.3-70b",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=500
+        )
+        
+        ai_response = response.choices[0].message.content.strip()
+        
+        # Parse JSON response
+        try:
+            # Handle potential markdown code blocks
+            if "```json" in ai_response:
+                ai_response = ai_response.split("```json")[1].split("```")[0].strip()
+            elif "```" in ai_response:
+                ai_response = ai_response.split("```")[1].split("```")[0].strip()
+            
+            result = json.loads(ai_response)
+            summary = result.get("summary", "No summary generated")
+            alerts = result.get("alerts", [])
+        except json.JSONDecodeError:
+            summary = ai_response
+            alerts = []
+        
+    except Exception as e:
+        summary = f"Error generating summary: {str(e)}"
+        alerts = []
+    
+    # Calculate stats
+    total_calories = sum(m.get('total_calories', 0) or 0 for m in meals)
+    total_exercise_min = sum(e.get('duration_minutes', 0) or 0 for e in exercises)
+    calories_burned = sum(e.get('calories_burned', 0) or 0 for e in exercises)
+    
+    # Store summary in database
+    summary_data = {
+        "patient_id": str(patient_id),
+        "user_id": user_id,
+        "date": target_date,
+        "ai_summary": summary,
+        "ai_alerts": alerts,
+        "total_calories_consumed": total_calories,
+        "total_calories_burned": calories_burned,
+        "total_exercise_minutes": total_exercise_min,
+        "medications_taken": taken,
+        "medications_scheduled": taken + missed + late + pending,
+        "medication_adherence_score": (taken / (taken + missed + late)) * 100 if (taken + missed + late) > 0 else 100
+    }
+    
+    # Upsert summary
+    db.table("daily_summaries").upsert(
+        summary_data,
+        on_conflict="patient_id,date"
+    ).execute()
+    
+    # Create alerts in alerts table if high or medium severity
+    for alert in alerts:
+        if alert.get("severity") in ["high", "medium"]:
+            alert_data = {
+                "patient_id": str(patient_id),
+                "type": alert.get("type", "pattern_detected"),
+                "severity": alert.get("severity", "medium"),
+                "title": f"Alert for {patient_name}",
+                "message": alert.get("message", ""),
+                "metadata": {"date": target_date, "source": "daily_summary"}
+            }
+            db.table("alerts").insert(alert_data).execute()
+    
+    # Also create alerts for diet violations directly
+    if violations:
+        for violation in violations:
+            alert_data = {
+                "patient_id": str(patient_id),
+                "type": "nutrition",
+                "severity": "medium",
+                "title": f"Diet Plan Violation: {violation['meal']}",
+                "message": f"Patient consumed {violation['meal']} ({violation['meal_type']}) which violates dietary restrictions: {diet_plan.get('notes', '')[:100] if diet_plan else 'N/A'}",
+                "metadata": {"date": target_date, "source": "diet_plan_check", "meal_id": violation.get('meal_id')}
+            }
+            db.table("alerts").insert(alert_data).execute()
+    
+    return {
+        "date": target_date,
+        "patient_name": patient_name,
+        "summary": summary,
+        "alerts": alerts,
+        "stats": {
+            "meals": len(meals),
+            "total_calories": total_calories,
+            "exercises": len(exercises),
+            "exercise_minutes": total_exercise_min,
+            "calories_burned": calories_burned,
+            "medications_taken": taken,
+            "medications_missed": missed,
+            "medications_late": late,
+            "medications_pending": pending,
+            "adherence_percent": round((taken / (taken + missed + late)) * 100) if (taken + missed + late) > 0 else 100,
+            "journal_entries": len(journal_entries)
+        }
+    }
+
+
+@router.get("/patients/{patient_id}/daily-summary")
+async def get_daily_summary(
+    patient_id: UUID,
+    summary_date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format, defaults to today"),
+    db: Client = Depends(get_db)
+):
+    """Get existing daily summary for a patient."""
+    target_date = summary_date or date.today().isoformat()
+    
+    response = db.table("daily_summaries").select("*").eq(
+        "patient_id", str(patient_id)
+    ).eq("date", target_date).single().execute()
+    
+    if not response.data:
+        raise HTTPException(status_code=404, detail="No summary found for this date")
+    
+    return response.data
+
+
+# ============================================
+# PATIENT PLANS (Diet & Exercise)
+# ============================================
+
+@router.get("/patients/{patient_id}/plans")
+async def get_patient_plans(
+    patient_id: UUID,
+    plan_type: Optional[str] = Query(None, description="Filter by plan type: diet or exercise"),
+    db: Client = Depends(get_db)
+):
+    """Get all care plans for a patient."""
+    query = db.table("patient_plans").select("*").eq("patient_id", str(patient_id)).eq("is_active", True)
+    
+    if plan_type:
+        query = query.eq("plan_type", plan_type)
+    
+    response = query.order("created_at", desc=True).execute()
+    
+    return {"plans": response.data or []}
+
+
+@router.post("/patients/{patient_id}/plans")
+async def create_patient_plan(
+    patient_id: UUID,
+    plan: dict,
+    db: Client = Depends(get_db)
+):
+    """Create a new care plan for a patient."""
+    # Verify patient exists
+    patient_res = db.table("patients").select("id").eq("id", str(patient_id)).single().execute()
+    if not patient_res.data:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    plan_data = {
+        "patient_id": str(patient_id),
+        "plan_type": plan.get("plan_type", "diet"),
+        "title": plan.get("title"),
+        "notes": plan.get("notes"),
+        "goals": plan.get("goals", []),
+        "restrictions": plan.get("restrictions", []),
+        "calorie_target": plan.get("calorie_target"),
+        "protein_target": plan.get("protein_target"),
+        "carb_target": plan.get("carb_target"),
+        "fat_target": plan.get("fat_target"),
+        "exercise_minutes_target": plan.get("exercise_minutes_target"),
+        "exercise_days_per_week": plan.get("exercise_days_per_week"),
+        "is_active": True,
+    }
+    
+    response = db.table("patient_plans").insert(plan_data).execute()
+    
+    return {"plan": response.data[0] if response.data else None}
+
+
+@router.patch("/patients/{patient_id}/plans/{plan_id}")
+async def update_patient_plan(
+    patient_id: UUID,
+    plan_id: UUID,
+    updates: dict,
+    db: Client = Depends(get_db)
+):
+    """Update a care plan."""
+    response = db.table("patient_plans").update(updates).eq(
+        "id", str(plan_id)
+    ).eq("patient_id", str(patient_id)).execute()
+    
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    return {"plan": response.data[0]}
+
+
+@router.delete("/patients/{patient_id}/plans/{plan_id}")
+async def delete_patient_plan(
+    patient_id: UUID,
+    plan_id: UUID,
+    db: Client = Depends(get_db)
+):
+    """Delete (deactivate) a care plan."""
+    response = db.table("patient_plans").update({"is_active": False}).eq(
+        "id", str(plan_id)
+    ).eq("patient_id", str(patient_id)).execute()
+    
+    return {"success": True}
+
+
+# ============================================
+# SUMMARIES (Journal, Meals, Exercises)
+# ============================================
+
+@router.post("/journal-entries/{entry_id}/summary")
+async def generate_journal_summary(
+    entry_id: UUID,
+    db: Client = Depends(get_db)
+):
+    """Generate a concise summary for a journal entry."""
+    entry_res = db.table("journal_logs").select("*").eq("id", str(entry_id)).single().execute()
+    
+    if not entry_res.data:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+    
+    entry = entry_res.data
+    transcript = entry.get("transcript", "")
+    
+    if not transcript:
+        return {"summary": "No transcript available"}
+    
+    cerebras = get_cerebras_client()
+    if not cerebras:
+        # Fallback: return first sentence
+        import re
+        first_sentence = re.split(r'[.!?]', transcript)[0] if transcript else ""
+        return {"summary": first_sentence[:100] + "..." if len(first_sentence) > 100 else first_sentence}
+    
+    try:
+        response = cerebras.chat.completions.create(
+            model="llama-3.3-70b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a healthcare assistant. Create a brief, professional summary (1-2 sentences) of patient journal entries for clinicians."
+                },
+                {
+                    "role": "user",
+                    "content": f"Summarize this journal entry:\n\n{transcript}"
+                }
+            ],
+            temperature=0.3,
+            max_tokens=100
+        )
+        
+        summary = response.choices[0].message.content.strip()
+        
+        # Update entry with summary in ai_analysis
+        current_analysis = entry.get("ai_analysis", {}) or {}
+        if isinstance(current_analysis, str):
+            try:
+                current_analysis = json.loads(current_analysis)
+            except:
+                current_analysis = {}
+        
+        current_analysis["summary"] = summary
+        db.table("journal_logs").update({"ai_analysis": current_analysis}).eq("id", str(entry_id)).execute()
+        
+        return {"summary": summary}
+    except Exception as e:
+        # Fallback
+        import re
+        first_sentence = re.split(r'[.!?]', transcript)[0] if transcript else ""
+        return {"summary": first_sentence[:100] + "..." if len(first_sentence) > 100 else first_sentence}
+
+
+@router.post("/meals/{meal_id}/summary")
+async def generate_meal_summary(
+    meal_id: UUID,
+    db: Client = Depends(get_db)
+):
+    """Generate a summary for a meal entry."""
+    meal_res = db.table("meals").select("*").eq("id", str(meal_id)).single().execute()
+    
+    if not meal_res.data:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    
+    meal = meal_res.data
+    name = meal.get("name", "")
+    meal_type = meal.get("meal_type", "")
+    calories = meal.get("total_calories", 0)
+    protein = meal.get("total_protein", 0)
+    carbs = meal.get("total_carbs", 0)
+    fat = meal.get("total_fat", 0)
+    ai_analysis = meal.get("ai_analysis", "")
+    
+    context = f"Meal: {name} ({meal_type})\nCalories: {calories}, Protein: {protein}g, Carbs: {carbs}g, Fat: {fat}g"
+    if ai_analysis:
+        context += f"\nAnalysis: {ai_analysis[:200]}"
+    
+    cerebras = get_cerebras_client()
+    if not cerebras:
+        return {"summary": f"{name} - {calories} cal, {protein}g protein"}
+    
+    try:
+        response = cerebras.chat.completions.create(
+            model="llama-3.3-70b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a healthcare assistant. Create a brief summary (1 sentence) of meal entries highlighting nutritional value and any concerns."
+                },
+                {
+                    "role": "user",
+                    "content": f"Summarize this meal:\n\n{context}"
+                }
+            ],
+            temperature=0.3,
+            max_tokens=80
+        )
+        
+        summary = response.choices[0].message.content.strip()
+        return {"summary": summary}
+    except Exception as e:
+        return {"summary": f"{name} - {calories} cal, {protein}g protein"}
+
+
+@router.post("/exercises/{exercise_id}/summary")
+async def generate_exercise_summary(
+    exercise_id: UUID,
+    db: Client = Depends(get_db)
+):
+    """Generate a summary for an exercise entry."""
+    exercise_res = db.table("exercises").select("*").eq("id", str(exercise_id)).single().execute()
+    
+    if not exercise_res.data:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    
+    exercise = exercise_res.data
+    name = exercise.get("name") or exercise.get("exercise_type", "")
+    duration = exercise.get("duration_minutes", 0)
+    calories = exercise.get("calories_burned", 0)
+    intensity = exercise.get("intensity", "")
+    
+    context = f"Exercise: {name}\nDuration: {duration} min, Calories burned: {calories}, Intensity: {intensity}"
+    
+    cerebras = get_cerebras_client()
+    if not cerebras:
+        return {"summary": f"{name} - {duration} min, {calories} cal"}
+    
+    try:
+        response = cerebras.chat.completions.create(
+            model="llama-3.3-70b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a healthcare assistant. Create a brief summary (1 sentence) of exercise entries highlighting activity level and benefits."
+                },
+                {
+                    "role": "user",
+                    "content": f"Summarize this exercise:\n\n{context}"
+                }
+            ],
+            temperature=0.3,
+            max_tokens=80
+        )
+        
+        summary = response.choices[0].message.content.strip()
+        return {"summary": summary}
+    except Exception as e:
+        return {"summary": f"{name} - {duration} min, {calories} cal"}

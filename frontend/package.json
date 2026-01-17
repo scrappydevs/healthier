@@ -20,6 +20,8 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@smplrspace/smplr-loader": "^2.48.0",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.90.1",
     "@types/chroma-js": "^3.1.2",
     "chroma-js": "^3.2.0",
     "class-variance-authority": "^0.7.1",
