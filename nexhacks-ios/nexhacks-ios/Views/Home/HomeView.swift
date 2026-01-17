@@ -21,23 +21,20 @@ struct HomeView: View {
                 Color.appBackground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // Header with title at top
+                    // Header
                     HStack {
-                        Text("Home")
+                        Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
                             .font(AppTheme.Typography.title)
                             .foregroundColor(.textPrimary)
 
                         Spacer()
                     }
-                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.horizontal, AppTheme.Spacing.lg)
                     .padding(.top, AppTheme.Spacing.md)
                     .padding(.bottom, AppTheme.Spacing.md)
 
                     ScrollView {
                         VStack(spacing: AppTheme.Spacing.lg) {
-                            // Welcome Section
-                            welcomeSection
-
                             // Daily Health Score
                             dailyHealthScoreCard
 
@@ -53,23 +50,12 @@ struct HomeView: View {
                             // Upcoming Reminders
                             upcomingRemindersSection
                         }
-                        .padding(.horizontal, AppTheme.Spacing.md)
-                        .padding(.bottom, AppTheme.Spacing.md)
+                        .padding(.horizontal, AppTheme.Spacing.lg)
+                        .padding(.vertical, AppTheme.Spacing.lg)
                     }
                 }
             }
             .navigationBarHidden(true)
-        }
-    }
-
-    // MARK: - Welcome Section
-    private var welcomeSection: some View {
-        HStack {
-            Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
-                .font(AppTheme.Typography.title)
-                .foregroundColor(.textPrimary)
-
-            Spacer()
         }
     }
 

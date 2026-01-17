@@ -23,18 +23,33 @@ struct ExerciseView: View {
             ZStack {
                 Color.appBackground.ignoresSafeArea()
                 
-                ScrollView {
-                    VStack(spacing: AppTheme.Spacing.lg) {
-                        // Today's Summary
-                        todaySummaryCard
-                        
-                        // Quick Log Section
-                        quickLogSection
-                        
-                        // Today's Exercises
-                        todayExercisesSection
+                VStack(spacing: 0) {
+                    // Header with title at top
+                    HStack {
+                        Text("Exercise")
+                            .font(AppTheme.Typography.title)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
                     }
-                    .padding(AppTheme.Spacing.md)
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .padding(.bottom, AppTheme.Spacing.md)
+
+                    ScrollView {
+                        VStack(spacing: AppTheme.Spacing.lg) {
+                            // Today's Summary
+                            todaySummaryCard
+                            
+                            // Quick Log Section
+                            quickLogSection
+                            
+                            // Today's Exercises
+                            todayExercisesSection
+                        }
+                        .padding(.horizontal, AppTheme.Spacing.lg)
+                        .padding(.vertical, AppTheme.Spacing.lg)
+                    }
                 }
                 
                 // Floating Action Button
@@ -58,7 +73,7 @@ struct ExerciseView: View {
                     }
                 }
             }
-            .navigationTitle("Exercise")
+            .navigationBarHidden(true)
             .sheet(isPresented: $showingAddExercise) {
                 QuickExerciseSheet(viewModel: viewModel)
             }

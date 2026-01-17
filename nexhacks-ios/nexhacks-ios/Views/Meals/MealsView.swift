@@ -29,7 +29,7 @@ struct MealsView: View {
 
                         Spacer()
                     }
-                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.horizontal, AppTheme.Spacing.lg)
                     .padding(.top, AppTheme.Spacing.md)
                     .padding(.bottom, AppTheme.Spacing.md)
 
@@ -44,8 +44,8 @@ struct MealsView: View {
                             // Today's Meals
                             todayMealsSection
                         }
-                        .padding(.horizontal, AppTheme.Spacing.md)
-                        .padding(.bottom, AppTheme.Spacing.md)
+                        .padding(.horizontal, AppTheme.Spacing.lg)
+                        .padding(.vertical, AppTheme.Spacing.lg)
                     }
                 }
 

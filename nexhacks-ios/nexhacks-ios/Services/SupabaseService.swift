@@ -557,6 +557,10 @@ struct SupabaseMeal: Codable {
     var totalCarbs: Double
     var totalFat: Double
     var healthRating: Double
+    var gutHealthScore: Double?
+    var proteinQualityScore: Double?
+    var fiberScore: Double?
+    var sugarScore: Double?
     var vitaminsSummary: String?
     var foodGroups: [String]
     var aiAnalysis: String?
@@ -576,6 +580,10 @@ struct SupabaseMeal: Codable {
         case totalCarbs = "total_carbs"
         case totalFat = "total_fat"
         case healthRating = "health_rating"
+        case gutHealthScore = "gut_health_score"
+        case proteinQualityScore = "protein_quality_score"
+        case fiberScore = "fiber_score"
+        case sugarScore = "sugar_score"
         case vitaminsSummary = "vitamins_summary"
         case foodGroups = "food_groups"
         case aiAnalysis = "ai_analysis"

@@ -106,6 +106,10 @@ struct PillVerificationResult: Codable {
 struct NutritionAnalysis: Codable {
     let mealName: String
     let healthRating: Double
+    let gutHealthScore: Double
+    let proteinQualityScore: Double
+    let fiberScore: Double
+    let sugarScore: Double
     let estimatedCalories: Double
     let estimatedProtein: Double
     let estimatedCarbs: Double
@@ -258,6 +262,7 @@ class ClaudeAPIService: ObservableObject {
         - Protein content (important for elderly)
         - Key vitamins and nutrients
         - General food groups present
+        - Specific health scores (Gut health, Protein quality, Fiber, Sugar)
         
         Provide ESTIMATES - they don't need to be exact, just reasonable approximations.
         
@@ -265,6 +270,10 @@ class ClaudeAPIService: ObservableObject {
         {
             "mealName": "Brief description of the meal",
             "healthRating": 75,
+            "gutHealthScore": 8.5,
+            "proteinQualityScore": 7.0,
+            "fiberScore": 6.5,
+            "sugarScore": 4.0,
             "estimatedCalories": 450,
             "estimatedProtein": 25,
             "estimatedCarbs": 40,
@@ -276,11 +285,13 @@ class ClaudeAPIService: ObservableObject {
             "recommendations": ["Consider adding more fiber", "Good protein content"]
         }
         
-        Health rating should be 0-100 where:
-        - 0-30: Unhealthy
-        - 31-60: Moderate
-        - 61-80: Good
-        - 81-100: Excellent
+        Health rating should be 0-100.
+        
+        Specific Scores (0-10 scale):
+        - gutHealthScore: How good is it for digestion/gut microbiome? (High fiber/probiotics = high score)
+        - proteinQualityScore: How complete/high-quality is the protein?
+        - fiberScore: Richness in fiber?
+        - sugarScore: LOW sugar is BETTER. So 10 means very low sugar (healthy), 0 means very high sugar (unhealthy).
         
         Food groups can include: Protein, Vegetables, Fruits, Grains, Dairy, Fats/Oils
         Keep the analysis simple and encouraging for elderly users.
