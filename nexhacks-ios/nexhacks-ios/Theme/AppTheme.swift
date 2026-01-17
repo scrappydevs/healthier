@@ -24,6 +24,11 @@ extension Color {
     static let success = Color(red: 155/255, green: 191/255, blue: 174/255)
     static let warning = Color(red: 232/255, green: 155/255, blue: 143/255)
     static let error = Color(red: 217/255, green: 92/255, blue: 92/255)
+
+    // Tailwind-like Colors
+    static let emerald = Color(red: 16/255, green: 185/255, blue: 129/255)
+    static let amber = Color(red: 245/255, green: 158/255, blue: 11/255)
+    static let neutral200 = Color(red: 229/255, green: 229/255, blue: 229/255)
 }
 
 struct AppTheme {
