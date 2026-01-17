@@ -29,7 +29,7 @@ export const hazardTypeLabels: Record<HazardType, string> = {
 };
 
 export const hazardSeverityColors: Record<HazardSeverity, string> = {
-  low: '#22c55e',
+  low: '#2563eb',
   medium: '#f59e0b',
   high: '#f97316',
   critical: '#ef4444',

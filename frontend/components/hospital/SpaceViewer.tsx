@@ -205,7 +205,7 @@ export function SpaceViewer({
           const statusColors = {
             active: { bg: '#fef2f2', color: '#dc2626' },
             responding: { bg: '#fffbeb', color: '#d97706' },
-            resolved: { bg: '#f0fdf4', color: '#16a34a' },
+            resolved: { bg: '#dbeafe', color: '#2563eb' },
           };
           const sc = statusColors[d.status];
           return `
@@ -258,7 +258,7 @@ export function SpaceViewer({
         },
         tooltip: (d: Room) => {
           const statusConfig = {
-            normal: { bg: '#f0fdf4', color: '#16a34a' },
+            normal: { bg: '#dbeafe', color: '#2563eb' },
             attention: { bg: '#fffbeb', color: '#d97706' },
             critical: { bg: '#fef2f2', color: '#dc2626' },
             vacant: { bg: '#f5f5f5', color: '#737373' },
