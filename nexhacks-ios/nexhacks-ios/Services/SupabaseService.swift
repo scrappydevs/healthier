@@ -291,6 +291,46 @@ class SupabaseService: ObservableObject {
     
     // MARK: - Journal Database Operations
     
+    /// Ensure user record exists in users table (required for patient foreign key)
+    private func ensureUserExists(userId: UUID) async throws {
+        // Check if user already exists
+        let existing = try await fetchUser(userId: userId)
+        if existing != nil {
+            return
+        }
+        
+        // Get email from Supabase Auth session
+        let email = supabase.auth.currentUser?.email ?? "user@healthier.app"
+        let fullName = supabase.auth.currentUser?.userMetadata["full_name"]?.stringValue 
+            ?? supabase.auth.currentUser?.userMetadata["name"]?.stringValue
+            ?? email.components(separatedBy: "@").first 
+            ?? "User"
+        
+        let newUser = SupabaseUser(
+            id: userId,
+            email: email,
+            fullName: fullName,
+            role: "patient",
+            phone: nil,
+            avatarUrl: nil,
+            preferences: nil,
+            isActive: true,
+            lastLoginAt: Date(),
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        
+        do {
+            try await createUser(newUser)
+        } catch {
+            // If it fails due to race condition (already exists), that's fine
+            let recheck = try await fetchUser(userId: userId)
+            if recheck == nil {
+                throw error
+            }
+        }
+    }
+    
     /// Get patient_id from user_id
     private func getPatientId(userId: UUID) async throws -> UUID {
         struct PatientIdResponse: Codable {
@@ -304,15 +344,60 @@ class SupabaseService: ObservableObject {
             .execute()
             .value
         
-        guard let patient = response.first else {
-            throw NSError(domain: "SupabaseService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Patient not found for user"])
+        if let patient = response.first {
+            return patient.id
         }
         
-        return patient.id
+        // Ensure user exists before creating patient (foreign key constraint)
+        try await ensureUserExists(userId: userId)
+        
+        // Auto-create a minimal patient profile for this user if missing
+        let newPatient = SupabasePatient(
+            id: UUID(),
+            userId: userId,
+            clinicianId: nil,
+            dateOfBirth: nil,
+            age: nil,
+            gender: nil,
+            heightCm: nil,
+            weightKg: nil,
+            bloodType: nil,
+            medicalConditions: [],
+            allergies: [],
+            emergencyContactName: nil,
+            emergencyContactPhone: nil,
+            emergencyContactRelationship: nil,
+            address: nil,
+            notes: nil,
+            status: "active",
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        
+        do {
+            try await createPatient(newPatient)
+            return newPatient.id
+        } catch {
+            // If creation fails (race / already exists), try fetching again
+            let retry: [PatientIdResponse] = try await supabase
+                .from("patients")
+                .select("id")
+                .eq("user_id", value: userId.uuidString)
+                .execute()
+                .value
+            
+            if let patient = retry.first {
+                return patient.id
+            }
+            
+            throw error
+        }
     }
     
     func createJournalEntry(_ entry: JournalEntry, userId: UUID? = nil) async throws {
-        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            throw NSError(domain: "SupabaseService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not signed in"])
+        }
         let patientId = try await getPatientId(userId: currentUserId)
         
         let journalLog = SupabaseJournalLog(
@@ -338,7 +423,9 @@ class SupabaseService: ObservableObject {
     }
     
     func fetchJournalEntries(userId: UUID? = nil) async throws -> [JournalEntry] {
-        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            throw NSError(domain: "SupabaseService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not signed in"])
+        }
         let patientId = try await getPatientId(userId: currentUserId)
         
         let response: [SupabaseJournalLog] = try await supabase
@@ -363,7 +450,9 @@ class SupabaseService: ObservableObject {
     }
     
     func updateJournalEntry(_ entry: JournalEntry, userId: UUID? = nil) async throws {
-        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            throw NSError(domain: "SupabaseService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not signed in"])
+        }
         let patientId = try await getPatientId(userId: currentUserId)
         
         let journalLog = SupabaseJournalLog(
@@ -398,7 +487,9 @@ class SupabaseService: ObservableObject {
     }
     
     func getJournalContextForQuestion(_ question: String, userId: UUID? = nil, limit: Int = 10) async throws -> [JournalEntry] {
-        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            throw NSError(domain: "SupabaseService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not signed in"])
+        }
         let patientId = try await getPatientId(userId: currentUserId)
         
         // Use full-text search on transcript - search for entries containing question keywords

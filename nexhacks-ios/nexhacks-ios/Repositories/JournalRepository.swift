@@ -29,6 +29,7 @@ class JournalRepository: ObservableObject {
             try await supabaseService.createJournalEntry(entry)
         } catch {
             print("Failed to sync journal entry to Supabase: \(error)")
+            throw error
         }
     }
 
