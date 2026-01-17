@@ -47,6 +47,7 @@ struct nexhacks_iosApp: App {
                     }
                 }
             }
+            .preferredColorScheme(.light)
             .onOpenURL { url in
                 Task {
                     await appState.authViewModel.handleOAuthCallback(url: url)
