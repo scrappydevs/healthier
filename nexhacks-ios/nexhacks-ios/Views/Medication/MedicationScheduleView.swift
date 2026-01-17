@@ -60,16 +60,8 @@ struct MedicationScheduleView: View {
 
     var body: some View {
         ZStack {
-            // Gradient background
-            LinearGradient(
-                colors: [
-                    Color(red: 0.93, green: 0.91, blue: 0.89),
-                    Color(red: 0.95, green: 0.93, blue: 0.91)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // Background matching other views
+            Color.appBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header
@@ -117,42 +109,32 @@ struct MedicationScheduleView: View {
         VStack(spacing: AppTheme.Spacing.md) {
             // Title
             HStack {
-                Text("Medication\nReminder")
-                    .font(.system(size: 36, weight: .bold))
-                    .foregroundColor(.black)
-                
+                Text("Medications")
+                    .font(AppTheme.Typography.title)
+                    .foregroundColor(.textPrimary)
+
                 Spacer()
-                
+
                 // Notification bell
                 Button {
                     // Show notifications
                 } label: {
                     Image(systemName: "bell.fill")
                         .font(.title2)
-                        .foregroundColor(.black)
+                        .foregroundColor(.textPrimary)
                         .frame(width: 50, height: 50)
-                        .background(.white)
+                        .background(Color.cardBackground)
                         .clipShape(Circle())
                         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
                 }
             }
             .padding(.horizontal, AppTheme.Spacing.lg)
             .padding(.top, AppTheme.Spacing.md)
-            
+
             // Date selector
             datePickerSection
         }
         .padding(.bottom, AppTheme.Spacing.md)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.85, green: 0.83, blue: 0.81),
-                    Color(red: 0.93, green: 0.91, blue: 0.89)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
     }
     
     private var datePickerSection: some View {
@@ -341,86 +323,79 @@ struct LiquidGlassMedicationCard: View {
                     // Circular medication icon
                     ZStack {
                         Circle()
-                            .fill(.white)
+                            .fill(Color.appPrimary.opacity(0.2))
                             .frame(width: 60, height: 60)
-                            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-                        
+
                         Image(systemName: iconForForm(item.medication.form))
                             .font(.title2)
-                            .foregroundColor(.black)
+                            .foregroundColor(.appPrimary)
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(item.medication.name)
                             .font(.system(size: 22, weight: .semibold))
-                            .foregroundColor(.black)
-                        
+                            .foregroundColor(.textPrimary)
+
                         // Wavy line decoration
                         Wave()
-                            .stroke(Color(red: 0.6, green: 0.5, blue: 0.8), lineWidth: 2)
+                            .stroke(Color.appPrimary, lineWidth: 2)
                             .frame(width: 60, height: 8)
                     }
-                    
+
                     Spacer()
                 }
-                
+
                 // Next pill intake section
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Next pill intake")
                                 .font(.system(size: 14))
-                                .foregroundColor(Color(red: 0.6, green: 0.5, blue: 0.8))
-                            
+                                .foregroundColor(.textSecondary)
+
                             HStack(spacing: 0) {
                                 Text(item.scheduledTime, format: .dateTime.month(.abbreviated).day())
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.textPrimary)
                                 Text(", ")
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.textPrimary)
                                 Text(item.scheduledTime, format: .dateTime.hour().minute())
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.textPrimary)
                             }
                         }
-                        
+
                         Spacer()
-                        
+
                         // Show future doses if any
                         if let nextDose = getNextDose() {
                             VStack(alignment: .trailing, spacing: 4) {
                                 Text("Next pill intake")
                                     .font(.system(size: 12))
-                                    .foregroundColor(Color(red: 0.6, green: 0.5, blue: 0.8).opacity(0.7))
-                                
+                                    .foregroundColor(.textSecondary)
+
                                 HStack(spacing: 0) {
                                     Text(nextDose, format: .dateTime.month(.abbreviated).day())
                                         .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.black.opacity(0.7))
+                                        .foregroundColor(.textSecondary)
                                     Text(", ")
                                         .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.black.opacity(0.7))
+                                        .foregroundColor(.textSecondary)
                                     Text(nextDose, format: .dateTime.hour().minute())
                                         .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.black.opacity(0.7))
+                                        .foregroundColor(.textSecondary)
                                 }
                             }
                         }
                     }
-                    
+
                 }
             }
             .padding(AppTheme.Spacing.lg)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(.ultraThinMaterial)
-                    .shadow(color: .black.opacity(0.1), radius: 12, x: 0, y: 6)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 24)
-                    .stroke(.white.opacity(0.5), lineWidth: 1)
-            )
+            .background(Color.cardBackground)
+            .cornerRadius(AppTheme.CornerRadius.lg)
+            .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(PlainButtonStyle())
     }

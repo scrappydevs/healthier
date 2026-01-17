@@ -18,6 +18,10 @@ struct Meal: Identifiable, Codable, Equatable {
     var totalCarbs: Double // in grams
     var totalFat: Double // in grams
     var healthRating: Double // 0-100 scale
+    var gutHealthScore: Double // 0-10 scale
+    var proteinQualityScore: Double // 0-10 scale
+    var fiberScore: Double // 0-10 scale
+    var sugarScore: Double // 0-10 scale
     var vitaminsSummary: String?
     var foodGroups: [FoodGroup]
     var aiAnalysis: String?
@@ -37,6 +41,10 @@ struct Meal: Identifiable, Codable, Equatable {
         totalCarbs: Double = 0,
         totalFat: Double = 0,
         healthRating: Double = 0,
+        gutHealthScore: Double = 0,
+        proteinQualityScore: Double = 0,
+        fiberScore: Double = 0,
+        sugarScore: Double = 0,
         vitaminsSummary: String? = nil,
         foodGroups: [FoodGroup] = [],
         aiAnalysis: String? = nil,
@@ -55,6 +63,10 @@ struct Meal: Identifiable, Codable, Equatable {
         self.totalCarbs = totalCarbs
         self.totalFat = totalFat
         self.healthRating = healthRating
+        self.gutHealthScore = gutHealthScore
+        self.proteinQualityScore = proteinQualityScore
+        self.fiberScore = fiberScore
+        self.sugarScore = sugarScore
         self.vitaminsSummary = vitaminsSummary
         self.foodGroups = foodGroups
         self.aiAnalysis = aiAnalysis

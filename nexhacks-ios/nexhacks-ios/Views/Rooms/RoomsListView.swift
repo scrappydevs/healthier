@@ -22,50 +22,71 @@ struct RoomsListView: View {
                 Color.appBackground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    // Header
+                    HStack {
+                        Text("Rooms")
+                            .font(AppTheme.Typography.title)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .padding(.bottom, AppTheme.Spacing.md)
+
                     if viewModel.rooms.isEmpty {
                         emptyState
                     } else {
-                        roomsList
+                        ScrollView {
+                            VStack(spacing: AppTheme.Spacing.md) {
+                                // Stats Card
+                                statsCard
+
+                                // Rooms Grid
+                                LazyVStack(spacing: AppTheme.Spacing.md) {
+                                    ForEach(viewModel.rooms) { room in
+                                        RoomCard(room: room) {
+                                            selectedRoom = room
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, AppTheme.Spacing.lg)
+                            .padding(.vertical, AppTheme.Spacing.lg)
+                        }
+                    }
+                }
+
+                // Floating Action Button
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button {
+                            showingScanner = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Color.appPrimary)
+                                .clipShape(Circle())
+                                .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                        }
+                        .padding(.trailing, AppTheme.Spacing.lg)
+                        .padding(.bottom, AppTheme.Spacing.lg)
                     }
                 }
             }
-            .navigationTitle("Rooms")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showingScanner = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .foregroundColor(.appPrimary)
-                    }
-                }
-            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
             .sheet(isPresented: $showingScanner) {
                 RoomPlanScannerView(viewModel: viewModel)
             }
             .sheet(item: $selectedRoom) { room in
                 RoomDetailView(room: room, viewModel: viewModel)
             }
-        }
-    }
-
-    // MARK: - Rooms List
-    private var roomsList: some View {
-        ScrollView {
-            VStack(spacing: AppTheme.Spacing.md) {
-                // Stats Card
-                statsCard
-
-                // Rooms Grid
-                LazyVStack(spacing: AppTheme.Spacing.md) {
-                    ForEach(viewModel.rooms) { room in
-                        RoomCard(room: room) {
-                            selectedRoom = room
-                        }
-                    }
-                }
-            }
-            .padding(AppTheme.Spacing.md)
         }
     }
 

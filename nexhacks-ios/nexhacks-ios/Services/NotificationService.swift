@@ -59,12 +59,15 @@ class NotificationService: ObservableObject {
         for reminderTime in medication.reminderTimes {
             let content = UNMutableNotificationContent()
             content.title = "Medication Reminder"
-            content.body = "Time to take \(medication.name) - \(medication.dosage)"
+            content.body = "Upcoming: Take \(medication.name) in 15 minutes (\(medication.dosage))"
             content.sound = .default
             content.categoryIdentifier = "MEDICATION_REMINDER"
 
+            // Schedule 15 minutes before
+            let triggerDate = reminderTime.addingTimeInterval(-15 * 60)
+
             // Create date components for the reminder
-            let dateComponents = Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
+            let dateComponents = Calendar.current.dateComponents([.hour, .minute], from: triggerDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 
             let request = UNNotificationRequest(

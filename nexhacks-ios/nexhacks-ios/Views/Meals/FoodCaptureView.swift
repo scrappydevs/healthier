@@ -310,6 +310,26 @@ struct FoodCaptureView: View {
             .background(Color.appBackground)
             .cornerRadius(AppTheme.CornerRadius.sm)
             
+            // Nutritional Breakdown (Scales)
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                Text("NUTRITIONAL BREAKDOWN")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundColor(.textSecondary)
+                    .tracking(1)
+                
+                ScoreRow(title: "Gut Health", score: meal.gutHealthScore, color: .appPrimary)
+                ScoreRow(title: "Protein Quality", score: meal.proteinQualityScore, color: .appPrimary)
+                ScoreRow(title: "Fiber Richness", score: meal.fiberScore, color: .appPrimary)
+                ScoreRow(title: "Low Sugar", score: meal.sugarScore, color: .appPrimary) // Higher score = Lower sugar (better)
+            }
+            .padding(AppTheme.Spacing.md)
+            .background(Color.cardBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.CornerRadius.sm)
+                    .stroke(Color.divider, lineWidth: 1)
+            )
+            .cornerRadius(AppTheme.CornerRadius.sm)
+            
             // Food Groups
             if !meal.foodGroups.isEmpty {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
@@ -330,37 +350,20 @@ struct FoodCaptureView: View {
                 }
             }
             
-            // Vitamins
-            if let vitamins = meal.vitaminsSummary, !vitamins.isEmpty {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                    Text("VITAMINS & NUTRIENTS")
-                        .font(AppTheme.Typography.caption)
-                        .foregroundColor(.textSecondary)
-                        .tracking(1)
-                    
-                    Text(vitamins)
-                        .font(AppTheme.Typography.body)
-                        .foregroundColor(.textPrimary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            
-            // AI Analysis
+            // AI Analysis (Summary)
             if let analysis = meal.aiAnalysis, !analysis.isEmpty {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                    Label("Analysis", systemImage: "sparkles")
-                        .font(AppTheme.Typography.headline)
-                        .foregroundColor(.appPrimary)
-                    
-                    Text(analysis)
-                        .font(AppTheme.Typography.body)
-                        .foregroundColor(.textPrimary)
-                }
-                .padding(AppTheme.Spacing.md)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.appPrimary.opacity(0.1))
-                .cornerRadius(AppTheme.CornerRadius.sm)
-            }
+                 VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                     Text("SUMMARY")
+                         .font(AppTheme.Typography.caption)
+                         .foregroundColor(.textSecondary)
+                         .tracking(1)
+                     
+                     Text(analysis)
+                         .font(AppTheme.Typography.body)
+                         .foregroundColor(.textPrimary)
+                 }
+                 .frame(maxWidth: .infinity, alignment: .leading)
+             }
             
             // Actions
             HStack(spacing: AppTheme.Spacing.md) {
@@ -382,6 +385,10 @@ struct FoodCaptureView: View {
                 }
                 
                 Button {
+                    // Log the meal
+                    if let meal = analyzedMeal {
+                        viewModel.addMeal(meal)
+                    }
                     dismiss()
                 } label: {
                     HStack {
@@ -459,6 +466,45 @@ struct FoodCaptureView: View {
 }
 
 // MARK: - Supporting Views
+
+struct ScoreRow: View {
+    let title: String
+    let score: Double // 0-10
+    let color: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(AppTheme.Typography.subheadline)
+                    .foregroundColor(.textPrimary)
+                
+                Spacer()
+                
+                Text(String(format: "%.1f/10", score))
+                    .font(AppTheme.Typography.caption)
+                    .foregroundColor(.textSecondary)
+            }
+            
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    // Background track
+                    Rectangle()
+                        .fill(Color.neutral200)
+                        .frame(height: 8)
+                        .cornerRadius(4)
+                    
+                    // Filled track
+                    Rectangle()
+                        .fill(color)
+                        .frame(width: CGFloat(score / 10.0) * geometry.size.width, height: 8)
+                        .cornerRadius(4)
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+}
 
 struct MealTypeButton: View {
     let type: MealType

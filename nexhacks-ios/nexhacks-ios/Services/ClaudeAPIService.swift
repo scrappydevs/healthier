@@ -11,12 +11,16 @@ import UIKit
 // MARK: - Claude API Configuration
 
 struct ClaudeConfig {
-    // Store your API key securely - use environment variable or Keychain
+    // Store your API key securely - use environment variable or Secrets.swift
     static var apiKey: String {
-        guard let key = ProcessInfo.processInfo.environment["CLAUDE_API_KEY"], !key.isEmpty else {
-            fatalError("CLAUDE_API_KEY environment variable not set")
+        // 1. Try environment variable (CI/CD or Scheme)
+        if let key = ProcessInfo.processInfo.environment["CLAUDE_API_KEY"], !key.isEmpty {
+            return key
         }
-        return key
+        
+        // 2. Fallback to Secrets.swift (Local Dev)
+        // Note: Make sure you have added Secrets.swift to your Xcode project!
+        return Secrets.claudeApiKey
     }
     static let baseURL = "https://api.anthropic.com/v1/messages"
     static let model = "claude-sonnet-4-20250514"
@@ -102,6 +106,10 @@ struct PillVerificationResult: Codable {
 struct NutritionAnalysis: Codable {
     let mealName: String
     let healthRating: Double
+    let gutHealthScore: Double
+    let proteinQualityScore: Double
+    let fiberScore: Double
+    let sugarScore: Double
     let estimatedCalories: Double
     let estimatedProtein: Double
     let estimatedCarbs: Double
@@ -254,6 +262,7 @@ class ClaudeAPIService: ObservableObject {
         - Protein content (important for elderly)
         - Key vitamins and nutrients
         - General food groups present
+        - Specific health scores (Gut health, Protein quality, Fiber, Sugar)
         
         Provide ESTIMATES - they don't need to be exact, just reasonable approximations.
         
@@ -261,6 +270,10 @@ class ClaudeAPIService: ObservableObject {
         {
             "mealName": "Brief description of the meal",
             "healthRating": 75,
+            "gutHealthScore": 8.5,
+            "proteinQualityScore": 7.0,
+            "fiberScore": 6.5,
+            "sugarScore": 4.0,
             "estimatedCalories": 450,
             "estimatedProtein": 25,
             "estimatedCarbs": 40,
@@ -272,11 +285,13 @@ class ClaudeAPIService: ObservableObject {
             "recommendations": ["Consider adding more fiber", "Good protein content"]
         }
         
-        Health rating should be 0-100 where:
-        - 0-30: Unhealthy
-        - 31-60: Moderate
-        - 61-80: Good
-        - 81-100: Excellent
+        Health rating should be 0-100.
+        
+        Specific Scores (0-10 scale):
+        - gutHealthScore: How good is it for digestion/gut microbiome? (High fiber/probiotics = high score)
+        - proteinQualityScore: How complete/high-quality is the protein?
+        - fiberScore: Richness in fiber?
+        - sugarScore: LOW sugar is BETTER. So 10 means very low sugar (healthy), 0 means very high sugar (unhealthy).
         
         Food groups can include: Protein, Vegetables, Fruits, Grains, Dairy, Fats/Oils
         Keep the analysis simple and encouraging for elderly users.

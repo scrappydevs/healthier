@@ -17,122 +17,47 @@ struct HomeView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: AppTheme.Spacing.lg) {
-                    // Welcome Section
-                    welcomeSection
-                    
-                    // Daily Health Score
-                    dailyHealthScoreCard
+            ZStack {
+                Color.appBackground.ignoresSafeArea()
 
-                    // Sync Status Card
-                    syncStatusCard
-                    
-                    // Health Breakdown
-                    healthBreakdownSection
-
-                    // Quick Stats
-                    quickStatsSection
-
-                    // Upcoming Reminders
-                    upcomingRemindersSection
-                }
-                .padding(AppTheme.Spacing.md)
-            }
-            .background(Color.appBackground)
-        }
-    }
-
-    // MARK: - Welcome Section
-    private var welcomeSection: some View {
-        HStack {
-            Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
-                .font(AppTheme.Typography.title)
-                .foregroundColor(.textPrimary)
-
-            Spacer()
-        }
-    }
-
-    // MARK: - Daily Health Score Card
-    private var dailyHealthScoreCard: some View {
-        VStack(spacing: AppTheme.Spacing.md) {
-            HStack {
-                Text("Today's Health Score")
-                    .font(AppTheme.Typography.headline)
-                    .foregroundColor(.textPrimary)
-                
-                Spacer()
-            }
-            
-            HStack(spacing: AppTheme.Spacing.lg) {
-                // Health Score Circle
-                ZStack {
-                    Circle()
-                        .stroke(Color.divider, lineWidth: 10)
-                        .frame(width: 120, height: 120)
-                    
-                    Circle()
-                        .trim(from: 0, to: CGFloat(viewModel.dailyHealthScore / 100))
-                        .stroke(
-                            healthScoreColor(viewModel.dailyHealthScore),
-                            style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                        )
-                        .frame(width: 120, height: 120)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeInOut(duration: 0.5), value: viewModel.dailyHealthScore)
-                    
-                    VStack(spacing: 4) {
-                        Text("\(Int(viewModel.dailyHealthScore))")
-                            .font(AppTheme.Typography.largeTitle)
+                VStack(spacing: 0) {
+                    // Header
+                    HStack {
+                        Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
+                            .font(AppTheme.Typography.title)
                             .foregroundColor(.textPrimary)
-                        
-                        Text("/ 100")
-                            .font(AppTheme.Typography.caption)
-                            .foregroundColor(.textSecondary)
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .padding(.bottom, AppTheme.Spacing.md)
+
+                    ScrollView {
+                        VStack(spacing: AppTheme.Spacing.lg) {
+                            // Sync Status Card
+                            syncStatusCard
+
+                            // Health Breakdown
+                            healthBreakdownSection
+
+                            // Quick Stats
+                            quickStatsSection
+
+                            // Upcoming Reminders
+                            upcomingRemindersSection
+                        }
+                        .padding(.horizontal, AppTheme.Spacing.lg)
+                        .padding(.vertical, AppTheme.Spacing.lg)
                     }
                 }
-                
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                    Text(viewModel.getHealthScoreMessage())
-                        .font(AppTheme.Typography.title3)
-                        .foregroundColor(.textPrimary)
-                    
-                    Text("Based on meals, exercise, and medication adherence")
-                        .font(AppTheme.Typography.caption)
-                        .foregroundColor(.textSecondary)
-                    
-                    // Quick status indicators
-                    HStack(spacing: AppTheme.Spacing.md) {
-                        HealthIndicator(
-                            icon: "fork.knife",
-                            value: Int(viewModel.mealHealthRating),
-                            color: healthScoreColor(viewModel.mealHealthRating)
-                        )
-                        
-                        HealthIndicator(
-                            icon: "figure.run",
-                            value: Int(viewModel.exerciseScore),
-                            color: healthScoreColor(viewModel.exerciseScore)
-                        )
-                        
-                        HealthIndicator(
-                            icon: "pills.fill",
-                            value: Int(viewModel.medicationAdherenceScore),
-                            color: healthScoreColor(viewModel.medicationAdherenceScore)
-                        )
-                    }
-                }
-                
-                Spacer()
             }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
         }
-        .padding(AppTheme.Spacing.md)
-        .background(Color.cardBackground)
-        .cornerRadius(AppTheme.CornerRadius.md)
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
     }
-    
+
     // MARK: - Sync Status Card
     private var syncStatusCard: some View {
         Button {
@@ -343,9 +268,9 @@ struct TrackingFeatureCard: View {
     var body: some View {
         HStack {
             Image(systemName: icon)
-                .font(.title3)
-                .foregroundColor(isActive ? .appPrimary : .textSecondary)
-                .frame(width: 40)
+            .font(.title3)
+            .foregroundColor(isActive ? .appPrimary : .textSecondary)
+            .frame(width: 40)
 
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                 Text(title)
@@ -431,29 +356,6 @@ struct MedicationReminderCard: View {
         .background(Color.cardBackground)
         .cornerRadius(AppTheme.CornerRadius.md)
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
-    }
-}
-
-struct HealthIndicator: View {
-    let icon: String
-    let value: Int
-    let color: Color
-    
-    var body: some View {
-        HStack(spacing: AppTheme.Spacing.xs) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundColor(color)
-            
-            Text("\(value)")
-                .font(AppTheme.Typography.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(color)
-        }
-        .padding(.horizontal, AppTheme.Spacing.sm)
-        .padding(.vertical, AppTheme.Spacing.xs)
-        .background(color.opacity(0.1))
-        .cornerRadius(AppTheme.CornerRadius.sm)
     }
 }
 

@@ -66,16 +66,16 @@ struct MedicationDetailView: View {
                             // Bottle Image Section
                             bottleImageSection
 
+                            // Instructions Section
+                            if let instructions = medication.instructions, !instructions.isEmpty {
+                                instructionsSection(instructions)
+                            }
+
                             // Medication Info & Next Dose Combined
                             combinedInfoSection
 
                             // Take Now Button (requires verification)
                             takeNowButton
-
-                            // Instructions Section
-                            if let instructions = medication.instructions, !instructions.isEmpty {
-                                instructionsSection(instructions)
-                            }
                         }
                         .padding(.horizontal, AppTheme.Spacing.md)
 
@@ -255,17 +255,17 @@ struct MedicationDetailView: View {
                 // Adherence circle
                 ZStack {
                     Circle()
-                        .stroke(Color.divider, lineWidth: 6)
-                        .frame(width: 60, height: 60)
+                        .stroke(Color.divider, lineWidth: 8)
+                        .frame(width: 70, height: 70)
 
                     Circle()
                         .trim(from: 0, to: adherenceRate)
                         .stroke(
                             adherenceRate > 0.8 ? Color.success :
                             (adherenceRate > 0.5 ? Color.warning : Color.error),
-                            style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                            style: StrokeStyle(lineWidth: 8, lineCap: .round)
                         )
-                        .frame(width: 60, height: 60)
+                        .frame(width: 70, height: 70)
                         .rotationEffect(.degrees(-90))
 
                     VStack(spacing: 0) {
@@ -273,7 +273,7 @@ struct MedicationDetailView: View {
                             .font(AppTheme.Typography.headline)
                             .foregroundColor(.textPrimary)
                         Text("adherence")
-                            .font(AppTheme.Typography.caption)
+                            .font(.system(size: 8))
                             .foregroundColor(.textSecondary)
                     }
                 }
@@ -344,12 +344,17 @@ struct MedicationDetailView: View {
     // MARK: - Instructions Section
 
     private func instructionsSection(_ instructions: String) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text("INSTRUCTIONS")
-                .font(AppTheme.Typography.caption)
-                .foregroundColor(.textSecondary)
-                .tracking(1)
-
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
+            // Header with status
+            HStack {
+                Text("INSTRUCTIONS")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundColor(.textSecondary)
+                    .tracking(1)
+                
+                Spacer()
+            }
+            
             HStack(alignment: .top) {
                 Image(systemName: "info.circle.fill")
                     .foregroundColor(.appPrimary)
@@ -361,8 +366,8 @@ struct MedicationDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(AppTheme.Spacing.md)
-        .background(Color.appPrimary.opacity(0.1))
-        .cornerRadius(AppTheme.CornerRadius.md)
+        .background(Color.cardBackground)
+        .cornerRadius(AppTheme.CornerRadius.lg)
     }
 
     // MARK: - Recent History Section
@@ -383,13 +388,13 @@ struct MedicationDetailView: View {
                         .foregroundColor(.textSecondary)
                 }
             }
-            .padding(.horizontal, AppTheme.Spacing.md)
 
             if recentLogs.isEmpty {
                 VStack(spacing: AppTheme.Spacing.sm) {
                     Image(systemName: "clock.badge")
-                        .font(.title)
-                        .foregroundColor(.textSecondary)
+                    // ... rest of empty state content
+                    .font(.title)
+                    .foregroundColor(.textSecondary)
                     Text("No doses logged yet")
                         .font(AppTheme.Typography.body)
                         .foregroundColor(.textSecondary)
@@ -463,7 +468,10 @@ struct MedicationDetailView: View {
                 }
             }
         }
+        .padding(AppTheme.Spacing.md)
         .background(Color.cardBackground)
+        .cornerRadius(AppTheme.CornerRadius.lg)
+        .padding(.horizontal, AppTheme.Spacing.md)
     }
 
     private func iconForVerificationStatus(_ status: VerificationStatus) -> String {
