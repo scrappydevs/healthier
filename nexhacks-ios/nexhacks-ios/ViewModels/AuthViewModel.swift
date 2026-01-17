@@ -11,7 +11,6 @@ import Combine
 enum AuthState: Equatable {
     case loading
     case unauthenticated
-    case authenticated(needsProfile: Bool)
     case ready
 }
 
@@ -63,19 +62,8 @@ class AuthViewModel: ObservableObject {
             return
         }
         
-        do {
-            let needsProfile = !(try await authService.checkProfileComplete())
-            
-            if needsProfile {
-                authState = .authenticated(needsProfile: true)
-            } else {
-                await loadUserData()
-                authState = .ready
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-            authState = .authenticated(needsProfile: true)
-        }
+        await loadUserData()
+        authState = .ready
     }
     
     func loadUserData() async {
@@ -85,22 +73,22 @@ class AuthViewModel: ObservableObject {
         
         do {
             let supabaseUser = try await supabaseService.fetchUser(userId: userId)
-            let supabasePatient = try await supabaseService.fetchPatient(userId: userId)
+            let supabasePatient = try? await supabaseService.fetchPatient(userId: userId)
             
-            if let supabaseUser = supabaseUser, let supabasePatient = supabasePatient {
+            if let supabaseUser = supabaseUser {
                 currentUser = User(
                     id: supabaseUser.id,
                     name: supabaseUser.fullName,
                     email: supabaseUser.email,
-                    age: supabasePatient.age,
-                    height: supabasePatient.heightCm,
-                    weight: supabasePatient.weightKg,
-                    medicalConditions: supabasePatient.medicalConditions,
-                    allergies: supabasePatient.allergies,
-                    emergencyContact: supabasePatient.emergencyContactName != nil ? EmergencyContact(
-                        name: supabasePatient.emergencyContactName ?? "",
-                        phoneNumber: supabasePatient.emergencyContactPhone ?? "",
-                        relationship: supabasePatient.emergencyContactRelationship ?? ""
+                    age: supabasePatient?.age,
+                    height: supabasePatient?.heightCm,
+                    weight: supabasePatient?.weightKg,
+                    medicalConditions: supabasePatient?.medicalConditions ?? [],
+                    allergies: supabasePatient?.allergies ?? [],
+                    emergencyContact: supabasePatient?.emergencyContactName != nil ? EmergencyContact(
+                        name: supabasePatient?.emergencyContactName ?? "",
+                        phoneNumber: supabasePatient?.emergencyContactPhone ?? "",
+                        relationship: supabasePatient?.emergencyContactRelationship ?? ""
                     ) : nil,
                     createdAt: supabaseUser.createdAt ?? Date(),
                     updatedAt: supabaseUser.updatedAt ?? Date()
@@ -120,7 +108,7 @@ class AuthViewModel: ObservableObject {
         
         do {
             try await authService.signUpWithEmail(email: email, password: password, fullName: fullName)
-            authState = .authenticated(needsProfile: true)
+            await checkAuthState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -169,83 +157,6 @@ class AuthViewModel: ObservableObject {
             try await authService.resetPassword(email: email)
         } catch {
             errorMessage = error.localizedDescription
-        }
-    }
-    
-    // MARK: - Profile Setup
-    
-    func createPatientProfile(
-        fullName: String,
-        dateOfBirth: Date,
-        gender: String?,
-        heightCm: Double?,
-        weightKg: Double?,
-        medicalConditions: [String],
-        allergies: [String],
-        emergencyContactName: String?,
-        emergencyContactPhone: String?,
-        emergencyContactRelationship: String?
-    ) async -> Bool {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        
-        guard let userId = authService.currentUserId else {
-            errorMessage = "No authenticated user"
-            return false
-        }
-        
-        do {
-            // Update user's full name if provided
-            if let existingUser = try await supabaseService.fetchUser(userId: userId) {
-                let updatedUser = SupabaseUser(
-                    id: existingUser.id,
-                    email: existingUser.email,
-                    fullName: fullName,
-                    role: existingUser.role,
-                    phone: existingUser.phone,
-                    avatarUrl: existingUser.avatarUrl,
-                    preferences: existingUser.preferences,
-                    isActive: existingUser.isActive,
-                    lastLoginAt: Date(),
-                    createdAt: existingUser.createdAt,
-                    updatedAt: Date()
-                )
-                try await supabaseService.updateUser(updatedUser)
-            }
-            
-            // Create patient record
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd"
-            let dobString = dateFormatter.string(from: dateOfBirth)
-            
-            let patient = SupabasePatient(
-                id: UUID(),
-                userId: userId,
-                dateOfBirth: dobString,
-                age: nil,
-                gender: gender,
-                heightCm: heightCm,
-                weightKg: weightKg,
-                medicalConditions: medicalConditions,
-                allergies: allergies,
-                emergencyContactName: emergencyContactName,
-                emergencyContactPhone: emergencyContactPhone,
-                emergencyContactRelationship: emergencyContactRelationship,
-                status: "active",
-                createdAt: Date(),
-                updatedAt: Date()
-            )
-            
-            try await supabaseService.createPatient(patient)
-            
-            await loadUserData()
-            authState = .ready
-            return true
-            
-        } catch {
-            errorMessage = "Failed to create profile: \(error.localizedDescription)"
-            return false
         }
     }
     

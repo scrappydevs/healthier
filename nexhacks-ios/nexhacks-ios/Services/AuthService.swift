@@ -107,77 +107,83 @@ class AuthService: ObservableObject {
     // MARK: - Email/Password Authentication
     
     func signUpWithEmail(email: String, password: String, fullName: String) async throws {
-        do {
-            let response = try await supabase.auth.signUp(
-                email: email,
-                password: password,
-                data: ["full_name": .string(fullName)]
-            )
-            
-            guard let session = response.session else {
-                throw AuthError.noSession
-            }
-            
-            currentSession = session
-            currentUserId = session.user.id
-            isAuthenticated = true
-            
-            // Create user record in users table
-            let newUser = SupabaseUser(
-                id: session.user.id,
-                email: email,
-                fullName: fullName,
-                role: "patient",
-                isActive: true,
-                lastLoginAt: Date(),
-                createdAt: Date(),
-                updatedAt: Date()
-            )
-            
-            let supabaseService = SupabaseService()
-            try await supabaseService.createUser(newUser)
-            
-        } catch let error as AuthError {
-            throw error
-        } catch {
-            throw AuthError.unknown(error)
+        let response = try await supabase.auth.signUp(
+            email: email,
+            password: password,
+            data: ["full_name": .string(fullName)]
+        )
+        
+        guard let session = response.session else {
+            throw AuthError.noSession
         }
+        
+        currentSession = session
+        currentUserId = session.user.id
+        isAuthenticated = true
+        
+        // Ensure user record exists in users table
+        try await ensureUserRecordExists(session: session, email: email)
     }
     
     func signInWithEmail(email: String, password: String) async throws {
+        let session = try await supabase.auth.signIn(
+            email: email,
+            password: password
+        )
+        
+        currentSession = session
+        currentUserId = session.user.id
+        isAuthenticated = true
+        
+        // Ensure user record exists in users table
+        try await ensureUserRecordExists(session: session, email: email)
+    }
+    
+    private func ensureUserRecordExists(session: Session, email: String) async throws {
+        let supabaseService = SupabaseService()
+        
+        // Try to fetch existing user
         do {
-            let session = try await supabase.auth.signIn(
-                email: email,
-                password: password
-            )
-            
-            currentSession = session
-            currentUserId = session.user.id
-            isAuthenticated = true
-            
-            // Ensure user record exists in users table
-            let supabaseService = SupabaseService()
-            let existingUser = try? await supabaseService.fetchUser(userId: session.user.id)
-            
-            if existingUser == nil {
-                // Create user record if it doesn't exist
-                let fullName = session.user.userMetadata["full_name"]?.stringValue ?? email
-                let newUser = SupabaseUser(
-                    id: session.user.id,
-                    email: email,
-                    fullName: fullName,
-                    role: "patient",
-                    isActive: true,
-                    lastLoginAt: Date(),
-                    createdAt: Date(),
-                    updatedAt: Date()
-                )
-                
-                try await supabaseService.createUser(newUser)
+            let existingUser = try await supabaseService.fetchUser(userId: session.user.id)
+            if existingUser != nil {
+                return
             }
-            
         } catch {
-            throw AuthError.invalidCredentials
+            // User doesn't exist, we'll create it below
+        }
+        
+        // Create user record - try multiple fields for name from OAuth providers
+        let fullName: String
+        if let name = session.user.userMetadata["full_name"]?.stringValue {
+            fullName = name
+        } else if let name = session.user.userMetadata["name"]?.stringValue {
+            fullName = name
+        } else if let firstName = session.user.userMetadata["given_name"]?.stringValue,
+                  let lastName = session.user.userMetadata["family_name"]?.stringValue {
+            fullName = "\(firstName) \(lastName)"
+        } else {
+            fullName = email.components(separatedBy: "@").first ?? email
+        }
+        
+        let newUser = SupabaseUser(
+            id: session.user.id,
+            email: email,
+            fullName: fullName,
+            role: "patient",
+            isActive: true,
+            lastLoginAt: Date(),
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        
+        do {
+            try await supabaseService.createUser(newUser)
+        } catch {
+            // If creation fails, try to fetch again in case of race condition
+            let existingUser = try await supabaseService.fetchUser(userId: session.user.id)
+            if existingUser == nil {
+                throw AuthError.userCreationFailed
+            }
         }
     }
     
@@ -203,37 +209,12 @@ class AuthService: ObservableObject {
     }
     
     func handleOAuthCallback(url: URL) async throws {
-        do {
-            try await supabase.auth.session(from: url)
-            
-            // Check if we need to create user record
-            if let userId = currentUserId {
-                let supabaseService = SupabaseService()
-                let existingUser = try? await supabaseService.fetchUser(userId: userId)
-                
-                if existingUser == nil {
-                    // Create user record for OAuth sign-in
-                    let session = try await supabase.auth.session
-                    let email = session.user.email ?? ""
-                    let fullName = session.user.userMetadata["full_name"]?.stringValue ?? email
-                    
-                    let newUser = SupabaseUser(
-                        id: userId,
-                        email: email,
-                        fullName: fullName,
-                        role: "patient",
-                        isActive: true,
-                        lastLoginAt: Date(),
-                        createdAt: Date(),
-                        updatedAt: Date()
-                    )
-                    
-                    try await supabaseService.createUser(newUser)
-                }
-            }
-        } catch {
-            throw AuthError.unknown(error)
-        }
+        try await supabase.auth.session(from: url)
+        
+        // Get the session and ensure user record exists
+        let session = try await supabase.auth.session
+        let email = session.user.email ?? ""
+        try await ensureUserRecordExists(session: session, email: email)
     }
     
     // MARK: - Sign Out
@@ -249,15 +230,4 @@ class AuthService: ObservableObject {
         }
     }
     
-    // MARK: - Profile Check
-    
-    func checkProfileComplete() async throws -> Bool {
-        guard let userId = currentUserId else {
-            throw AuthError.noSession
-        }
-        
-        let supabaseService = SupabaseService()
-        let patient = try await supabaseService.fetchPatient(userId: userId)
-        return patient != nil
-    }
 }
