@@ -452,6 +452,9 @@ export type DailySummaryResponse = {
   date: string;
   patient_name: string;
   summary: string;
+  journal_summary?: string;
+  meals_summary?: string;
+  activity_summary?: string;
   alerts: DailySummaryAlert[];
   stats: DailySummaryStats;
 };

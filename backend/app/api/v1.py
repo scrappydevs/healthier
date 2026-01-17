@@ -889,13 +889,11 @@ Date: {target_date}
     
     prompt = f"""You are a healthcare assistant helping clinicians monitor elderly patients. Based on the following patient data for {target_date}, provide:
 
-1. A detailed summary (3-4 sentences) of the patient's day that includes:
-   - What they ate and whether it aligns with their diet plan restrictions (if set)
-   - Their exercise activity and how it compares to their goals (if set)
-   - Medication adherence
-   - Overall mood from journal entries
-   - IMPORTANT: If there are diet plan violations listed, mention them specifically in the summary
-2. Any concerns or alerts the clinician should be aware of (return as JSON array)
+1. An overall summary (2-3 sentences) of the patient's day
+2. A journal summary (1-2 sentences) summarizing all journal entries and the patient's mood
+3. A meals summary (1-2 sentences) summarizing what they ate and nutritional status
+4. An activity summary (1-2 sentences) summarizing their exercise/activity
+5. Any concerns or alerts the clinician should be aware of (return as JSON array)
    - Include alerts for diet plan violations if any are listed
    - Include alerts for missed medications, poor nutrition, negative mood, no activity, etc.
 
@@ -904,7 +902,10 @@ Patient Data:
 
 Respond in this exact JSON format:
 {{
-  "summary": "Detailed summary including any diet plan violations...",
+  "summary": "Overall summary of the patient's day...",
+  "journal_summary": "Summary of journal entries and mood...",
+  "meals_summary": "Summary of meals and nutrition...",
+  "activity_summary": "Summary of exercise and activity...",
   "alerts": [
     {{"severity": "high|medium|low", "type": "missed_dose|low_adherence|nutrition|inactivity|mood|diet_violation|other", "message": "Alert message"}}
   ]
@@ -932,13 +933,22 @@ Only include alerts if there are genuine concerns. Be concise and compassionate.
             
             result = json.loads(ai_response)
             summary = result.get("summary", "No summary generated")
+            journal_summary = result.get("journal_summary", "")
+            meals_summary = result.get("meals_summary", "")
+            activity_summary = result.get("activity_summary", "")
             alerts = result.get("alerts", [])
         except json.JSONDecodeError:
             summary = ai_response
+            journal_summary = ""
+            meals_summary = ""
+            activity_summary = ""
             alerts = []
         
     except Exception as e:
         summary = f"Error generating summary: {str(e)}"
+        journal_summary = ""
+        meals_summary = ""
+        activity_summary = ""
         alerts = []
     
     # Calculate stats
@@ -967,12 +977,26 @@ Only include alerts if there are genuine concerns. Be concise and compassionate.
         on_conflict="patient_id,date"
     ).execute()
     
+    # Valid alert types in the database
+    VALID_ALERT_TYPES = {'missed_dose', 'low_adherence', 'refill_needed', 'pattern_detected', 'vital_abnormal', 'missed_meal', 'inactivity', 'fall_detected'}
+    
+    # Map AI-generated types to valid database types
+    def map_alert_type(ai_type: str) -> str:
+        type_mapping = {
+            'nutrition': 'pattern_detected',
+            'mood': 'pattern_detected',
+            'diet_violation': 'pattern_detected',
+            'other': 'pattern_detected',
+        }
+        mapped = type_mapping.get(ai_type, ai_type)
+        return mapped if mapped in VALID_ALERT_TYPES else 'pattern_detected'
+    
     # Create alerts in alerts table if high or medium severity
     for alert in alerts:
         if alert.get("severity") in ["high", "medium"]:
             alert_data = {
                 "patient_id": str(patient_id),
-                "type": alert.get("type", "pattern_detected"),
+                "type": map_alert_type(alert.get("type", "pattern_detected")),
                 "severity": alert.get("severity", "medium"),
                 "title": f"Alert for {patient_name}",
                 "message": alert.get("message", ""),
@@ -985,7 +1009,7 @@ Only include alerts if there are genuine concerns. Be concise and compassionate.
         for violation in violations:
             alert_data = {
                 "patient_id": str(patient_id),
-                "type": "nutrition",
+                "type": "pattern_detected",  # Diet violations mapped to pattern_detected
                 "severity": "medium",
                 "title": f"Diet Plan Violation: {violation['meal']}",
                 "message": f"Patient consumed {violation['meal']} ({violation['meal_type']}) which violates dietary restrictions: {diet_plan.get('notes', '')[:100] if diet_plan else 'N/A'}",
@@ -997,6 +1021,9 @@ Only include alerts if there are genuine concerns. Be concise and compassionate.
         "date": target_date,
         "patient_name": patient_name,
         "summary": summary,
+        "journal_summary": journal_summary,
+        "meals_summary": meals_summary,
+        "activity_summary": activity_summary,
         "alerts": alerts,
         "stats": {
             "meals": len(meals),

@@ -29,9 +29,6 @@ import {
   getPills,
   generateDailySummary,
   createPatientPlan,
-  generateJournalSummary,
-  generateMealSummary,
-  generateExerciseSummary,
   type Patient,
   type Pill as PillType,
   type DailySummaryResponse,
@@ -42,7 +39,7 @@ import { ExerciseSection } from "@/components/patient/ExerciseSection";
 import { MedicationSection } from "@/components/patient/MedicationSection";
 import { JournalSection } from "@/components/patient/JournalSection";
 
-type Tab = "overview" | "food" | "exercise" | "medications" | "journal" | "plans";
+type Tab = "overview" | "plans" | "food" | "exercise" | "medications" | "journal";
 
 const DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -281,7 +278,7 @@ export default function DashboardPage() {
             {/* Tabs */}
             <div className="px-4 bg-white border-b">
               <div className="flex gap-0">
-                {(["overview", "food", "exercise", "medications", "journal", "plans"] as Tab[]).map((tab) => (
+                {(["overview", "plans", "food", "exercise", "medications", "journal"] as Tab[]).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -358,31 +355,37 @@ function PlansContent({ patient }: { patient: Patient }) {
   const [showMedForm, setShowMedForm] = useState(false);
   const [showDietForm, setShowDietForm] = useState(false);
   const [showExerciseForm, setShowExerciseForm] = useState(false);
-  const [stats, setStats] = useState({ meals: 0, exercises: 0, medications: 0 });
+  const [dietPlans, setDietPlans] = useState<Array<{ id: string; notes: string | null; created_at: string }>>([]);
+  const [exercisePlans, setExercisePlans] = useState<Array<{ id: string; title: string | null; notes: string | null; exercise_minutes_target: number | null; exercise_days_per_week: number | null; created_at: string }>>([]);
+  const [medicationCount, setMedicationCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchStats() {
-      setIsLoading(true);
-      try {
-        const [mealsRes, exercisesRes, medsRes] = await Promise.all([
-          getPatientMeals(patient.id),
-          getPatientExercises(patient.id),
-          getPatientMedications(patient.id),
-        ]);
-        setStats({
-          meals: mealsRes.total,
-          exercises: exercisesRes.total,
-          medications: medsRes.total,
-        });
-      } catch (err) {
-        console.error("Failed to fetch stats:", err);
-      } finally {
-        setIsLoading(false);
-      }
+  const fetchPlans = async () => {
+    setIsLoading(true);
+    try {
+      const [plansRes, medsRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/patients/${patient.id}/plans`).then(r => r.json()),
+        getPatientMedications(patient.id),
+      ]);
+      
+      const plans = plansRes.plans || [];
+      setDietPlans(plans.filter((p: { plan_type: string }) => p.plan_type === "diet"));
+      setExercisePlans(plans.filter((p: { plan_type: string }) => p.plan_type === "exercise"));
+      setMedicationCount(medsRes.total);
+    } catch (err) {
+      console.error("Failed to fetch plans:", err);
+    } finally {
+      setIsLoading(false);
     }
-    fetchStats();
+  };
+
+  useEffect(() => {
+    fetchPlans();
   }, [patient.id]);
+
+  const handlePlanSaved = () => {
+    fetchPlans();
+  };
 
   return (
     <div className="space-y-4">
@@ -410,14 +413,9 @@ function PlansContent({ patient }: { patient: Patient }) {
         )}
         
         {!showMedForm && (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              {isLoading ? "Loading..." : `${stats.medications} active prescriptions`}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Manage medication schedules, dosages, and reminders for this patient.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            {isLoading ? "Loading..." : `${medicationCount} active prescriptions`}
+          </p>
         )}
       </div>
 
@@ -440,18 +438,24 @@ function PlansContent({ patient }: { patient: Patient }) {
         {showDietForm && (
           <DietInstructionForm 
             patientId={patient.id} 
-            onClose={() => setShowDietForm(false)} 
+            onClose={() => { setShowDietForm(false); handlePlanSaved(); }} 
           />
         )}
         
         {!showDietForm && (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Set dietary guidelines and restrictions
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Create meal plans and track nutritional requirements.
-            </p>
+            {dietPlans.length > 0 ? (
+              dietPlans.map((plan) => (
+                <div key={plan.id} className="p-2 bg-amber-50 rounded text-sm">
+                  <p className="text-foreground">{plan.notes || "No notes"}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Added {new Date(plan.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No diet plan set</p>
+            )}
           </div>
         )}
       </div>
@@ -475,18 +479,32 @@ function PlansContent({ patient }: { patient: Patient }) {
         {showExerciseForm && (
           <ExercisePlanForm 
             patientId={patient.id} 
-            onClose={() => setShowExerciseForm(false)} 
+            onClose={() => { setShowExerciseForm(false); handlePlanSaved(); }} 
           />
         )}
         
         {!showExerciseForm && (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Set exercise recommendations
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Define workout routines, frequency, and activity goals.
-            </p>
+            {exercisePlans.length > 0 ? (
+              exercisePlans.map((plan) => (
+                <div key={plan.id} className="p-2 bg-slate-50 rounded text-sm">
+                  <p className="font-medium text-foreground">{plan.title || "Exercise Plan"}</p>
+                  {(plan.exercise_minutes_target || plan.exercise_days_per_week) && (
+                    <p className="text-muted-foreground">
+                      {plan.exercise_minutes_target && `${plan.exercise_minutes_target} min/session`}
+                      {plan.exercise_minutes_target && plan.exercise_days_per_week && " · "}
+                      {plan.exercise_days_per_week && `${plan.exercise_days_per_week} days/week`}
+                    </p>
+                  )}
+                  {plan.notes && <p className="text-muted-foreground mt-1">{plan.notes}</p>}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Added {new Date(plan.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No exercise plan set</p>
+            )}
           </div>
         )}
       </div>
@@ -522,20 +540,26 @@ function OverviewContent({ patient }: { patient: Patient }) {
   const [aiSummary, setAiSummary] = useState<DailySummaryResponse | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
-  const [mealsExpanded, setMealsExpanded] = useState(false);
-  const [exercisesExpanded, setExercisesExpanded] = useState(false);
+  const [mealsExpanded, setMealsExpanded] = useState(true);
+  const [exercisesExpanded, setExercisesExpanded] = useState(true);
   const [journalExpanded, setJournalExpanded] = useState(true);
-  const [expandedJournalEntries, setExpandedJournalEntries] = useState<Set<string>>(new Set());
-  const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set());
-  const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
-  const [journalSummaries, setJournalSummaries] = useState<Record<string, string>>({});
-  const [mealSummaries, setMealSummaries] = useState<Record<string, string>>({});
-  const [exerciseSummaries, setExerciseSummaries] = useState<Record<string, string>>({});
+  const [journalSectionSummary, setJournalSectionSummary] = useState<string>("");
+  const [mealsSectionSummary, setMealsSectionSummary] = useState<string>("");
+  const [exercisesSectionSummary, setExercisesSectionSummary] = useState<string>("");
   const [lastDataHash, setLastDataHash] = useState("");
   const todayDate = new Date().toISOString().split("T")[0];
 
-  // Fetch all data
+  // Fetch all data - reset all state when patient changes
   useEffect(() => {
+    // Reset all state when patient changes
+    setAiSummary(null);
+    setJournalSectionSummary("");
+    setMealsSectionSummary("");
+    setExercisesSectionSummary("");
+    setMeals([]);
+    setExercises([]);
+    setJournalEntries([]);
+    
     async function fetchTodayData() {
       setIsLoading(true);
       try {
@@ -548,48 +572,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
         setMeals(mealsRes.meals);
         setExercises(exercisesRes.exercises);
         setJournalEntries(journalRes.entries);
-        
-        // Generate summaries for new entries
-        const summaries: Record<string, string> = {};
-        for (const entry of journalRes.entries) {
-          if (entry.ai_analysis && typeof entry.ai_analysis === "object" && "summary" in entry.ai_analysis) {
-            summaries[entry.id] = String(entry.ai_analysis.summary);
-          } else {
-            try {
-              const summaryRes = await generateJournalSummary(entry.id);
-              summaries[entry.id] = summaryRes.summary;
-            } catch {
-              // Fallback to first sentence
-              const firstSentence = entry.transcript.split(/[.!?]/)[0];
-              summaries[entry.id] = firstSentence.length > 100 ? firstSentence.slice(0, 100) + "..." : firstSentence;
-            }
-          }
-        }
-        setJournalSummaries(summaries);
-        
-        // Generate summaries for meals
-        const mealSums: Record<string, string> = {};
-        for (const meal of mealsRes.meals) {
-          try {
-            const summaryRes = await generateMealSummary(meal.id);
-            mealSums[meal.id] = summaryRes.summary;
-          } catch {
-            mealSums[meal.id] = `${meal.name} - ${meal.total_calories} cal`;
-          }
-        }
-        setMealSummaries(mealSums);
-        
-        // Generate summaries for exercises
-        const exerciseSums: Record<string, string> = {};
-        for (const exercise of exercisesRes.exercises) {
-          try {
-            const summaryRes = await generateExerciseSummary(exercise.id);
-            exerciseSums[exercise.id] = summaryRes.summary;
-          } catch {
-            exerciseSums[exercise.id] = `${exercise.exercise_type || (exercise as any).name || "Exercise"} - ${exercise.duration_minutes || 0} min`;
-          }
-        }
-        setExerciseSummaries(exerciseSums);
         
         // Create hash of data to detect changes
         const dataHash = JSON.stringify({
@@ -620,6 +602,10 @@ function OverviewContent({ patient }: { patient: Patient }) {
     try {
       const summary = await generateDailySummary(patient.id, todayDate);
       setAiSummary(summary);
+      // Set section summaries from the response
+      if (summary.journal_summary) setJournalSectionSummary(summary.journal_summary);
+      if (summary.meals_summary) setMealsSectionSummary(summary.meals_summary);
+      if (summary.activity_summary) setExercisesSectionSummary(summary.activity_summary);
     } catch {
       // Ignore errors
     } finally {
@@ -674,30 +660,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
       case "very_negative": return "😢";
       default: return "📝";
     }
-  };
-
-  const getJournalSummary = (transcript: string): string => {
-    // Try to get first sentence, or truncate to ~100 chars
-    const firstSentence = transcript.split(/[.!?]/)[0];
-    if (firstSentence && firstSentence.length < 120) {
-      return firstSentence.trim() + (transcript.length > firstSentence.length ? "..." : "");
-    }
-    // Truncate at word boundary
-    if (transcript.length <= 100) return transcript;
-    const truncated = transcript.slice(0, 100).replace(/\s+\S*$/, "");
-    return truncated + "...";
-  };
-
-  const toggleJournalEntry = (entryId: string) => {
-    setExpandedJournalEntries(prev => {
-      const next = new Set(prev);
-      if (next.has(entryId)) {
-        next.delete(entryId);
-      } else {
-        next.add(entryId);
-      }
-      return next;
-    });
   };
 
   const totalActivity = meals.length + exercises.length + journalEntries.length;
@@ -801,7 +763,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
         )}
       </div>
 
-      {/* Journal Entries - Most prominent */}
+      {/* Journal Entries */}
       <div className="bg-white rounded-lg border">
         <button
           onClick={() => setJournalExpanded(!journalExpanded)}
@@ -809,7 +771,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
         >
           <div className="flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Today's Journal</span>
+            <span className="text-sm font-medium text-foreground">Journal</span>
             <span className="text-xs text-muted-foreground">{journalEntries.length} entries</span>
           </div>
           {journalExpanded ? (
@@ -820,84 +782,58 @@ function OverviewContent({ patient }: { patient: Patient }) {
         </button>
 
         {journalExpanded && (
-          <div className="border-t">
+          <div className="border-t p-3">
             {isLoading ? (
-              <div className="p-3 text-sm text-muted-foreground">Loading...</div>
+              <div className="text-sm text-muted-foreground">Loading...</div>
             ) : journalEntries.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground">No journal entries today</div>
+              <div className="text-sm text-muted-foreground">No journal entries today</div>
             ) : (
-              <div className="divide-y">
-                {journalEntries.map((entry) => {
-                  const isExpanded = expandedJournalEntries.has(entry.id);
-                  const summary = journalSummaries[entry.id] || getJournalSummary(entry.transcript);
-                  const hasMoreContent = entry.transcript.length > (summary.length || 0);
-                  
-                  return (
-                    <div 
-                      key={entry.id} 
-                      className={cn(
-                        "p-3 transition-colors",
-                        hasMoreContent && "cursor-pointer hover:bg-muted/20"
-                      )}
-                      onClick={() => hasMoreContent && toggleJournalEntry(entry.id)}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="text-lg">{getMoodEmoji(entry.mood)}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-medium text-foreground">
-                              {formatTime(entry.logged_at)}
-                            </span>
-                            {entry.duration_seconds && (
-                              <span className="text-xs text-muted-foreground">
-                                {formatDuration(entry.duration_seconds)}
-                              </span>
-                            )}
-                            {hasMoreContent && (
-                              <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                {isExpanded ? "collapse" : "expand"}
-                              </span>
-                            )}
-                          </div>
-                          
-                          {/* Summary (always shown) */}
-                          <p className="text-sm text-foreground leading-relaxed">
-                            {summary}
-                          </p>
-                          
-                          {/* Full Transcript (expandable) */}
-                          {isExpanded && hasMoreContent && (
-                            <div className="mt-3 pt-3 border-t border-dashed">
-                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-                                Full Transcript
-                              </p>
-                              <p className="text-sm text-muted-foreground leading-relaxed">
-                                {entry.transcript}
-                              </p>
-                            </div>
-                          )}
-                          
-                          {entry.tags && entry.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {entry.tags.map((tag, i) => (
-                                <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted rounded">
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
+              <div className="space-y-3">
+                {/* Section Summary */}
+                <p className="text-sm text-foreground leading-relaxed">
+                  {journalSectionSummary || (aiSummary ? 
+                    `Patient recorded ${journalEntries.length} journal ${journalEntries.length === 1 ? 'entry' : 'entries'} today.` : 
+                    "Loading summary..."
+                  )}
+                </p>
+                
+                {/* Expandable Raw Transcripts */}
+                <details className="group">
+                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
+                    <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                    View raw transcripts ({journalEntries.length})
+                  </summary>
+                  <div className="mt-3 space-y-3 pl-4 border-l-2 border-muted">
+                    {journalEntries.map((entry) => (
+                      <div key={entry.id} className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>{getMoodEmoji(entry.mood)}</span>
+                          <span>{formatTime(entry.logged_at)}</span>
+                          {entry.duration_seconds && (
+                            <span>· {formatDuration(entry.duration_seconds)}</span>
                           )}
                         </div>
+                        <p className="text-sm text-muted-foreground">{entry.transcript}</p>
+                        {entry.tags && entry.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {entry.tags.map((tag, i) => (
+                              <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted rounded">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                </details>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Meals - Collapsible */}
+      {/* Meals */}
       <div className="bg-white rounded-lg border">
         <button
           onClick={() => setMealsExpanded(!mealsExpanded)}
@@ -916,111 +852,66 @@ function OverviewContent({ patient }: { patient: Patient }) {
         </button>
 
         {mealsExpanded && (
-          <div className="border-t">
+          <div className="border-t p-3">
             {isLoading ? (
-              <div className="p-3 text-sm text-muted-foreground">Loading...</div>
+              <div className="text-sm text-muted-foreground">Loading...</div>
             ) : meals.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground">No meals logged today</div>
+              <div className="text-sm text-muted-foreground">No meals logged today</div>
             ) : (
-              <div className="divide-y">
-                {meals.map((meal) => {
-                  const isExpanded = expandedMeals.has(meal.id);
-                  const summary = mealSummaries[meal.id] || `${meal.name} - ${meal.total_calories} cal`;
-                  
-                  return (
-                    <div 
-                      key={meal.id} 
-                      className={cn(
-                        "p-3 transition-colors cursor-pointer hover:bg-muted/20",
-                      )}
-                      onClick={() => {
-                        const next = new Set(expandedMeals);
-                        if (next.has(meal.id)) {
-                          next.delete(meal.id);
-                        } else {
-                          next.add(meal.id);
-                        }
-                        setExpandedMeals(next);
-                      }}
-                    >
-                      <div className="flex items-start gap-3">
+              <div className="space-y-3">
+                {/* Section Summary */}
+                <p className="text-sm text-foreground leading-relaxed">
+                  {mealsSectionSummary || (aiSummary ? 
+                    `Patient logged ${meals.length} ${meals.length === 1 ? 'meal' : 'meals'} today totaling ${meals.reduce((sum, m) => sum + (m.total_calories || 0), 0)} calories.` : 
+                    "Loading summary..."
+                  )}
+                </p>
+                
+                {/* Expandable Meal Details */}
+                <details className="group">
+                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
+                    <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                    View meal details ({meals.length})
+                  </summary>
+                  <div className="mt-3 space-y-3 pl-4 border-l-2 border-muted">
+                    {meals.map((meal) => (
+                      <div key={meal.id} className="flex items-start gap-3">
                         {meal.image_url ? (
                           <img
                             src={meal.image_url}
                             alt={meal.name}
-                            className="w-12 h-12 rounded object-cover flex-shrink-0"
+                            className="w-10 h-10 rounded object-cover flex-shrink-0"
                           />
                         ) : (
-                          <div className="w-12 h-12 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
-                            <Utensils className="h-5 w-5 text-muted-foreground" />
+                          <div className="w-10 h-10 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
+                            <Utensils className="h-4 w-4 text-muted-foreground" />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-medium text-foreground">
-                              {formatTime(meal.consumed_at)}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                              {isExpanded ? "collapse" : "expand"}
-                            </span>
+                          <p className="text-sm font-medium text-foreground">{meal.name}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>{mealTypeLabel(meal.meal_type)}</span>
+                            <span>·</span>
+                            <span>{formatTime(meal.consumed_at)}</span>
+                            {meal.total_calories > 0 && (
+                              <>
+                                <span>·</span>
+                                <span>{meal.total_calories} cal</span>
+                              </>
+                            )}
                           </div>
-                          
-                          {/* Summary */}
-                          <p className="text-sm text-foreground leading-relaxed">
-                            {summary}
-                          </p>
-                          
-                          {/* Full Details (expandable) */}
-                          {isExpanded && (
-                            <div className="mt-3 pt-3 border-t border-dashed">
-                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-                                Full Details
-                              </p>
-                              <p className="text-sm font-medium text-foreground mb-1">{meal.name}</p>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>{mealTypeLabel(meal.meal_type)}</span>
-                                {meal.total_calories > 0 && (
-                                  <>
-                                    <span>·</span>
-                                    <span>{meal.total_calories} cal</span>
-                                  </>
-                                )}
-                                {meal.total_protein && meal.total_protein > 0 && (
-                                  <>
-                                    <span>·</span>
-                                    <span>{meal.total_protein}g protein</span>
-                                  </>
-                                )}
-                                {meal.total_carbs && meal.total_carbs > 0 && (
-                                  <>
-                                    <span>·</span>
-                                    <span>{meal.total_carbs}g carbs</span>
-                                  </>
-                                )}
-                                {meal.total_fat && meal.total_fat > 0 && (
-                                  <>
-                                    <span>·</span>
-                                    <span>{meal.total_fat}g fat</span>
-                                  </>
-                                )}
-                              </div>
-                              {meal.ai_analysis && (
-                                <p className="text-xs text-muted-foreground mt-2">{meal.ai_analysis}</p>
-                              )}
-                            </div>
-                          )}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                </details>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Exercises - Collapsible */}
+      {/* Activity */}
       <div className="bg-white rounded-lg border">
         <button
           onClick={() => setExercisesExpanded(!exercisesExpanded)}
@@ -1039,88 +930,55 @@ function OverviewContent({ patient }: { patient: Patient }) {
         </button>
 
         {exercisesExpanded && (
-          <div className="border-t">
+          <div className="border-t p-3">
             {isLoading ? (
-              <div className="p-3 text-sm text-muted-foreground">Loading...</div>
+              <div className="text-sm text-muted-foreground">Loading...</div>
             ) : exercises.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground">No exercises logged today</div>
+              <div className="text-sm text-muted-foreground">No exercises logged today</div>
             ) : (
-              <div className="divide-y">
-                {exercises.map((exercise) => {
-                  const isExpanded = expandedExercises.has(exercise.id);
-                  const summary = exerciseSummaries[exercise.id] || `${exercise.exercise_type || exercise.name} - ${exercise.duration_minutes || 0} min`;
-                  
-                  return (
-                    <div 
-                      key={exercise.id} 
-                      className={cn(
-                        "p-3 transition-colors cursor-pointer hover:bg-muted/20",
-                      )}
-                      onClick={() => {
-                        const next = new Set(expandedExercises);
-                        if (next.has(exercise.id)) {
-                          next.delete(exercise.id);
-                        } else {
-                          next.add(exercise.id);
-                        }
-                        setExpandedExercises(next);
-                      }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
+              <div className="space-y-3">
+                {/* Section Summary */}
+                <p className="text-sm text-foreground leading-relaxed">
+                  {exercisesSectionSummary || (aiSummary ? 
+                    `Patient completed ${exercises.length} ${exercises.length === 1 ? 'activity' : 'activities'} today totaling ${exercises.reduce((sum, e) => sum + (e.duration_minutes || 0), 0)} minutes.` : 
+                    "Loading summary..."
+                  )}
+                </p>
+                
+                {/* Expandable Activity Details */}
+                <details className="group">
+                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
+                    <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                    View activity details ({exercises.length})
+                  </summary>
+                  <div className="mt-3 space-y-3 pl-4 border-l-2 border-muted">
+                    {exercises.map((exercise) => (
+                      <div key={exercise.id} className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
                           <Activity className="h-4 w-4 text-muted-foreground" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-medium text-foreground">
-                              {formatTime(exercise.logged_at)}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                              {isExpanded ? "collapse" : "expand"}
-                            </span>
+                          <p className="text-sm font-medium text-foreground">{exercise.exercise_type || exercise.name || "Exercise"}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>{formatTime(exercise.logged_at)}</span>
+                            {exercise.duration_minutes && (
+                              <>
+                                <span>·</span>
+                                <span>{exercise.duration_minutes} min</span>
+                              </>
+                            )}
+                            {exercise.calories_burned && (
+                              <>
+                                <span>·</span>
+                                <span>{exercise.calories_burned} cal</span>
+                              </>
+                            )}
                           </div>
-                          
-                          {/* Summary */}
-                          <p className="text-sm text-foreground leading-relaxed">
-                            {summary}
-                          </p>
-                          
-                          {/* Full Details (expandable) */}
-                          {isExpanded && (
-                            <div className="mt-3 pt-3 border-t border-dashed">
-                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-                                Full Details
-                              </p>
-                              <p className="text-sm font-medium text-foreground mb-1">{exercise.exercise_type || exercise.name || "Exercise"}</p>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                {exercise.duration_minutes && (
-                                  <>
-                                    <span>{exercise.duration_minutes} min</span>
-                                  </>
-                                )}
-                                {exercise.calories_burned && (
-                                  <>
-                                    <span>·</span>
-                                    <span>{exercise.calories_burned} cal burned</span>
-                                  </>
-                                )}
-                                {exercise.intensity && (
-                                  <>
-                                    <span>·</span>
-                                    <span className="capitalize">{exercise.intensity} intensity</span>
-                                  </>
-                                )}
-                              </div>
-                              {exercise.notes && (
-                                <p className="text-xs text-muted-foreground mt-2">{exercise.notes}</p>
-                              )}
-                            </div>
-                          )}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                </details>
               </div>
             )}
           </div>

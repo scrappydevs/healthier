@@ -1086,6 +1086,43 @@ async def get_hallways(supabase) -> Dict[str, Any]:
 # --- Patient Operations ---
 
 async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any]:
+    """Fetch real patients from Supabase database"""
+    try:
+        if supabase:
+            response = supabase.table("patients").select("id, name, date_of_birth, gender, phone, conditions, allergies, notes, created_at").execute()
+            patients = response.data if response.data else []
+            
+            # Format patients for response
+            formatted = []
+            for p in patients:
+                age = None
+                if p.get("date_of_birth"):
+                    from datetime import date
+                    try:
+                        dob = datetime.strptime(p["date_of_birth"], "%Y-%m-%d").date()
+                        today = date.today()
+                        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    except:
+                        pass
+                
+                formatted.append({
+                    "id": p["id"],
+                    "name": p.get("name", "Unknown"),
+                    "age": age,
+                    "gender": p.get("gender"),
+                    "conditions": p.get("conditions", []),
+                    "allergies": p.get("allergies", []),
+                    "notes": p.get("notes")
+                })
+            
+            return {
+                "patients": formatted,
+                "count": len(formatted)
+            }
+    except Exception as e:
+        print(f"Error fetching patients from Supabase: {e}")
+    
+    # Fallback to mock data if Supabase fails
     patients = [p for p in MOCK_PATIENTS if include_discharged or p.get("room")]
     return {
         "patients": patients,
@@ -1094,6 +1131,45 @@ async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any
 
 
 async def search_patients(query: str, supabase) -> Dict[str, Any]:
+    """Search for real patients in Supabase database"""
+    try:
+        if supabase:
+            # Search by name (case insensitive)
+            response = supabase.table("patients").select("id, name, date_of_birth, gender, conditions, allergies, notes").ilike("name", f"%{query}%").execute()
+            patients = response.data if response.data else []
+            
+            # Format patients for response
+            formatted = []
+            for p in patients:
+                age = None
+                if p.get("date_of_birth"):
+                    from datetime import date
+                    try:
+                        dob = datetime.strptime(p["date_of_birth"], "%Y-%m-%d").date()
+                        today = date.today()
+                        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    except:
+                        pass
+                
+                formatted.append({
+                    "id": p["id"],
+                    "name": p.get("name", "Unknown"),
+                    "age": age,
+                    "gender": p.get("gender"),
+                    "conditions": p.get("conditions", []),
+                    "allergies": p.get("allergies", []),
+                    "notes": p.get("notes")
+                })
+            
+            return {
+                "patients": formatted,
+                "count": len(formatted),
+                "query": query
+            }
+    except Exception as e:
+        print(f"Error searching patients in Supabase: {e}")
+    
+    # Fallback to mock data
     query_lower = query.lower()
     matches = [
         p for p in MOCK_PATIENTS
@@ -1109,6 +1185,56 @@ async def search_patients(query: str, supabase) -> Dict[str, Any]:
 
 
 async def get_patient_details(patient_id: str, supabase) -> Dict[str, Any]:
+    """Fetch real patient details from Supabase database"""
+    try:
+        if supabase:
+            # Try to fetch by ID first
+            response = supabase.table("patients").select("*").eq("id", patient_id).execute()
+            
+            # If not found by ID, try by name (fuzzy match)
+            if not response.data:
+                response = supabase.table("patients").select("*").ilike("name", f"%{patient_id}%").limit(1).execute()
+            
+            if response.data:
+                p = response.data[0]
+                
+                # Calculate age
+                age = None
+                if p.get("date_of_birth"):
+                    from datetime import date
+                    try:
+                        dob = datetime.strptime(p["date_of_birth"], "%Y-%m-%d").date()
+                        today = date.today()
+                        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    except:
+                        pass
+                
+                # Fetch medications for this patient
+                meds_response = supabase.table("patient_medication_schedules").select("*, pills(name, dosage)").eq("patient_id", p["id"]).execute()
+                medications = meds_response.data if meds_response.data else []
+                
+                # Fetch alerts for this patient
+                alerts_response = supabase.table("alerts").select("*").eq("patient_id", p["id"]).eq("is_resolved", False).execute()
+                alerts = alerts_response.data if alerts_response.data else []
+                
+                return {
+                    "patient": {
+                        "id": p["id"],
+                        "name": p.get("name", "Unknown"),
+                        "age": age,
+                        "gender": p.get("gender"),
+                        "conditions": p.get("conditions", []),
+                        "allergies": p.get("allergies", []),
+                        "notes": p.get("notes")
+                    },
+                    "patient_name": p.get("name", "Unknown"),
+                    "medications": medications,
+                    "alerts": alerts
+                }
+    except Exception as e:
+        print(f"Error fetching patient details from Supabase: {e}")
+    
+    # Fallback to mock data
     patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
@@ -1454,6 +1580,42 @@ async def mark_medication_given(patient_id: str, medication_id: str, administere
 
 
 async def get_missed_medications(supabase) -> Dict[str, Any]:
+    """Fetch real missed medications from Supabase database"""
+    try:
+        if supabase:
+            from datetime import date, timedelta
+            today = date.today().isoformat()
+            
+            # Get all pill logs for today that are missed or late
+            response = supabase.table("pill_logs").select(
+                "*, patients(id, name), pills(name, dosage)"
+            ).in_("status", ["missed", "late"]).gte("scheduled_time", today).execute()
+            
+            missed = response.data if response.data else []
+            
+            # Format the response
+            formatted = []
+            for m in missed:
+                patient = m.get("patients", {})
+                pill = m.get("pills", {})
+                formatted.append({
+                    "id": m.get("id"),
+                    "patient_id": m.get("patient_id"),
+                    "patient_name": patient.get("name", "Unknown") if patient else "Unknown",
+                    "medication_name": pill.get("name", "Unknown") if pill else "Unknown",
+                    "dosage": pill.get("dosage") if pill else None,
+                    "scheduled_time": m.get("scheduled_time"),
+                    "status": m.get("status")
+                })
+            
+            return {
+                "missed_medications": formatted,
+                "count": len(formatted)
+            }
+    except Exception as e:
+        print(f"Error fetching missed medications from Supabase: {e}")
+    
+    # Fallback to mock data
     overdue = [m.copy() for m in MOCK_MEDICATIONS if m["status"] == "overdue"]
     # Add patient names to missed medications
     for med in overdue:
@@ -1467,6 +1629,39 @@ async def get_missed_medications(supabase) -> Dict[str, Any]:
 
 
 async def get_medication_alerts(supabase) -> Dict[str, Any]:
+    """Fetch real medication alerts from Supabase database"""
+    try:
+        if supabase:
+            # Get medication-related alerts (missed_dose, low_adherence)
+            response = supabase.table("alerts").select(
+                "*, patients(id, name)"
+            ).in_("type", ["missed_dose", "low_adherence"]).eq("is_resolved", False).execute()
+            
+            alerts = response.data if response.data else []
+            
+            # Format the response
+            formatted = []
+            for a in alerts:
+                patient = a.get("patients", {})
+                formatted.append({
+                    "id": a.get("id"),
+                    "title": a.get("title"),
+                    "message": a.get("message"),
+                    "severity": a.get("severity"),
+                    "type": a.get("type"),
+                    "patient_id": a.get("patient_id"),
+                    "patient_name": patient.get("name", "Unknown") if patient else "Unknown",
+                    "created_at": a.get("created_at")
+                })
+            
+            return {
+                "alerts": formatted,
+                "count": len(formatted)
+            }
+    except Exception as e:
+        print(f"Error fetching medication alerts from Supabase: {e}")
+    
+    # Fallback to mock data
     med_alerts = [a.copy() for a in MOCK_ALERTS if "medication" in a["title"].lower() or "medication" in a["description"].lower()]
     # Add patient names to alerts
     for alert in med_alerts:
@@ -1483,6 +1678,41 @@ async def get_medication_alerts(supabase) -> Dict[str, Any]:
 # --- Alert System ---
 
 async def get_active_alerts(severity: Optional[str], supabase) -> Dict[str, Any]:
+    """Fetch real active alerts from Supabase database"""
+    try:
+        if supabase:
+            query = supabase.table("alerts").select("*, patients(id, name)").eq("is_resolved", False)
+            
+            if severity:
+                query = query.eq("severity", severity)
+            
+            response = query.execute()
+            alerts = response.data if response.data else []
+            
+            # Format the response
+            formatted = []
+            for a in alerts:
+                patient = a.get("patients", {})
+                formatted.append({
+                    "id": a.get("id"),
+                    "title": a.get("title"),
+                    "message": a.get("message"),
+                    "severity": a.get("severity"),
+                    "type": a.get("type"),
+                    "patient_id": a.get("patient_id"),
+                    "patient_name": patient.get("name", "Unknown") if patient else None,
+                    "created_at": a.get("created_at")
+                })
+            
+            return {
+                "alerts": formatted,
+                "count": len(formatted),
+                "severity_filter": severity
+            }
+    except Exception as e:
+        print(f"Error fetching active alerts from Supabase: {e}")
+    
+    # Fallback to mock data
     alerts = [a.copy() for a in MOCK_ALERTS if a["status"] == "active"]
     if severity:
         alerts = [a for a in alerts if a["severity"] == severity]

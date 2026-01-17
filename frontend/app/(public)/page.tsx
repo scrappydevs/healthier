@@ -87,7 +87,7 @@ export default function LandingPage() {
             {/* Left: Text */}
             <div className="order-2 lg:order-1 relative z-10 pr-0 lg:pr-8">
               <h1 className="opacity-0 animate-fade-in-up text-5xl md:text-6xl lg:text-7xl font-semibold text-white leading-[1.1] tracking-tight mb-6">
-                Track your exercise.
+                Health tracking made simple.
               </h1>
               
               <p className="opacity-0 animate-fade-in-up animation-delay-100 text-lg md:text-xl text-slate-400 leading-relaxed mb-10">
