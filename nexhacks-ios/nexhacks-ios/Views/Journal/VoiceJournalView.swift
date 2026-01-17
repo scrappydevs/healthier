@@ -36,8 +36,15 @@ struct VoiceJournalView: View {
                 .padding(.top, AppTheme.Spacing.sm)
 
                 // Audio visualization
-                waveformVisualization
-                    .padding(.vertical, AppTheme.Spacing.md)
+                VStack(spacing: AppTheme.Spacing.xs) {
+                    waveformVisualization
+                    
+                    Text(formatRecordingTime())
+                        .font(AppTheme.Typography.caption)
+                        .foregroundColor(.textSecondary)
+                        .monospacedDigit()
+                }
+                .padding(.vertical, AppTheme.Spacing.md)
 
                 // Conversation view
                 conversationView
@@ -130,39 +137,38 @@ struct VoiceJournalView: View {
     private var conversationView: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: AppTheme.Spacing.md) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
                     if conversationMessages.isEmpty && viewModel.currentTranscript.isEmpty {
                         emptyConversationState
-                    }
-                    
-                    ForEach(conversationMessages) { message in
-                        ConversationBubble(message: message)
-                            .id(message.id)
-                    }
-                    
-                    // Current user message being transcribed (only show if not already in messages)
-                    if !currentUserMessage.isEmpty && !conversationMessages.contains(where: { $0.isUser && $0.isTranscribing }) {
-                        ConversationBubble(
-                            message: ConversationMessage(
-                                content: currentUserMessage,
-                                isUser: true,
-                                timestamp: Date(),
-                                isTranscribing: true
+                    } else {
+                        ForEach(conversationMessages) { message in
+                            JournalEntrySection(message: message)
+                                .id(message.id)
+                        }
+                        
+                        // Current user message being transcribed
+                        if !currentUserMessage.isEmpty && !conversationMessages.contains(where: { $0.isUser && $0.isTranscribing }) {
+                            JournalEntrySection(
+                                message: ConversationMessage(
+                                    content: currentUserMessage,
+                                    isUser: true,
+                                    timestamp: Date(),
+                                    isTranscribing: true
+                                )
                             )
-                        )
-                        .id("current-user")
-                    }
-                    
-                    // AI thinking indicator
-                    if isAIThinking {
-                        AITypingIndicator()
-                            .id("typing")
+                            .id("current-user")
+                        }
+                        
+                        // AI thinking indicator
+                        if isAIThinking {
+                            AITypingIndicator()
+                                .id("typing")
+                        }
                     }
                 }
-                .padding(AppTheme.Spacing.md)
+                .padding(AppTheme.Spacing.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Color.appBackground)
-            .cornerRadius(AppTheme.CornerRadius.md)
             .onChange(of: conversationMessages.count) { _, _ in
                 withAnimation(.easeOut(duration: 0.3)) {
                     if let lastMessage = conversationMessages.last {
@@ -189,11 +195,11 @@ struct VoiceJournalView: View {
     
     private var emptyConversationState: some View {
         VStack(spacing: AppTheme.Spacing.md) {
-            Image(systemName: "bubble.left.and.bubble.right.fill")
+            Image(systemName: "mic.fill")
                 .font(.system(size: 40))
                 .foregroundColor(.textSecondary.opacity(0.4))
             
-            Text("Start speaking to begin the conversation")
+            Text("Start speaking to begin your journal entry")
                 .font(AppTheme.Typography.body)
                 .foregroundColor(.textSecondary)
         }
@@ -234,6 +240,16 @@ struct VoiceJournalView: View {
         if let index = conversationMessages.lastIndex(where: { $0.isUser && $0.isTranscribing }) {
             conversationMessages[index].isTranscribing = false
         }
+    }
+    
+    private func formatRecordingTime() -> String {
+        guard let startTime = viewModel.currentEntryStartTime else {
+            return "00:00"
+        }
+        let elapsed = Date().timeIntervalSince(startTime)
+        let minutes = Int(elapsed) / 60
+        let seconds = Int(elapsed) % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 
     private var controlButtons: some View {
@@ -290,78 +306,57 @@ struct ConversationMessage: Identifiable {
     var isTranscribing: Bool = false
 }
 
-// MARK: - Conversation Bubble
+// MARK: - Journal Entry Section
 
-struct ConversationBubble: View {
+struct JournalEntrySection: View {
     let message: ConversationMessage
     
     var body: some View {
-        HStack(alignment: .top, spacing: AppTheme.Spacing.sm) {
-            if !message.isUser {
-                Spacer(minLength: 50)
-            }
-            
-            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    if !message.isUser {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            if message.isUser {
+                // User transcription
+                HStack(alignment: .top, spacing: AppTheme.Spacing.xs) {
+                    if message.isTranscribing {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .tint(.appPrimary)
+                    }
+                    Text(message.content)
+                        .font(AppTheme.Typography.body)
+                        .foregroundColor(.textPrimary)
+                        .lineSpacing(6)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                // AI response
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                    HStack(spacing: AppTheme.Spacing.xs) {
                         Image(systemName: "sparkles")
                             .font(.caption2)
                             .foregroundColor(.appPrimary)
+                        Text("AI")
+                            .font(AppTheme.Typography.caption)
+                            .foregroundColor(.textSecondary)
+                            .textCase(.uppercase)
+                            .tracking(1)
                     }
                     
                     Text(message.content)
                         .font(AppTheme.Typography.body)
-                        .foregroundColor(message.isUser ? .white : .textPrimary)
-                        .lineSpacing(4)
+                        .foregroundColor(.textPrimary)
+                        .lineSpacing(6)
                         .fixedSize(horizontal: false, vertical: true)
-                    
-                    if message.isUser {
-                        if message.isTranscribing {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                                .tint(.white.opacity(0.7))
-                        }
-                    }
                 }
-                .padding(.horizontal, AppTheme.Spacing.md)
-                .padding(.vertical, AppTheme.Spacing.sm)
-                .background(
-                    Group {
-                        if message.isUser {
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.appPrimary, Color.appPrimary.opacity(0.8)]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        } else {
-                            Color.cardBackground
-                        }
-                    }
-                )
-                .cornerRadius(AppTheme.CornerRadius.md)
+                .padding(AppTheme.Spacing.md)
+                .background(Color.appPrimary.opacity(0.05))
+                .cornerRadius(AppTheme.CornerRadius.sm)
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.CornerRadius.md)
-                        .stroke(message.isUser ? Color.clear : Color.appPrimary.opacity(0.2), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppTheme.CornerRadius.sm)
+                        .stroke(Color.appPrimary.opacity(0.1), lineWidth: 1)
                 )
-                .shadow(color: .black.opacity(message.isUser ? 0.1 : 0.05), radius: 2, x: 0, y: 1)
-                
-                Text(formatTime(message.timestamp))
-                    .font(AppTheme.Typography.caption)
-                    .foregroundColor(.textSecondary)
-                    .padding(.horizontal, 4)
-            }
-            .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: message.isUser ? .trailing : .leading)
-            
-            if message.isUser {
-                Spacer(minLength: 50)
             }
         }
-    }
-    
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -371,37 +366,27 @@ struct AITypingIndicator: View {
     @State private var animationPhase: Int = 0
     
     var body: some View {
-        HStack {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.caption2)
-                    .foregroundColor(.appPrimary)
-                
-                HStack(spacing: 4) {
-                    ForEach(0..<3) { index in
-                        Circle()
-                            .fill(Color.appPrimary.opacity(0.6))
-                            .frame(width: 6, height: 6)
-                            .scaleEffect(animationPhase == index ? 1.2 : 0.8)
-                            .opacity(animationPhase == index ? 1.0 : 0.5)
-                    }
-                }
-                
-                Text("AI is thinking...")
-                    .font(AppTheme.Typography.caption)
-                    .foregroundColor(.textSecondary)
-            }
-            .padding(.horizontal, AppTheme.Spacing.md)
-            .padding(.vertical, AppTheme.Spacing.sm)
-            .background(Color.cardBackground)
-            .cornerRadius(AppTheme.CornerRadius.md)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.CornerRadius.md)
-                    .stroke(Color.appPrimary.opacity(0.2), lineWidth: 1)
-            )
+        HStack(spacing: AppTheme.Spacing.xs) {
+            Image(systemName: "sparkles")
+                .font(.caption2)
+                .foregroundColor(.appPrimary)
             
-            Spacer(minLength: 50)
+            HStack(spacing: 4) {
+                ForEach(0..<3) { index in
+                    Circle()
+                        .fill(Color.appPrimary.opacity(0.6))
+                        .frame(width: 4, height: 4)
+                        .scaleEffect(animationPhase == index ? 1.2 : 0.8)
+                        .opacity(animationPhase == index ? 1.0 : 0.5)
+                }
+            }
+            
+            Text("AI is thinking...")
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
         }
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onReceive(Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()) { _ in
             withAnimation(.easeInOut(duration: 0.3)) {
                 animationPhase = (animationPhase + 1) % 3
