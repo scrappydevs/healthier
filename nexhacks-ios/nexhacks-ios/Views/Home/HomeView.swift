@@ -10,6 +10,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
     @StateObject var viewModel: HomeViewModel
+    @State private var showingRoomScanner = false
 
     init(viewModel: HomeViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -21,6 +22,9 @@ struct HomeView: View {
                 VStack(spacing: AppTheme.Spacing.lg) {
                     // Welcome Section
                     welcomeSection
+                    
+                    // Scan Room Button
+                    scanRoomButton
                     
                     // Daily Health Score
                     dailyHealthScoreCard
@@ -40,6 +44,10 @@ struct HomeView: View {
                 .padding(AppTheme.Spacing.md)
             }
             .background(Color.appBackground)
+            .navigationTitle("Home")
+            .sheet(isPresented: $showingRoomScanner) {
+                RoomPlanScannerView(viewModel: appState.roomViewModel)
+            }
         }
     }
 
@@ -52,6 +60,46 @@ struct HomeView: View {
 
             Spacer()
         }
+    }
+    
+    // MARK: - Scan Room Button
+    private var scanRoomButton: some View {
+        Button {
+            showingRoomScanner = true
+        } label: {
+            HStack(spacing: AppTheme.Spacing.md) {
+                Image(systemName: "camera.fill")
+                    .font(.title3)
+                    .foregroundColor(.white)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Scan Room")
+                        .font(AppTheme.Typography.headline)
+                        .foregroundColor(.white)
+                    
+                    Text("Create 3D room model")
+                        .font(AppTheme.Typography.caption)
+                        .foregroundColor(.white.opacity(0.9))
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.callout)
+                    .foregroundColor(.white.opacity(0.8))
+            }
+            .padding(AppTheme.Spacing.md)
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.appPrimary, Color.appPrimary.opacity(0.8)]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(AppTheme.CornerRadius.md)
+            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Daily Health Score Card

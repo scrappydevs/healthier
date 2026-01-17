@@ -54,34 +54,144 @@ struct JournalListView: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: AppTheme.Spacing.lg) {
-            Image(systemName: "book.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.appPrimary)
+        VStack(spacing: AppTheme.Spacing.xl) {
+            Spacer()
+            
+            ZStack {
+                Circle()
+                    .fill(Color.appPrimary.opacity(0.1))
+                    .frame(width: 120, height: 120)
+                
+                Image(systemName: "book.fill")
+                    .font(.system(size: 50))
+                    .foregroundColor(.appPrimary)
+            }
 
-            Text("Start your first journal entry")
-                .font(AppTheme.Typography.title)
-                .foregroundColor(.textPrimary)
+            VStack(spacing: AppTheme.Spacing.sm) {
+                Text("Start Your Journal")
+                    .font(AppTheme.Typography.title)
+                    .foregroundColor(.textPrimary)
 
-            Text("Tap the microphone to begin voice journaling")
-                .font(AppTheme.Typography.body)
-                .foregroundColor(.textSecondary)
-                .multilineTextAlignment(.center)
+                Text("Capture your thoughts and experiences with voice journaling")
+                    .font(AppTheme.Typography.body)
+                    .foregroundColor(.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+            }
+
+            Spacer()
         }
-        .padding(AppTheme.Spacing.xl)
     }
 
     private var entriesList: some View {
         ScrollView {
-            LazyVStack(spacing: AppTheme.Spacing.md) {
-                ForEach(viewModel.entries) { entry in
-                    NavigationLink(destination: JournalDetailView(entry: entry, viewModel: viewModel)) {
-                        JournalEntryCard(entry: entry)
+            LazyVStack(spacing: AppTheme.Spacing.lg) {
+                // Summary Stats Card
+                if !viewModel.entries.isEmpty {
+                    summaryStatsCard
+                }
+                
+                // Grouped Entries
+                ForEach(groupedEntries.keys.sorted(by: >), id: \.self) { dateKey in
+                    Section(header: sectionHeader(for: dateKey)) {
+                        ForEach(groupedEntries[dateKey] ?? []) { entry in
+                            NavigationLink(destination: JournalDetailView(entry: entry, viewModel: viewModel)) {
+                                JournalEntryCard(entry: entry)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
                     }
-                    .buttonStyle(PlainButtonStyle())
                 }
             }
-            .padding(AppTheme.Spacing.md)
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.bottom, 80)
+        }
+    }
+    
+    private var summaryStatsCard: some View {
+        HStack(spacing: AppTheme.Spacing.lg) {
+            StatItem(
+                icon: "book.fill",
+                value: "\(viewModel.entries.count)",
+                label: "Entries",
+                color: .appPrimary
+            )
+            
+            Divider()
+                .frame(height: 40)
+            
+            StatItem(
+                icon: "clock.fill",
+                value: "\(totalDuration)",
+                label: "Minutes",
+                color: .appAccent
+            )
+            
+            Divider()
+                .frame(height: 40)
+            
+            StatItem(
+                icon: "calendar",
+                value: "\(uniqueDays)",
+                label: "Days",
+                color: .success
+            )
+        }
+        .padding(AppTheme.Spacing.md)
+        .background(Color.cardBackground)
+        .cornerRadius(AppTheme.CornerRadius.md)
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+    }
+    
+    private func sectionHeader(for dateKey: Date) -> some View {
+        HStack {
+            Text(formatSectionDate(dateKey))
+                .font(AppTheme.Typography.headline)
+                .foregroundColor(.textPrimary)
+            
+            Spacer()
+            
+            Text("\(groupedEntries[dateKey]?.count ?? 0) entries")
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.xs)
+    }
+    
+    private var groupedEntries: [Date: [JournalEntry]] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: viewModel.entries) { entry in
+            calendar.startOfDay(for: entry.date)
+        }
+        return grouped
+    }
+    
+    private var totalDuration: Int {
+        let total = viewModel.entries.compactMap { $0.duration }.reduce(0, +)
+        return Int(total / 60)
+    }
+    
+    private var uniqueDays: Int {
+        let calendar = Calendar.current
+        let days = Set(viewModel.entries.map { calendar.startOfDay(for: $0.date) })
+        return days.count
+    }
+    
+    private func formatSectionDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        } else if calendar.dateInterval(of: .weekOfYear, for: Date())?.contains(date) == true {
+            formatter.dateFormat = "EEEE"
+            return formatter.string(from: date)
+        } else {
+            formatter.dateStyle = .long
+            return formatter.string(from: date)
         }
     }
 
@@ -89,15 +199,42 @@ struct JournalListView: View {
         Button {
             showingVoiceJournal = true
         } label: {
-            Image(systemName: "mic.fill")
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.appPrimary)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+            ZStack {
+                Circle()
+                    .fill(Color.appPrimary)
+                    .frame(width: 64, height: 64)
+                    .shadow(color: .appPrimary.opacity(0.4), radius: 12, x: 0, y: 6)
+                
+                Image(systemName: "mic.fill")
+                    .font(.title2)
+                    .foregroundColor(.white)
+            }
         }
         .padding(AppTheme.Spacing.lg)
+    }
+}
+
+struct StatItem: View {
+    let icon: String
+    let value: String
+    let label: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: AppTheme.Spacing.xs) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(AppTheme.Typography.title2)
+                .foregroundColor(.textPrimary)
+            
+            Text(label)
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -105,33 +242,66 @@ struct JournalEntryCard: View {
     let entry: JournalEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            HStack {
-                Text(entry.date, style: .date)
-                    .font(AppTheme.Typography.subheadline)
-                    .foregroundColor(.textSecondary)
-
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            // Header
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.date, style: .time)
+                        .font(AppTheme.Typography.headline)
+                        .foregroundColor(.textPrimary)
+                    
+                    if let duration = entry.duration {
+                        HStack(spacing: 4) {
+                            Image(systemName: "waveform")
+                                .font(.caption2)
+                                .foregroundColor(.appPrimary)
+                            Text(formatDuration(duration))
+                                .font(AppTheme.Typography.caption)
+                                .foregroundColor(.appPrimary)
+                        }
+                    }
+                }
+                
                 Spacer()
-
-                if let duration = entry.duration {
-                    Text(formatDuration(duration))
+                
+                // Word count badge
+                if !entry.transcript.isEmpty {
+                    Text("\(wordCount) words")
                         .font(AppTheme.Typography.caption)
-                        .foregroundColor(.appPrimary)
+                        .foregroundColor(.textSecondary)
                         .padding(.horizontal, AppTheme.Spacing.sm)
-                        .padding(.vertical, AppTheme.Spacing.xs)
-                        .background(Color.appPrimary.opacity(0.1))
+                        .padding(.vertical, 4)
+                        .background(Color.appBackground)
                         .cornerRadius(AppTheme.CornerRadius.sm)
                 }
-
-                Text(entry.date, style: .time)
-                    .font(AppTheme.Typography.caption)
-                    .foregroundColor(.textSecondary)
             }
-
+            
+            Divider()
+                .background(Color.divider)
+            
+            // Preview text
             Text(previewText)
                 .font(AppTheme.Typography.body)
                 .foregroundColor(.textPrimary)
-                .lineLimit(3)
+                .lineLimit(4)
+                .lineSpacing(4)
+            
+            // Tags if available
+            if !entry.tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        ForEach(entry.tags.prefix(3), id: \.self) { tag in
+                            Text(tag)
+                                .font(AppTheme.Typography.caption)
+                                .foregroundColor(.appPrimary)
+                                .padding(.horizontal, AppTheme.Spacing.sm)
+                                .padding(.vertical, 4)
+                                .background(Color.appPrimary.opacity(0.1))
+                                .cornerRadius(AppTheme.CornerRadius.sm)
+                        }
+                    }
+                }
+            }
         }
         .padding(AppTheme.Spacing.md)
         .background(Color.cardBackground)
@@ -140,15 +310,28 @@ struct JournalEntryCard: View {
     }
 
     private var previewText: String {
-        let lines = entry.transcript.components(separatedBy: .newlines)
-        let preview = lines.prefix(3).joined(separator: " ")
-        return preview.isEmpty ? "No transcript" : preview
+        let trimmed = entry.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "No transcript available"
+        }
+        let lines = trimmed.components(separatedBy: .newlines)
+        let preview = lines.prefix(4).joined(separator: " ")
+        return preview
+    }
+    
+    private var wordCount: Int {
+        entry.transcript.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .count
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        }
+        return "\(seconds)s"
     }
 }
 

@@ -291,53 +291,144 @@ class SupabaseService: ObservableObject {
     
     // MARK: - Journal Database Operations
     
+    /// Get patient_id from user_id
+    private func getPatientId(userId: UUID) async throws -> UUID {
+        struct PatientIdResponse: Codable {
+            let id: UUID
+        }
+        
+        let response: [PatientIdResponse] = try await supabase
+            .from("patients")
+            .select("id")
+            .eq("user_id", value: userId.uuidString)
+            .execute()
+            .value
+        
+        guard let patient = response.first else {
+            throw NSError(domain: "SupabaseService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Patient not found for user"])
+        }
+        
+        return patient.id
+    }
+    
     func createJournalEntry(_ entry: JournalEntry, userId: UUID? = nil) async throws {
-        let currentUserId = userId ?? getCurrentUserId()
-        let supabaseEntry = SupabaseJournalEntry(from: entry, userId: currentUserId)
+        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        let patientId = try await getPatientId(userId: currentUserId)
+        
+        let journalLog = SupabaseJournalLog(
+            id: entry.id,
+            patientId: patientId,
+            transcript: entry.transcript,
+            voiceTranscription: nil,
+            durationSeconds: entry.duration.map { Double($0) },
+            tags: entry.tags,
+            mood: nil,
+            sentimentScore: nil,
+            aiAnalysis: nil,
+            metadata: nil,
+            loggedAt: entry.date,
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt
+        )
+        
         try await supabase
-            .from("journal_entries")
-            .insert(supabaseEntry)
+            .from("journal_logs")
+            .insert(journalLog)
             .execute()
     }
     
     func fetchJournalEntries(userId: UUID? = nil) async throws -> [JournalEntry] {
         let currentUserId = userId ?? getCurrentUserId() ?? UUID()
-        let response: [SupabaseJournalEntry] = try await supabase
-            .from("journal_entries")
+        let patientId = try await getPatientId(userId: currentUserId)
+        
+        let response: [SupabaseJournalLog] = try await supabase
+            .from("journal_logs")
             .select()
-            .eq("user_id", value: currentUserId.uuidString)
+            .eq("patient_id", value: patientId.uuidString)
+            .order("logged_at", ascending: false)
             .execute()
             .value
-        return response.map { $0.toJournalEntry() }
+        
+        return response.map { log in
+            JournalEntry(
+                id: log.id,
+                transcript: log.transcript,
+                date: log.loggedAt,
+                duration: log.durationSeconds.map { TimeInterval($0) },
+                tags: log.tags ?? [],
+                createdAt: log.createdAt,
+                updatedAt: log.updatedAt
+            )
+        }
     }
     
     func updateJournalEntry(_ entry: JournalEntry, userId: UUID? = nil) async throws {
-        let currentUserId = userId ?? getCurrentUserId()
-        let supabaseEntry = SupabaseJournalEntry(from: entry, userId: currentUserId)
+        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        let patientId = try await getPatientId(userId: currentUserId)
+        
+        let journalLog = SupabaseJournalLog(
+            id: entry.id,
+            patientId: patientId,
+            transcript: entry.transcript,
+            voiceTranscription: nil,
+            durationSeconds: entry.duration.map { Double($0) },
+            tags: entry.tags,
+            mood: nil,
+            sentimentScore: nil,
+            aiAnalysis: nil,
+            metadata: nil,
+            loggedAt: entry.date,
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt
+        )
+        
         try await supabase
-            .from("journal_entries")
-            .update(supabaseEntry)
+            .from("journal_logs")
+            .update(journalLog)
             .eq("id", value: entry.id.uuidString)
             .execute()
     }
     
     func deleteJournalEntry(_ id: UUID) async throws {
         try await supabase
-            .from("journal_entries")
+            .from("journal_logs")
             .delete()
             .eq("id", value: id.uuidString)
             .execute()
     }
     
-    func getJournalContextForQuestion(_ question: String) async throws -> [JournalEntry] {
-        let response: [SupabaseJournalEntry] = try await supabase
-            .from("journal_entries")
+    func getJournalContextForQuestion(_ question: String, userId: UUID? = nil, limit: Int = 10) async throws -> [JournalEntry] {
+        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        let patientId = try await getPatientId(userId: currentUserId)
+        
+        // Use full-text search on transcript - search for entries containing question keywords
+        let response: [SupabaseJournalLog] = try await supabase
+            .from("journal_logs")
             .select()
-            .textSearch("transcript", query: question)
-            .limit(5)
+            .eq("patient_id", value: patientId.uuidString)
+            .order("logged_at", ascending: false)
+            .limit(limit * 2)
             .execute()
             .value
-        return response.map { $0.toJournalEntry() }
+        
+        // Filter entries that contain question keywords
+        let keywords = question.lowercased().components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+        let filtered = response.filter { log in
+            let transcriptLower = log.transcript.lowercased()
+            return keywords.isEmpty || keywords.allSatisfy { transcriptLower.contains($0) }
+        }
+        
+        return Array(filtered.prefix(limit)).map { log in
+            JournalEntry(
+                id: log.id,
+                transcript: log.transcript,
+                date: log.loggedAt,
+                duration: log.durationSeconds.map { TimeInterval($0) },
+                tags: log.tags ?? [],
+                createdAt: log.createdAt,
+                updatedAt: log.updatedAt
+            )
+        }
     }
     
     // MARK: - User Database Operations
@@ -655,47 +746,83 @@ struct SupabaseDailySummary: Codable {
     }
 }
 
-struct SupabaseJournalEntry: Codable {
+struct SupabaseJournalLog: Codable {
     let id: UUID
-    let userId: UUID
-    let date: Date
-    var transcript: String
-    var duration: Double?
-    var tags: [String]
-    var createdAt: Date?
-    var updatedAt: Date?
+    let patientId: UUID
+    let transcript: String
+    var voiceTranscription: String?
+    var durationSeconds: Double?
+    var tags: [String]?
+    var mood: String?
+    var sentimentScore: Double?
+    var aiAnalysis: JSONBValue?
+    var metadata: JSONBValue?
+    let loggedAt: Date
+    let createdAt: Date
+    var updatedAt: Date
     
     enum CodingKeys: String, CodingKey {
         case id
-        case userId = "user_id"
-        case date
+        case patientId = "patient_id"
         case transcript
-        case duration
+        case voiceTranscription = "voice_transcription"
+        case durationSeconds = "duration_seconds"
         case tags
+        case mood
+        case sentimentScore = "sentiment_score"
+        case aiAnalysis = "ai_analysis"
+        case metadata
+        case loggedAt = "logged_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
+}
+
+// JSONB value wrapper for flexible JSON structures
+enum JSONBValue: Codable {
+    case object([String: JSONBValue])
+    case array([JSONBValue])
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+    case null
     
-    init(from entry: JournalEntry, userId: UUID? = nil) {
-        self.id = entry.id
-        self.userId = userId ?? supabase.auth.currentUser?.id ?? UUID()
-        self.date = entry.date
-        self.transcript = entry.transcript
-        self.duration = entry.duration
-        self.tags = entry.tags
-        self.createdAt = entry.createdAt
-        self.updatedAt = entry.updatedAt
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        
+        if container.decodeNil() {
+            self = .null
+        } else if let bool = try? container.decode(Bool.self) {
+            self = .bool(bool)
+        } else if let number = try? container.decode(Double.self) {
+            self = .number(number)
+        } else if let string = try? container.decode(String.self) {
+            self = .string(string)
+        } else if let array = try? container.decode([JSONBValue].self) {
+            self = .array(array)
+        } else if let object = try? container.decode([String: JSONBValue].self) {
+            self = .object(object)
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid JSONB value")
+        }
     }
     
-    func toJournalEntry() -> JournalEntry {
-        return JournalEntry(
-            id: id,
-            transcript: transcript,
-            date: date,
-            duration: duration,
-            tags: tags,
-            createdAt: createdAt ?? Date(),
-            updatedAt: updatedAt ?? Date()
-        )
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        
+        switch self {
+        case .null:
+            try container.encodeNil()
+        case .bool(let bool):
+            try container.encode(bool)
+        case .number(let number):
+            try container.encode(number)
+        case .string(let string):
+            try container.encode(string)
+        case .array(let array):
+            try container.encode(array)
+        case .object(let object):
+            try container.encode(object)
+        }
     }
 }

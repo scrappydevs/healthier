@@ -30,7 +30,7 @@ class JournalViewModel: ObservableObject {
     private let journalRepository: JournalRepository
     private let liveKitService: LiveKitService
     private var cancellables = Set<AnyCancellable>()
-    private var currentEntryStartTime: Date?
+    private(set) var currentEntryStartTime: Date?
 
     init(
         journalRepository: JournalRepository,
