@@ -17,29 +17,48 @@ struct HomeView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: AppTheme.Spacing.lg) {
-                    // Welcome Section
-                    welcomeSection
-                    
-                    // Daily Health Score
-                    dailyHealthScoreCard
+            ZStack {
+                Color.appBackground.ignoresSafeArea()
 
-                    // Sync Status Card
-                    syncStatusCard
-                    
-                    // Health Breakdown
-                    healthBreakdownSection
+                VStack(spacing: 0) {
+                    // Header with title at top
+                    HStack {
+                        Text("Home")
+                            .font(AppTheme.Typography.title)
+                            .foregroundColor(.textPrimary)
 
-                    // Quick Stats
-                    quickStatsSection
+                        Spacer()
+                    }
+                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .padding(.bottom, AppTheme.Spacing.md)
 
-                    // Upcoming Reminders
-                    upcomingRemindersSection
+                    ScrollView {
+                        VStack(spacing: AppTheme.Spacing.lg) {
+                            // Welcome Section
+                            welcomeSection
+
+                            // Daily Health Score
+                            dailyHealthScoreCard
+
+                            // Sync Status Card
+                            syncStatusCard
+
+                            // Health Breakdown
+                            healthBreakdownSection
+
+                            // Quick Stats
+                            quickStatsSection
+
+                            // Upcoming Reminders
+                            upcomingRemindersSection
+                        }
+                        .padding(.horizontal, AppTheme.Spacing.md)
+                        .padding(.bottom, AppTheme.Spacing.md)
+                    }
                 }
-                .padding(AppTheme.Spacing.md)
             }
-            .background(Color.appBackground)
+            .navigationBarHidden(true)
         }
     }
 

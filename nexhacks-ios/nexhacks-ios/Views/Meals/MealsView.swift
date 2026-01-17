@@ -19,21 +19,36 @@ struct MealsView: View {
         NavigationView {
             ZStack {
                 Color.appBackground.ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: AppTheme.Spacing.lg) {
-                        // Today's Summary
-                        todaySummaryCard
-                        
-                        // Nutrition Breakdown
-                        nutritionBreakdownCard
-                        
-                        // Today's Meals
-                        todayMealsSection
+
+                VStack(spacing: 0) {
+                    // Header with title at top
+                    HStack {
+                        Text("Meals")
+                            .font(AppTheme.Typography.title)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
                     }
-                    .padding(AppTheme.Spacing.md)
+                    .padding(.horizontal, AppTheme.Spacing.md)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .padding(.bottom, AppTheme.Spacing.md)
+
+                    ScrollView {
+                        VStack(spacing: AppTheme.Spacing.lg) {
+                            // Today's Summary
+                            todaySummaryCard
+
+                            // Nutrition Breakdown
+                            nutritionBreakdownCard
+
+                            // Today's Meals
+                            todayMealsSection
+                        }
+                        .padding(.horizontal, AppTheme.Spacing.md)
+                        .padding(.bottom, AppTheme.Spacing.md)
+                    }
                 }
-                
+
                 // Floating Action Button
                 VStack {
                     Spacer()
@@ -55,7 +70,7 @@ struct MealsView: View {
                     }
                 }
             }
-            .navigationTitle("Meals")
+            .navigationBarHidden(true)
             .sheet(isPresented: $showingFoodCapture) {
                 FoodCaptureView(viewModel: viewModel)
             }
