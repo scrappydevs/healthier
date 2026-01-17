@@ -8,7 +8,6 @@ import {
   LayoutDashboard, 
   Users, 
   Bell, 
-  BarChart3, 
   Settings, 
   LogOut,
   Search,
@@ -29,7 +28,6 @@ const navigation = [
   { name: "Hospital View", href: "/dashboard/hospital", icon: Building2 },
   { name: "Patients", href: "/dashboard/patients", icon: Users },
   { name: "Alerts", href: "/dashboard/alerts", icon: Bell },
-  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
 ];
 
 const bottomNavigation = [
@@ -149,7 +147,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         )}>
           {sidebarOpen ? (
             <>
-              <Link href="/" className="text-lg font-semibold text-foreground tracking-tight">
+              <Link href="/" className="text-2xl font-bold text-foreground tracking-tight" style={{ fontFamily: 'var(--font-inter-tight), -apple-system, sans-serif' }}>
                 healthier
               </Link>
               <Button

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans, DM_Serif_Display } from "next/font/google";
+import { DM_Sans, DM_Serif_Display, Inter_Tight } from "next/font/google";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -15,6 +15,12 @@ const dmSerif = DM_Serif_Display({
   style: ["normal", "italic"],
 });
 
+const interTight = Inter_Tight({
+  subsets: ["latin"],
+  variable: "--font-inter-tight",
+  weight: ["700", "800"],
+});
+
 export const metadata: Metadata = {
   title: "Healthier - Medication Adherence for Elderly Care",
   description: "Helping elderly patients and their clinicians track medication adherence.",
@@ -27,7 +33,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${dmSans.variable} ${dmSerif.variable} font-sans antialiased`}>
+      <body className={`${dmSans.variable} ${dmSerif.variable} ${interTight.variable} font-sans antialiased`}>
         {children}
       </body>
     </html>

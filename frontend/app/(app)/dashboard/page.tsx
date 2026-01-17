@@ -4,9 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Search, 
-  Pill, 
-  Utensils, 
-  Activity,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
@@ -16,17 +13,10 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { 
   getPatients, 
-  getAlerts, 
-  getRecentActivity, 
   getPatientMeals,
   getPatientExercises,
   getPatientMedications,
-  type Patient, 
-  type Alert, 
-  type ActivityItem,
-  type Meal,
-  type Exercise,
-  type Medication
+  type Patient
 } from "@/lib/api";
 import { FoodSection } from "@/components/patient/FoodSection";
 import { ExerciseSection } from "@/components/patient/ExerciseSection";
@@ -38,8 +28,6 @@ export default function DashboardPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,14 +41,8 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [patientsRes, alertsRes, activityRes] = await Promise.all([
-          getPatients({ per_page: 50 }),
-          getAlerts({ limit: 10 }),
-          getRecentActivity(10),
-        ]);
+        const patientsRes = await getPatients({ per_page: 50 });
         setPatients(patientsRes.patients);
-        setAlerts(alertsRes.alerts);
-        setRecentActivity(activityRes.activities);
         if (patientsRes.patients.length > 0) {
           setSelectedPatient(patientsRes.patients[0]);
         }
@@ -95,11 +77,6 @@ export default function DashboardPage() {
     if (diffMins < 60) return `${diffMins}m`;
     if (diffHours < 24) return `${diffHours}h`;
     return `${diffDays}d`;
-  };
-
-  const formatActivityTime = (timestamp: string): string => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   const changeDate = (delta: number) => {
@@ -307,72 +284,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Right: Alerts & Activity */}
-      <div className="w-52 flex flex-col border-l bg-white">
-        {/* Alerts */}
-        <div className="p-3 border-b">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Alerts</h3>
-            {alerts.length > 0 && (
-              <span className="text-xs font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
-                {alerts.length}
-              </span>
-            )}
-          </div>
-          <div className="space-y-1">
-            {alerts.slice(0, 4).map((alert) => (
-              <div 
-                key={alert.id} 
-                className="py-1.5 cursor-pointer hover:bg-muted/30 rounded transition-colors"
-              >
-                <p className="text-xs font-medium text-foreground truncate">
-                  {alert.patient_name || "Unknown"}
-                </p>
-                <p className="text-xs text-muted-foreground line-clamp-1">{alert.message}</p>
-              </div>
-            ))}
-            {alerts.length === 0 && (
-              <p className="text-xs text-muted-foreground py-2">No alerts</p>
-            )}
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="p-3 pb-2">
-            <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Activity</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto px-3 pb-3">
-            <div className="space-y-2">
-              {recentActivity.length > 0 ? (
-                recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-start gap-2">
-                    <div className={cn(
-                      "w-5 h-5 rounded flex items-center justify-center shrink-0 mt-0.5",
-                      activity.type === "medication" ? "bg-primary/10" :
-                      activity.type === "food" ? "bg-amber-50" : "bg-blue-50"
-                    )}>
-                      {activity.type === "medication" && <Pill className="w-2.5 h-2.5 text-primary" />}
-                      {activity.type === "food" && <Utensils className="w-2.5 h-2.5 text-amber-600" />}
-                      {activity.type === "exercise" && <Activity className="w-2.5 h-2.5 text-blue-600" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-foreground leading-tight line-clamp-2">
-                        {activity.action}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {activity.timestamp ? formatActivityTime(activity.timestamp) : "—"}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xs text-muted-foreground">No activity</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
