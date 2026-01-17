@@ -76,6 +76,9 @@ struct MealsView: View {
             .sheet(isPresented: $showingFoodCapture) {
                 FoodCaptureView(viewModel: viewModel)
             }
+            .sheet(item: $viewModel.selectedMeal) { meal in
+                MealDetailView(viewModel: viewModel, meal: meal)
+            }
         }
     }
     
@@ -272,15 +275,29 @@ struct MealCard: View {
     
     var body: some View {
         HStack(spacing: AppTheme.Spacing.md) {
-            // Meal Type Icon
+            // Meal Type Icon or Image
             ZStack {
-                Circle()
-                    .fill(mealTypeColor(meal.mealType).opacity(0.2))
-                    .frame(width: 50, height: 50)
-                
-                Image(systemName: mealTypeIcon(meal.mealType))
-                    .font(.title3)
-                    .foregroundColor(mealTypeColor(meal.mealType))
+                if let imageURL = meal.imageURL, let url = URL(string: imageURL) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 50, height: 50)
+                            .clipShape(Circle())
+                    } placeholder: {
+                        Circle()
+                            .fill(mealTypeColor(meal.mealType).opacity(0.2))
+                            .frame(width: 50, height: 50)
+                    }
+                } else {
+                    Circle()
+                        .fill(mealTypeColor(meal.mealType).opacity(0.2))
+                        .frame(width: 50, height: 50)
+                    
+                    Image(systemName: mealTypeIcon(meal.mealType))
+                        .font(.title3)
+                        .foregroundColor(mealTypeColor(meal.mealType))
+                }
             }
             
             VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {

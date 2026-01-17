@@ -317,10 +317,10 @@ struct FoodCaptureView: View {
                     .foregroundColor(.textSecondary)
                     .tracking(1)
                 
-                ScoreRow(title: "Gut Health", score: meal.gutHealthScore, color: .emerald)
-                ScoreRow(title: "Protein Quality", score: meal.proteinQualityScore, color: .blue)
-                ScoreRow(title: "Fiber Richness", score: meal.fiberScore, color: .amber)
-                ScoreRow(title: "Low Sugar", score: meal.sugarScore, color: .red) // Higher score = Lower sugar (better)
+                ScoreRow(title: "Gut Health", score: meal.gutHealthScore, color: .appPrimary)
+                ScoreRow(title: "Protein Quality", score: meal.proteinQualityScore, color: .appPrimary)
+                ScoreRow(title: "Fiber Richness", score: meal.fiberScore, color: .appPrimary)
+                ScoreRow(title: "Low Sugar", score: meal.sugarScore, color: .appPrimary) // Higher score = Lower sugar (better)
             }
             .padding(AppTheme.Spacing.md)
             .background(Color.cardBackground)
