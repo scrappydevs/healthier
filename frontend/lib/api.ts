@@ -87,6 +87,131 @@ export async function getPatient(id: string): Promise<Patient> {
 }
 
 // ============================================
+// PATIENT MEALS (from iOS app)
+// ============================================
+
+export type Meal = {
+  id: string;
+  user_id: string;
+  name: string;
+  meal_type: "breakfast" | "lunch" | "dinner" | "snack";
+  consumed_at: string;
+  image_url: string | null;
+  total_calories: number;
+  total_protein: number;
+  total_carbs: number;
+  total_fat: number;
+  health_rating: number;
+  vitamins_summary: string | null;
+  food_groups: string[];
+  ai_analysis: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type PatientMealsResponse = {
+  meals: Meal[];
+  total: number;
+};
+
+export async function getPatientMeals(
+  patientId: string,
+  date?: string
+): Promise<PatientMealsResponse> {
+  const query = date ? `?date=${date}` : "";
+  return request<PatientMealsResponse>(`/api/v1/patients/${patientId}/meals${query}`);
+}
+
+// ============================================
+// PATIENT EXERCISES (from iOS app)
+// ============================================
+
+export type Exercise = {
+  id: string;
+  user_id: string;
+  exercise_type: string;
+  category: "cardio" | "strength" | "flexibility" | "balance" | "other" | null;
+  duration_minutes: number | null;
+  distance_meters: number | null;
+  steps: number | null;
+  calories_burned: number | null;
+  intensity: "light" | "moderate" | "vigorous" | null;
+  heart_rate_avg: number | null;
+  heart_rate_max: number | null;
+  voice_notes: string | null;
+  notes: string | null;
+  weather: string | null;
+  location: string | null;
+  completed: boolean;
+  logged_at: string;
+  created_at: string;
+};
+
+export type PatientExercisesResponse = {
+  exercises: Exercise[];
+  total: number;
+  summary: {
+    total_minutes: number;
+    total_calories: number;
+  };
+};
+
+export async function getPatientExercises(
+  patientId: string,
+  date?: string
+): Promise<PatientExercisesResponse> {
+  const query = date ? `?date=${date}` : "";
+  return request<PatientExercisesResponse>(`/api/v1/patients/${patientId}/exercises${query}`);
+}
+
+// ============================================
+// PATIENT MEDICATIONS (from iOS app)
+// ============================================
+
+export type MedicationLog = {
+  id: string;
+  medication_id: string;
+  user_id: string;
+  taken_at: string | null;
+  was_on_time: boolean;
+  notes: string | null;
+  created_at: string;
+};
+
+export type Medication = {
+  id: string;
+  user_id: string;
+  name: string;
+  dosage: string;
+  frequency: string;
+  form: string;
+  instructions: string | null;
+  prescribed_by: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  reminder_times: string[];
+  is_active: boolean;
+  side_effects: string[];
+  plan_image_url: string | null;
+  pill_description: string | null;
+  created_at: string;
+  updated_at: string;
+  recent_logs: MedicationLog[];
+  adherence_rate: number;
+};
+
+export type PatientMedicationsResponse = {
+  medications: Medication[];
+  total: number;
+};
+
+export async function getPatientMedications(
+  patientId: string
+): Promise<PatientMedicationsResponse> {
+  return request<PatientMedicationsResponse>(`/api/v1/patients/${patientId}/medications`);
+}
+
+// ============================================
 // ALERTS
 // ============================================
 
@@ -228,4 +353,61 @@ export type RecentActivityResponse = {
 export async function getRecentActivity(limit?: number): Promise<RecentActivityResponse> {
   const query = limit ? `?limit=${limit}` : "";
   return request<RecentActivityResponse>(`/api/v1/activity/recent${query}`);
+}
+
+// ============================================
+// PILLS (Medication Reference)
+// ============================================
+
+export type Pill = {
+  id: string;
+  name: string;
+  generic_name: string | null;
+  dosage_form: string;
+  strength: string;
+  unit: string;
+  instructions: string | null;
+};
+
+export type PillsResponse = {
+  pills: Pill[];
+};
+
+export async function getPills(): Promise<PillsResponse> {
+  return request<PillsResponse>("/api/v1/pills");
+}
+
+// ============================================
+// JOURNAL LOGS
+// ============================================
+
+export type JournalEntry = {
+  id: string;
+  patient_id: string;
+  transcript: string;
+  voice_transcription: string | null;
+  duration_seconds: number | null;
+  tags: string[] | null;
+  mood: "very_positive" | "positive" | "neutral" | "negative" | "very_negative" | null;
+  sentiment_score: number | null;
+  ai_analysis: Record<string, unknown> | null;
+  logged_at: string;
+  created_at: string;
+};
+
+export type PatientJournalResponse = {
+  entries: JournalEntry[];
+  total: number;
+};
+
+export async function getPatientJournal(
+  patientId: string,
+  startDate?: string,
+  endDate?: string
+): Promise<PatientJournalResponse> {
+  const params = new URLSearchParams();
+  if (startDate) params.set("start_date", startDate);
+  if (endDate) params.set("end_date", endDate);
+  const query = params.toString();
+  return request<PatientJournalResponse>(`/api/v1/patients/${patientId}/journal${query ? `?${query}` : ""}`);
 }

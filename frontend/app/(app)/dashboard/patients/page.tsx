@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, AlertCircle } from "lucide-react";
+import { Search, AlertCircle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { getPatients, type Patient } from "@/lib/api";
 
@@ -157,10 +157,10 @@ export default function PatientsPage() {
             {filteredPatients.map((patient) => {
               const status = getStatusFromAdherence(patient.adherence_rate);
               return (
-                <div
+                <button
                   key={patient.id}
                   onClick={() => router.push(`/dashboard/patients/${patient.id}`)}
-                  className="px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer"
+                  className="w-full px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer text-left"
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -179,18 +179,21 @@ export default function PatientsPage() {
                         {patient.age || "—"} yrs · {patient.medication_count} medications · Last active {formatLastActive(patient.last_active)}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <span className={cn(
-                        "text-lg font-semibold tabular-nums",
-                        status === "good" ? "text-primary" :
-                        status === "warning" ? "text-warning" : "text-destructive"
-                      )}>
-                        {Math.round(patient.adherence_rate)}%
-                      </span>
-                      <p className="text-xs text-muted-foreground">adherence</p>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <span className={cn(
+                          "text-lg font-semibold tabular-nums",
+                          status === "good" ? "text-primary" :
+                          status === "warning" ? "text-warning" : "text-destructive"
+                        )}>
+                          {Math.round(patient.adherence_rate)}%
+                        </span>
+                        <p className="text-xs text-muted-foreground">adherence</p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

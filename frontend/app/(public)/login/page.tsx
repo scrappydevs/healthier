@@ -12,7 +12,7 @@ export default function LoginPage() {
           <CardHeader>
             <CardTitle>Log in</CardTitle>
             <CardDescription>
-              Access the Healthier clinician dashboard.
+              Access the healthier clinician dashboard.
             </CardDescription>
           </CardHeader>
           <CardContent>

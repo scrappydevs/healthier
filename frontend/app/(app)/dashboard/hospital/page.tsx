@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { SpaceViewer } from '@/components/hospital/SpaceViewer';
-import { rooms, roomStatusColors, roomTypeLabels, getRoomStats, type Room, type RoomStatus } from '@/components/hospital/rooms';
-import { hazardSeverityColors, hazardTypeLabels, getActiveHazards, type Hazard } from '@/components/hospital/hazards';
+import { roomStatusColors, roomTypeLabels, type Room, type RoomStatus } from '@/components/hospital/rooms';
+import { hazardTypeLabels, type Hazard } from '@/components/hospital/hazards';
+import { ActivityFeed, type ActivityEvent } from '@/components/hospital/ActivityFeed';
+import { generateMockEvents, generateVitalCheckEvent, generateAlertEvent, generateMedicationEvent } from '@/components/hospital/events';
 
 type ViewMode = 'map' | 'heatmap' | 'hazards';
 
@@ -15,17 +17,26 @@ export default function HospitalViewPage() {
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [selectedHazard, setSelectedHazard] = useState<Hazard | null>(null);
 
-  // Stats
-  const activeHazards = getActiveHazards();
-  const roomStats = getRoomStats();
+  // Activity events
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
 
-  // Room counts by status (using helper)
-  const roomCounts = {
-    total: roomStats.total,
-    occupied: roomStats.occupied,
-    critical: roomStats.critical,
-    attention: roomStats.attention,
-  };
+  // Initialize mock events
+  useEffect(() => {
+    setEvents(generateMockEvents());
+  }, []);
+
+  // Simulate live events every 15-30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const eventGenerators = [generateVitalCheckEvent, generateAlertEvent, generateMedicationEvent];
+      const generator = eventGenerators[Math.floor(Math.random() * eventGenerators.length)];
+      const newEvent = generator();
+      
+      setEvents(prev => [newEvent, ...prev].slice(0, 50)); // Keep last 50 events
+    }, 15000 + Math.random() * 15000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const handleRoomClick = useCallback((room: Room) => {
     setSelectedRoom(room);
@@ -48,46 +59,22 @@ export default function HospitalViewPage() {
   const showRoomStatus = viewMode === 'map' || viewMode === 'hazards';
 
   return (
-    <div className="h-full flex flex-col gap-4">
-      {/* Top Stats Row */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <p className="label-uppercase text-neutral-500 mb-1">Rooms</p>
-          <p className="text-2xl font-light text-neutral-950">{roomCounts.occupied}/{roomCounts.total}</p>
-          <p className="text-xs text-neutral-500 mt-1">occupied</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <p className="label-uppercase text-neutral-500 mb-1">Critical</p>
-          <p className="text-2xl font-light text-red-600">{roomCounts.critical}</p>
-          <p className="text-xs text-neutral-500 mt-1">need attention</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <p className="label-uppercase text-neutral-500 mb-1">Hazards</p>
-          <p className="text-2xl font-light text-amber-600">{activeHazards.length}</p>
-          <p className="text-xs text-neutral-500 mt-1">active</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-4">
-          <p className="label-uppercase text-neutral-500 mb-1">Attention</p>
-          <p className="text-2xl font-light text-amber-600">{roomCounts.attention}</p>
-          <p className="text-xs text-neutral-500 mt-1">need review</p>
-        </div>
-      </div>
-
+    <div className="flex gap-3 h-[calc(100vh-112px)]">
       {/* Main Content */}
-      <div className="flex-1 flex gap-4 min-h-0">
-        {/* Center: Floor Plan Viewer */}
-        <div className="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
+      <div className="flex-1 flex gap-3 min-h-0 overflow-hidden">
+        {/* Left: Floor Plan Viewer */}
+        <div className="flex-1 bg-white overflow-hidden flex flex-col rounded-lg border">
           {/* View Mode Tabs */}
-          <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
+          <div className="px-4 py-2 border-b flex items-center justify-between">
             <div className="flex items-center gap-1">
               {(['map', 'heatmap', 'hazards'] as ViewMode[]).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => setViewMode(mode)}
-                  className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                  className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
                     viewMode === mode
-                      ? 'bg-neutral-900 text-white'
-                      : 'text-neutral-600 hover:bg-neutral-100'
+                      ? 'bg-primary text-white'
+                      : 'text-muted-foreground hover:bg-muted/50'
                   }`}
                 >
                   {mode === 'map' && 'Map'}
@@ -105,7 +92,7 @@ export default function HospitalViewPage() {
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: roomStatusColors[status] }}
                   />
-                  <span className="text-xs text-neutral-500 capitalize">{status}</span>
+                  <span className="text-xs text-muted-foreground capitalize">{status}</span>
                 </div>
               ))}
             </div>
@@ -124,18 +111,18 @@ export default function HospitalViewPage() {
           </div>
         </div>
 
-        {/* Right: Detail Panel */}
-        {(selectedRoom || selectedHazard) && (
-          <div className="w-96 flex flex-col gap-4">
-            {/* Detail Panel (shows when room/hazard selected) */}
-            <div className="bg-white rounded-lg shadow-sm p-4 shrink-0">
-              <div className="flex items-center justify-between mb-3">
-                <p className="label-uppercase text-neutral-950">
-                  {selectedRoom ? 'Room Details' : 'Hazard Details'}
+        {/* Right: Activity Feed + Details */}
+        <div className="w-72 flex flex-col border rounded-lg bg-white shrink-0 overflow-hidden">
+          {/* Detail Panel (shows when room/hazard selected) */}
+          {(selectedRoom || selectedHazard) && (
+            <div className="p-3 border-b shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  {selectedRoom ? 'Room' : 'Hazard'}
                 </p>
                 <button
                   onClick={closeDetailPanel}
-                  className="text-neutral-400 hover:text-neutral-600 transition-colors"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -144,66 +131,55 @@ export default function HospitalViewPage() {
               </div>
 
               {selectedRoom && (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div>
-                    <p className="text-lg font-light text-neutral-950">{selectedRoom.name}</p>
-                    <p className="text-xs text-neutral-500">{roomTypeLabels[selectedRoom.type]}</p>
+                    <p className="text-sm font-medium text-foreground">{selectedRoom.name}</p>
+                    <p className="text-xs text-muted-foreground">{roomTypeLabels[selectedRoom.type]}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span
-                      className="w-3 h-3 rounded-full"
+                      className="w-2 h-2 rounded-full"
                       style={{ backgroundColor: roomStatusColors[selectedRoom.status] }}
                     />
-                    <span className="text-sm text-neutral-700 capitalize">{selectedRoom.status}</span>
+                    <span className="text-xs text-foreground capitalize">{selectedRoom.status}</span>
+                    {selectedRoom.patientCount !== undefined && (
+                      <span className="text-xs text-muted-foreground">· {selectedRoom.patientCount} patients</span>
+                    )}
                   </div>
-                  {selectedRoom.patientCount !== undefined && (
-                    <p className="text-sm text-neutral-600">
-                      Patients: <span className="font-medium">{selectedRoom.patientCount}</span>
-                    </p>
-                  )}
-                  {selectedRoom.lastUpdated && (
-                    <p className="text-xs text-neutral-500">Updated {selectedRoom.lastUpdated}</p>
-                  )}
                 </div>
               )}
 
               {selectedHazard && (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div>
-                    <p className="text-lg font-light text-neutral-950">
+                    <p className="text-sm font-medium text-foreground">
                       {hazardTypeLabels[selectedHazard.type]}
                     </p>
-                    <p className="text-xs text-neutral-500">{selectedHazard.location}</p>
+                    <p className="text-xs text-muted-foreground">{selectedHazard.location}</p>
                   </div>
+                  <p className="text-xs text-foreground">{selectedHazard.description}</p>
                   <div className="flex items-center gap-2">
-                    <span
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: hazardSeverityColors[selectedHazard.severity] }}
-                    />
-                    <span className="text-sm text-neutral-700 capitalize">{selectedHazard.severity}</span>
-                  </div>
-                  <p className="text-sm text-neutral-600">{selectedHazard.description}</p>
-                  <div className="flex items-center justify-between">
-                    <span className={`text-xs px-2 py-1 rounded-full ${
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
                       selectedHazard.status === 'active' 
-                        ? 'bg-red-100 text-red-700' 
+                        ? 'bg-red-50 text-red-700' 
                         : selectedHazard.status === 'responding'
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'bg-green-100 text-green-700'
+                        ? 'bg-amber-50 text-amber-700'
+                        : 'bg-blue-50 text-blue-700'
                     }`}>
                       {selectedHazard.status === 'active' ? 'Active' : 
                        selectedHazard.status === 'responding' ? 'Responding' : 'Resolved'}
                     </span>
-                    <span className="text-xs text-neutral-500">{selectedHazard.reportedAt}</span>
                   </div>
-                  {selectedHazard.reportedBy && (
-                    <p className="text-xs text-neutral-500">Reported by: {selectedHazard.reportedBy}</p>
-                  )}
                 </div>
               )}
             </div>
+          )}
+
+          {/* Activity Feed */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ActivityFeed events={events} />
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

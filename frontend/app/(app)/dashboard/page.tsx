@@ -1,41 +1,58 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { 
   Search, 
-  Pill, 
-  Utensils, 
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Plus,
+  Pill,
+  Utensils,
   Activity,
-  X,
-  AlertCircle
+  X
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { getPatients, getAlerts, getRecentActivity, type Patient, type Alert, type ActivityItem } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { 
+  getPatients, 
+  getPatientMeals,
+  getPatientExercises,
+  getPatientMedications,
+  getPills,
+  type Patient,
+  type Pill as PillType
+} from "@/lib/api";
+import { FoodSection } from "@/components/patient/FoodSection";
+import { ExerciseSection } from "@/components/patient/ExerciseSection";
+import { MedicationSection } from "@/components/patient/MedicationSection";
+import { JournalSection } from "@/components/patient/JournalSection";
+
+type Tab = "overview" | "food" | "exercise" | "medications" | "journal";
+
+const DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [selectedDate, setSelectedDate] = useState<string>(
+    new Date().toISOString().split("T")[0]
+  );
 
-  // Fetch patients, alerts, and recent activity from backend
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
       setError(null);
       try {
-        const [patientsRes, alertsRes, activityRes] = await Promise.all([
-          getPatients({ per_page: 50 }),
-          getAlerts({ limit: 10 }),
-          getRecentActivity(10),
-        ]);
+        const patientsRes = await getPatients({ per_page: 50 });
         setPatients(patientsRes.patients);
-        setAlerts(alertsRes.alerts);
-        setRecentActivity(activityRes.activities);
-        // Auto-select first patient
         if (patientsRes.patients.length > 0) {
           setSelectedPatient(patientsRes.patients[0]);
         }
@@ -67,19 +84,26 @@ export default function DashboardPage() {
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 60) return `${diffMins} min ago`;
-    if (diffHours < 24) return `${diffHours} hours ago`;
-    return `${diffDays} days ago`;
+    if (diffMins < 60) return `${diffMins}m`;
+    if (diffHours < 24) return `${diffHours}h`;
+    return `${diffDays}d`;
   };
 
-  const formatActivityTime = (timestamp: string): string => {
-    const date = new Date(timestamp);
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const displayHours = hours % 12 || 12;
-    const displayMinutes = minutes.toString().padStart(2, "0");
-    return `${displayHours}:${displayMinutes} ${ampm}`;
+  const changeDate = (delta: number) => {
+    const date = new Date(selectedDate);
+    date.setDate(date.getDate() + delta);
+    setSelectedDate(date.toISOString().split("T")[0]);
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (dateStr === today.toISOString().split("T")[0]) return "Today";
+    if (dateStr === yesterday.toISOString().split("T")[0]) return "Yesterday";
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   };
 
   if (isLoading) {
@@ -96,282 +120,646 @@ export default function DashboardPage() {
         <div className="text-center">
           <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">{error}</p>
-          <p className="text-xs text-muted-foreground mt-1">Make sure the backend is running</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex gap-6">
+    <div className="flex -m-4" style={{ height: "calc(100vh - 48px)" }}>
       {/* Left: Patient List */}
-      <div className="w-64 flex flex-col shrink-0">
-        <div className="relative mb-3">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search patients..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-9 pl-8 pr-3 text-sm bg-white rounded-md border placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          />
+      <div className="w-60 flex flex-col border-r bg-white">
+        <div className="p-3 border-b">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search patients..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-8 pl-8 pr-3 text-sm bg-muted/30 rounded-md border-0 placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
         </div>
 
-        <div className="flex-1 overflow-hidden bg-white rounded-md">
-          <div className="h-full overflow-y-auto">
-            {filteredPatients.length === 0 ? (
-              <p className="p-4 text-sm text-muted-foreground text-center">No patients found</p>
-            ) : (
-              filteredPatients.map((patient) => {
-                const isSelected = selectedPatient?.id === patient.id;
-                const status = getStatusFromAdherence(patient.adherence_rate);
-                return (
-                  <button
-                    key={patient.id}
-                    onClick={() => setSelectedPatient(patient)}
-                    className={cn(
-                      "w-full px-3 py-2.5 text-left transition-colors",
-                      isSelected ? "bg-primary/8" : "hover:bg-muted/40"
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-foreground truncate">
-                        {patient.full_name}
-                      </span>
+        {/* Column Header */}
+        <div className="px-3 py-1.5 border-b bg-muted/20 flex items-center justify-between">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Patient</span>
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Adherence</span>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {filteredPatients.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground text-center">No patients</p>
+          ) : (
+            filteredPatients.map((patient) => {
+              const isSelected = selectedPatient?.id === patient.id;
+              const hasMeds = patient.medication_count > 0;
+              const status = hasMeds ? getStatusFromAdherence(patient.adherence_rate) : null;
+              return (
+                <button
+                  key={patient.id}
+                  onClick={() => {
+                    setSelectedPatient(patient);
+                    setActiveTab("overview");
+                  }}
+                  className={cn(
+                    "w-full px-3 py-2 text-left transition-colors border-l-2",
+                    isSelected 
+                      ? "bg-primary/5 border-l-primary" 
+                      : "border-l-transparent hover:bg-muted/30"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-foreground truncate">
+                      {patient.full_name}
+                    </span>
+                    {hasMeds ? (
                       <span className={cn(
-                        "text-xs font-medium tabular-nums",
+                        "text-xs font-semibold tabular-nums",
                         status === "good" ? "text-primary" :
-                        status === "warning" ? "text-warning" : "text-destructive"
+                        status === "warning" ? "text-amber-600" : "text-red-600"
                       )}>
                         {Math.round(patient.adherence_rate)}%
                       </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {patient.age || "—"} yrs · {patient.medication_count} meds · {formatLastActive(patient.last_active)}
-                    </p>
-                  </button>
-                );
-              })
-            )}
-          </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-xs text-muted-foreground">
+                      {patient.medication_count} meds
+                    </span>
+                    <span className="text-muted-foreground/50">·</span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatLastActive(patient.last_active)}
+                    </span>
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
       {/* Center: Patient Detail */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {selectedPatient ? (
-          <PatientDetail 
-            patient={selectedPatient} 
-            onClose={() => setSelectedPatient(null)} 
-          />
+          <>
+            {/* Patient Header */}
+            <div className="px-4 py-3 bg-white border-b flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-base font-semibold text-foreground">
+                      {selectedPatient.full_name}
+                    </h1>
+                    <StatusBadge status={getStatusFromAdherence(selectedPatient.adherence_rate)} />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {selectedPatient.age ? `${selectedPatient.age} yrs` : "Age unknown"} · {selectedPatient.medication_count} medications
+                  </p>
+                </div>
+              </div>
+
+              {/* Date Selector */}
+              {(activeTab === "food" || activeTab === "exercise") && (
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => changeDate(-1)}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-foreground">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    {formatDate(selectedDate)}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => changeDate(1)}
+                    disabled={selectedDate >= new Date().toISOString().split("T")[0]}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => router.push(`/dashboard/patients/${selectedPatient.id}`)}
+              >
+                Full Profile
+              </Button>
+            </div>
+
+            {/* Tabs */}
+            <div className="px-4 bg-white border-b">
+              <div className="flex gap-0">
+                {(["overview", "food", "exercise", "medications", "journal"] as Tab[]).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={cn(
+                      "px-3 py-2 text-sm font-medium transition-colors capitalize relative",
+                      activeTab === tab
+                        ? "text-primary"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {tab}
+                    {activeTab === tab && (
+                      <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tab Content */}
+            <div className="flex-1 overflow-y-auto p-4 bg-muted/20">
+              {activeTab === "overview" && (
+                <OverviewContent patient={selectedPatient} />
+              )}
+              {activeTab === "food" && (
+                <div className="bg-white rounded-lg border p-4">
+                  <FoodSection patientId={selectedPatient.id} date={selectedDate} />
+                </div>
+              )}
+              {activeTab === "exercise" && (
+                <div className="bg-white rounded-lg border p-4">
+                  <ExerciseSection patientId={selectedPatient.id} date={selectedDate} />
+                </div>
+              )}
+              {activeTab === "medications" && (
+                <div className="bg-white rounded-lg border p-4">
+                  <MedicationSection patientId={selectedPatient.id} />
+                </div>
+              )}
+              {activeTab === "journal" && (
+                <div className="p-4">
+                  <JournalSection patientId={selectedPatient.id} />
+                </div>
+              )}
+            </div>
+          </>
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <p className="text-sm text-muted-foreground">Select a patient to view details</p>
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">Select a patient</p>
           </div>
         )}
-      </div>
-
-      {/* Right: Alerts & Activity */}
-      <div className="w-56 flex flex-col gap-4 shrink-0">
-        {/* Alerts */}
-        <div className="bg-white rounded-md p-3">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-foreground">Alerts</h3>
-            <span className="text-xs font-medium text-destructive">{alerts.length}</span>
-          </div>
-          <div className="space-y-1">
-            {alerts.slice(0, 5).map((alert) => (
-              <div 
-                key={alert.id} 
-                className="px-2 py-1.5 rounded hover:bg-muted/40 transition-colors cursor-pointer"
-              >
-                <p className="text-xs font-medium text-foreground truncate">{alert.patient_name || "Unknown"}</p>
-                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{alert.message}</p>
-                <span className={cn(
-                  "text-xs",
-                  alert.severity === "critical" ? "text-destructive" : "text-warning"
-                )}>
-                  {alert.severity}
-                </span>
-              </div>
-            ))}
-            {alerts.length === 0 && (
-              <p className="text-xs text-muted-foreground py-2">No alerts</p>
-            )}
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="flex-1 bg-white rounded-md p-3 flex flex-col overflow-hidden">
-          <h3 className="text-sm font-medium text-foreground mb-2 shrink-0">Recent Activity</h3>
-          <div className="flex-1 overflow-y-auto space-y-1">
-            {recentActivity.length > 0 ? (
-              recentActivity.map((activity) => (
-                <div key={activity.id} className="flex items-start gap-2 py-1">
-                  <div className={cn(
-                    "w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5",
-                    activity.type === "medication" ? "bg-primary/8" :
-                    activity.type === "food" ? "bg-warning/10" : "bg-blue-50"
-                  )}>
-                    {activity.type === "medication" && <Pill className="w-2 h-2 text-primary" />}
-                    {activity.type === "food" && <Utensils className="w-2 h-2 text-warning" />}
-                    {activity.type === "exercise" && <Activity className="w-2 h-2 text-blue-500" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-foreground leading-tight truncate">
-                      {activity.action}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {activity.timestamp ? formatActivityTime(activity.timestamp) : "—"}
-                      {activity.status === "missed" && <span className="text-destructive"> · missed</span>}
-                    </p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-muted-foreground py-2">No recent activity</p>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );
 }
 
-function PatientDetail({ patient, onClose }: { patient: Patient; onClose: () => void }) {
-  const status = patient.adherence_rate >= 85 ? "good" : patient.adherence_rate >= 70 ? "warning" : "critical";
+function StatusBadge({ status }: { status: "good" | "warning" | "critical" }) {
+  return (
+    <span className={cn(
+      "text-xs px-1.5 py-0.5 rounded font-medium",
+      status === "critical" ? "bg-red-50 text-red-700" :
+      status === "warning" ? "bg-amber-50 text-amber-700" :
+      "bg-blue-50 text-blue-700"
+    )}>
+      {status === "good" ? "On Track" : status === "warning" ? "Attention" : "At Risk"}
+    </span>
+  );
+}
 
-  // Mock data for demonstration (would come from API)
-  const medications = [
-    { name: "Lisinopril 10mg", schedule: "Morning", taken: 6, total: 7 },
-    { name: "Metformin 500mg", schedule: "Twice daily", taken: 12, total: 14 },
-    { name: "Atorvastatin 20mg", schedule: "Evening", taken: 7, total: 7 },
-  ];
+function OverviewContent({ patient }: { patient: Patient }) {
+  const [stats, setStats] = useState({ meals: 0, exercises: 0, medications: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [showMedForm, setShowMedForm] = useState(false);
+  const [showDietForm, setShowDietForm] = useState(false);
+  const [showExerciseForm, setShowExerciseForm] = useState(false);
 
-  const weeklyData = [
-    { day: "Mon", pills: 90 },
-    { day: "Tue", pills: 85 },
-    { day: "Wed", pills: 100 },
-    { day: "Thu", pills: 70 },
-    { day: "Fri", pills: 80 },
-    { day: "Sat", pills: 95 },
-    { day: "Sun", pills: 75 },
-  ];
-
-  const formatLastActive = (timestamp: string | null): string => {
-    if (!timestamp) return "Never";
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 60) return `${diffMins} min ago`;
-    if (diffHours < 24) return `${diffHours} hours ago`;
-    return `${diffDays} days ago`;
-  };
+  useEffect(() => {
+    async function fetchStats() {
+      setIsLoading(true);
+      try {
+        const [mealsRes, exercisesRes, medsRes] = await Promise.all([
+          getPatientMeals(patient.id),
+          getPatientExercises(patient.id),
+          getPatientMedications(patient.id),
+        ]);
+        setStats({
+          meals: mealsRes.total,
+          exercises: exercisesRes.total,
+          medications: medsRes.total,
+        });
+      } catch {
+        // Ignore errors
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchStats();
+  }, [patient.id]);
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="bg-white rounded-md p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-foreground">{patient.full_name}</h2>
+      {/* Compact Stats Row */}
+      <div className="bg-white rounded-lg border p-4">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Adherence</span>
+            {patient.medication_count > 0 ? (
               <span className={cn(
-                "text-xs px-1.5 py-0.5 rounded-full",
-                status === "critical" ? "bg-destructive/10 text-destructive" :
-                status === "warning" ? "bg-warning/10 text-warning" :
-                "bg-primary/8 text-primary"
+                "text-lg font-semibold tabular-nums",
+                patient.adherence_rate >= 85 ? "text-primary" :
+                patient.adherence_rate >= 70 ? "text-amber-600" : "text-red-600"
               )}>
-                {status === "good" ? "On Track" : status === "warning" ? "Attention" : "At Risk"}
+                {Math.round(patient.adherence_rate)}%
               </span>
+            ) : (
+              <span className="text-lg font-semibold text-muted-foreground">—</span>
+            )}
+          </div>
+          <div className="h-6 w-px bg-border" />
+          <div className="flex items-center gap-2">
+            <Pill className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-sm text-foreground">{isLoading ? "—" : stats.medications} medications</span>
+          </div>
+          <div className="h-6 w-px bg-border" />
+          <div className="flex items-center gap-2">
+            <Utensils className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-sm text-foreground">{isLoading ? "—" : stats.meals} meals</span>
+          </div>
+          <div className="h-6 w-px bg-border" />
+          <div className="flex items-center gap-2">
+            <Activity className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-sm text-foreground">{isLoading ? "—" : stats.exercises} exercises</span>
+          </div>
+          {patient.age && (
+            <>
+              <div className="h-6 w-px bg-border" />
+              <span className="text-sm text-muted-foreground">{patient.age} years</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Assignment Cards */}
+      <div className="grid grid-cols-3 gap-3">
+        {/* Medication Assignment */}
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Pill className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-medium text-foreground">Medications</h3>
             </div>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {patient.age || "—"} years old · {patient.medication_count} medications · Last active {formatLastActive(patient.last_active)}
+            <button 
+              onClick={() => setShowMedForm(!showMedForm)}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              <Plus className="h-3 w-3" />
+              Assign
+            </button>
+          </div>
+          
+          {showMedForm && (
+            <MedicationAssignForm 
+              patientId={patient.id} 
+              onClose={() => setShowMedForm(false)} 
+            />
+          )}
+          
+          {!showMedForm && (
+            <p className="text-xs text-muted-foreground">
+              {stats.medications} active prescriptions
             </p>
-          </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-muted/50 transition-colors">
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
+          )}
         </div>
 
-        {/* Quick Stats */}
-        <div className="flex gap-8 mt-4 pt-4 border-t">
-          <div>
-            <p className="text-2xl font-semibold text-foreground">{Math.round(patient.adherence_rate)}%</p>
-            <p className="text-xs text-muted-foreground">7-Day Adherence</p>
+        {/* Diet Instructions */}
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Utensils className="h-4 w-4 text-amber-600" />
+              <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
+            </div>
+            <button 
+              onClick={() => setShowDietForm(!showDietForm)}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              <Plus className="h-3 w-3" />
+              Add
+            </button>
           </div>
-          <div>
-            <p className="text-2xl font-semibold text-foreground">18 / 21</p>
-            <p className="text-xs text-muted-foreground">Meals Logged</p>
+          
+          {showDietForm && (
+            <DietInstructionForm 
+              patientId={patient.id} 
+              onClose={() => setShowDietForm(false)} 
+            />
+          )}
+          
+          {!showDietForm && (
+            <p className="text-xs text-muted-foreground">
+              Set dietary guidelines
+            </p>
+          )}
+        </div>
+
+        {/* Exercise Plan */}
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-blue-600" />
+              <h3 className="text-sm font-medium text-foreground">Exercise Plan</h3>
+            </div>
+            <button 
+              onClick={() => setShowExerciseForm(!showExerciseForm)}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              <Plus className="h-3 w-3" />
+              Add
+            </button>
           </div>
-          <div>
-            <p className="text-2xl font-semibold text-foreground">4</p>
-            <p className="text-xs text-muted-foreground">Exercise Sessions</p>
-          </div>
+          
+          {showExerciseForm && (
+            <ExercisePlanForm 
+              patientId={patient.id} 
+              onClose={() => setShowExerciseForm(false)} 
+            />
+          )}
+          
+          {!showExerciseForm && (
+            <p className="text-xs text-muted-foreground">
+              Set exercise recommendations
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Weekly Trend */}
-      <div className="bg-white rounded-md p-4">
-        <h3 className="text-sm font-medium text-foreground mb-3">Weekly Trend</h3>
-        <div className="flex items-end gap-2 h-20">
-          {weeklyData.map((day, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <div className="w-full flex flex-col justify-end h-16">
-                <div 
-                  className={cn(
-                    "w-full rounded-sm",
-                    day.pills >= 90 ? "bg-primary" : day.pills >= 70 ? "bg-warning" : "bg-destructive"
-                  )}
-                  style={{ height: `${day.pills}%` }}
-                />
-              </div>
-              <span className="text-xs text-muted-foreground">{day.day}</span>
-            </div>
+      {/* Patient Info & Conditions */}
+      {patient.medical_conditions && patient.medical_conditions.length > 0 && (
+        <div className="bg-white rounded-lg border p-4">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Conditions
+          </h3>
+          <div className="flex flex-wrap gap-1.5">
+            {patient.medical_conditions.map((condition, i) => (
+              <span 
+                key={i} 
+                className="px-2 py-1 text-xs bg-muted/50 text-foreground rounded"
+              >
+                {condition}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Inline Medication Assignment Form
+function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClose: () => void }) {
+  const [pills, setPills] = useState<PillType[]>([]);
+  const [selectedMedId, setSelectedMedId] = useState("");
+  const [frequency, setFrequency] = useState("once_daily");
+  const [selectedDays, setSelectedDays] = useState<string[]>(DAYS_OF_WEEK);
+  const [times, setTimes] = useState(["08:00"]);
+  const [isLoadingPills, setIsLoadingPills] = useState(true);
+
+  useEffect(() => {
+    async function fetchPills() {
+      try {
+        const res = await getPills();
+        setPills(res.pills);
+      } catch {
+        // Ignore errors
+      } finally {
+        setIsLoadingPills(false);
+      }
+    }
+    fetchPills();
+  }, []);
+
+  const selectedMed = pills.find(m => m.id === selectedMedId);
+
+  const toggleDay = (day: string) => {
+    setSelectedDays(prev => 
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedMedId) return;
+    // TODO: Implement API call to create patient_pills record
+    console.log("Assign medication:", { patientId, pillId: selectedMedId, frequency, selectedDays, times });
+    onClose();
+  };
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0">Medication</label>
+        <select
+          value={selectedMedId}
+          onChange={(e) => setSelectedMedId(e.target.value)}
+          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+          disabled={isLoadingPills}
+        >
+          <option value="">{isLoadingPills ? "Loading..." : "Select medication"}</option>
+          {pills.map((med) => (
+            <option key={med.id} value={med.id}>
+              {med.name} {med.strength}{med.unit} ({med.dosage_form})
+            </option>
+          ))}
+        </select>
+      </div>
+      {selectedMed && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground pl-[72px]">
+          Dosage: {selectedMed.strength}{selectedMed.unit} {selectedMed.dosage_form}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0">Frequency</label>
+        <select
+          value={frequency}
+          onChange={(e) => setFrequency(e.target.value)}
+          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="once_daily">Once daily</option>
+          <option value="twice_daily">Twice daily</option>
+          <option value="three_times_daily">Three times daily</option>
+          <option value="as_needed">As needed</option>
+        </select>
+      </div>
+      <div className="flex items-start gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Days</label>
+        <div className="flex gap-1 flex-wrap">
+          {DAYS_OF_WEEK.map((day) => (
+            <button
+              key={day}
+              onClick={() => toggleDay(day)}
+              className={cn(
+                "w-7 h-6 text-[10px] rounded transition-colors",
+                selectedDays.includes(day) 
+                  ? "bg-primary text-white" 
+                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+              )}
+            >
+              {day[0]}
+            </button>
           ))}
         </div>
       </div>
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0">Time</label>
+        <input
+          type="time"
+          value={times[0]}
+          onChange={(e) => setTimes([e.target.value])}
+          className="h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </div>
+      <div className="flex items-center gap-2 pt-2">
+        <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={!selectedMedId}>
+          Assign
+        </Button>
+        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
-      {/* Medications */}
-      <div className="bg-white rounded-md p-4">
-        <h3 className="text-sm font-medium text-foreground mb-3">Medications This Week</h3>
-        <div className="space-y-3">
-          {medications.map((med, i) => (
-            <div key={i} className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-foreground">{med.name}</p>
-                <p className="text-xs text-muted-foreground">{med.schedule}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-foreground tabular-nums">{med.taken}/{med.total}</span>
-                <div className="w-16 h-1.5 bg-muted rounded-full">
-                  <div 
-                    className={cn("h-full rounded-full", med.taken === med.total ? "bg-primary" : "bg-warning")}
-                    style={{ width: `${(med.taken / med.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
+// Inline Diet Instruction Form
+function DietInstructionForm({ patientId, onClose }: { patientId: string; onClose: () => void }) {
+  const [instruction, setInstruction] = useState("");
+  const [mealType, setMealType] = useState("general");
+
+  const handleSubmit = async () => {
+    console.log("Add diet instruction:", { patientId, instruction, mealType });
+    onClose();
+  };
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0">Type</label>
+        <select
+          value={mealType}
+          onChange={(e) => setMealType(e.target.value)}
+          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="general">General</option>
+          <option value="breakfast">Breakfast</option>
+          <option value="lunch">Lunch</option>
+          <option value="dinner">Dinner</option>
+          <option value="snack">Snack</option>
+        </select>
+      </div>
+      <div className="flex items-start gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Notes</label>
+        <textarea
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+          placeholder="e.g., Low sodium, avoid processed foods"
+          rows={2}
+          className="flex-1 px-2 py-1.5 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+        />
+      </div>
+      <div className="flex items-center gap-2 pt-2">
+        <Button size="sm" className="h-7 text-xs" onClick={handleSubmit}>
+          Save
+        </Button>
+        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Inline Exercise Plan Form
+function ExercisePlanForm({ patientId, onClose }: { patientId: string; onClose: () => void }) {
+  const [exerciseType, setExerciseType] = useState("");
+  const [duration, setDuration] = useState("30");
+  const [selectedDays, setSelectedDays] = useState<string[]>(["Mon", "Wed", "Fri"]);
+  const [notes, setNotes] = useState("");
+
+  const toggleDay = (day: string) => {
+    setSelectedDays(prev => 
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  };
+
+  const handleSubmit = async () => {
+    console.log("Add exercise plan:", { patientId, exerciseType, duration, selectedDays, notes });
+    onClose();
+  };
+
+  return (
+    <div className="space-y-3 pt-2 border-t">
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0">Type</label>
+        <select
+          value={exerciseType}
+          onChange={(e) => setExerciseType(e.target.value)}
+          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="">Select type</option>
+          <option value="walking">Walking</option>
+          <option value="stretching">Stretching</option>
+          <option value="swimming">Swimming</option>
+          <option value="cycling">Cycling</option>
+          <option value="strength">Strength Training</option>
+          <option value="yoga">Yoga</option>
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0">Duration</label>
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+            className="w-16 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <span className="text-xs text-muted-foreground">mins</span>
+        </div>
+      </div>
+      <div className="flex items-start gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Days</label>
+        <div className="flex gap-1 flex-wrap">
+          {DAYS_OF_WEEK.map((day) => (
+            <button
+              key={day}
+              onClick={() => toggleDay(day)}
+              className={cn(
+                "w-7 h-6 text-[10px] rounded transition-colors",
+                selectedDays.includes(day) 
+                  ? "bg-blue-600 text-white" 
+                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+              )}
+            >
+              {day[0]}
+            </button>
           ))}
         </div>
       </div>
-
-      {/* Food & Exercise */}
-      <div className="flex gap-4">
-        <div className="flex-1 bg-white rounded-md p-4">
-          <h3 className="text-sm font-medium text-foreground mb-1">Food Logs</h3>
-          <p className="text-2xl font-semibold text-foreground">18</p>
-          <p className="text-xs text-muted-foreground">meals this week</p>
-        </div>
-        <div className="flex-1 bg-white rounded-md p-4">
-          <h3 className="text-sm font-medium text-foreground mb-1">Exercise</h3>
-          <p className="text-2xl font-semibold text-foreground">4</p>
-          <p className="text-xs text-muted-foreground">sessions this week</p>
-        </div>
+      <div className="flex items-start gap-2">
+        <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Notes</label>
+        <input
+          type="text"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional notes"
+          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </div>
+      <div className="flex items-center gap-2 pt-2">
+        <Button size="sm" className="h-7 text-xs" onClick={handleSubmit}>
+          Save
+        </Button>
+        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
+          Cancel
+        </button>
       </div>
     </div>
   );

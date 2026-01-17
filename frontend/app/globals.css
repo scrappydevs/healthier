@@ -1,22 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-  /* Warm off-white background */
-  --color-background: #FAF9F6;
-  --color-foreground: #1A1A1A;
+  /* Clean white/slate background */
+  --color-background: #F8FAFC;
+  --color-foreground: #0F172A;
   --color-card: #FFFFFF;
-  --color-card-foreground: #1A1A1A;
+  --color-card-foreground: #0F172A;
   
-  /* Dark teal primary (from millohealth) */
-  --color-primary: #2D5A5A;
+  /* Blue primary - matches landing page */
+  --color-primary: #2563EB;
   --color-primary-foreground: #FFFFFF;
   
-  /* Muted/neutral tones */
-  --color-muted: #F0EFED;
-  --color-muted-foreground: #737373;
+  /* Muted/neutral tones - slate based */
+  --color-muted: #F1F5F9;
+  --color-muted-foreground: #64748B;
   
   /* Subtle border */
-  --color-border: #E5E5E5;
+  --color-border: #E2E8F0;
   
   /* Semantic colors */
   --color-destructive: #DC2626;
@@ -24,18 +24,26 @@
   --color-warning: #F59E0B;
   --color-success: #22C55E;
 
-  /* Sage colors for landing page */
-  --color-sage-950: #2D3A2A;
-  --color-sage-900: #3D4A3A;
-  --color-sage-800: #4A5A47;
-  --color-sage-700: #5C6B58;
-  --color-sage-600: #6E7D6A;
-  --color-sage-500: #818F7C;
-  --color-sage-400: #94A48F;
-  --color-sage-300: #A8B8A3;
-  --color-sage-200: #C5D1C1;
-  --color-sage-100: #E2EAE0;
-  --color-sage-50: #F3F6F2;
+  /* Brand colors - slate/blue palette */
+  --color-sage-950: #0F172A;
+  --color-sage-900: #1E293B;
+  --color-sage-800: #334155;
+  --color-sage-700: #475569;
+  --color-sage-600: #64748B;
+  --color-sage-500: #94A3B8;
+  --color-sage-400: #0F172A;
+  --color-sage-300: #CBD5E1;
+  --color-sage-200: #E2E8F0;
+  --color-sage-100: #F1F5F9;
+  --color-sage-50: #F8FAFC;
+  
+  /* Blue accent scale */
+  --color-blue-50: #EFF6FF;
+  --color-blue-100: #DBEAFE;
+  --color-blue-200: #BFDBFE;
+  --color-blue-500: #3B82F6;
+  --color-blue-600: #2563EB;
+  --color-blue-700: #1D4ED8;
   
   --color-white: #FFFFFF;
 }
@@ -130,4 +138,110 @@
 
 .btn-pill-dark:hover {
   background-color: var(--color-sage-800);
+}
+
+/* Framer-style animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animation-delay-100 { animation-delay: 0.1s; }
+.animation-delay-200 { animation-delay: 0.2s; }
+.animation-delay-300 { animation-delay: 0.3s; }
+.animation-delay-400 { animation-delay: 0.4s; }
+.animation-delay-500 { animation-delay: 0.5s; }
+.animation-delay-600 { animation-delay: 0.6s; }
+
+.opacity-0 { opacity: 0; }
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.8) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass morphism */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Hover lift effect */
+.hover-lift {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
 }

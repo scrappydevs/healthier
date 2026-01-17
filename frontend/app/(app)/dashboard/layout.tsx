@@ -7,11 +7,10 @@ import { usePathname } from "next/navigation";
 import { 
   LayoutDashboard, 
   Users, 
-  Bell, 
-  BarChart3, 
   Settings, 
   LogOut,
   Search,
+  Bell,
   MessageSquare,
   PanelLeftClose,
   PanelLeft,
@@ -28,8 +27,6 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Hospital View", href: "/dashboard/hospital", icon: Building2 },
   { name: "Patients", href: "/dashboard/patients", icon: Users },
-  { name: "Alerts", href: "/dashboard/alerts", icon: Bell },
-  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
 ];
 
 const bottomNavigation = [
@@ -49,7 +46,7 @@ function NavItem({
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-normal transition-colors w-full",
+        "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-normal transition-colors w-full relative",
         collapsed && "justify-center px-2",
         isActive
           ? "bg-primary/8 text-primary"
@@ -59,6 +56,9 @@ function NavItem({
     >
       <item.icon className={cn("h-4 w-4 shrink-0", isActive && "text-primary")} />
       {!collapsed && <span>{item.name}</span>}
+      {isActive && !collapsed && (
+        <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-primary" />
+      )}
     </Link>
   );
 }
@@ -123,6 +123,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [toggleChat, toggleSidebar]);
+
+  // Handle cache invalidation from AI chat
+  const handleCacheInvalidate = useCallback((keys: string[]) => {
+    console.log('🔄 Cache invalidated:', keys);
+    // Dispatch custom event for components to refresh their data
+    window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
+      detail: { keys, timestamp: Date.now() }
+    }));
+  }, []);
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -281,7 +290,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             onMouseDown={handleMouseDown}
           />
           
-          <ChatSidebar isCollapsed={!isChatOpen} onClose={closeChat} />
+          <ChatSidebar 
+            isCollapsed={!isChatOpen} 
+            onClose={closeChat} 
+            onCacheInvalidate={handleCacheInvalidate}
+          />
         </div>
       </div>
 

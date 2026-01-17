@@ -42,7 +42,7 @@ export function ToolUseIndicator({ toolCount }: ToolUseIndicatorProps) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700"
+      className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700"
     >
       <div className="flex items-center gap-1.5">
         <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -200,7 +200,7 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps) {
     <button
       onClick={onClick}
       className={`w-full text-left px-4 py-2.5 border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50 transition-colors ${
-        isActive ? 'bg-emerald-50 border-l-2 border-l-emerald-600' : ''
+        isActive ? 'bg-blue-50 border-l-2 border-l-blue-600' : ''
       }`}
     >
       <p className="text-sm font-light text-neutral-900 mb-1 truncate">

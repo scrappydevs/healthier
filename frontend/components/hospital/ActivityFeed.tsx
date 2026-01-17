@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from 'react';
+import { Activity, Pill, AlertTriangle, ArrowRight, Bell, Settings, Heart } from 'lucide-react';
+import { cn } from '@/lib/cn';
 
 export type EventType = 
   | 'vital_check' 
@@ -29,40 +31,25 @@ interface ActivityFeedProps {
   maxHeight?: string;
 }
 
-const eventTypeLabels: Record<EventType, string> = {
-  vital_check: 'VITAL',
-  medication_given: 'MEDS',
-  hazard_reported: 'HAZARD',
-  patient_moved: 'MOVE',
-  alert_triggered: 'ALERT',
-  status_change: 'STATUS',
-  system: 'SYS',
+const eventIcons: Record<EventType, React.ElementType> = {
+  vital_check: Heart,
+  medication_given: Pill,
+  hazard_reported: AlertTriangle,
+  patient_moved: ArrowRight,
+  alert_triggered: Bell,
+  status_change: Activity,
+  system: Settings,
 };
 
-const eventTypeColors: Record<EventType, string> = {
-  vital_check: 'text-emerald-600',
-  medication_given: 'text-blue-600',
-  hazard_reported: 'text-amber-600',
-  patient_moved: 'text-neutral-600',
-  alert_triggered: 'text-red-600',
-  status_change: 'text-purple-600',
-  system: 'text-neutral-500',
+const eventColors: Record<EventType, string> = {
+  vital_check: 'text-blue-600 bg-blue-50',
+  medication_given: 'text-blue-600 bg-blue-50',
+  hazard_reported: 'text-amber-600 bg-amber-50',
+  patient_moved: 'text-slate-600 bg-slate-50',
+  alert_triggered: 'text-red-600 bg-red-50',
+  status_change: 'text-purple-600 bg-purple-50',
+  system: 'text-slate-500 bg-slate-50',
 };
-
-const severityColors: Record<EventSeverity, string> = {
-  info: 'text-neutral-700',
-  warning: 'text-amber-600',
-  critical: 'text-red-600',
-};
-
-function formatTimestamp(date: Date): string {
-  return date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-}
 
 function getRelativeTime(date: Date): string {
   const now = new Date();
@@ -71,101 +58,86 @@ function getRelativeTime(date: Date): string {
   const diffHours = Math.floor(diffMs / 3600000);
 
   if (diffMins < 1) return 'now';
-  if (diffMins < 60) return `${diffMins}m`;
-  if (diffHours < 24) return `${diffHours}h`;
-  return `${Math.floor(diffHours / 24)}d`;
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${Math.floor(diffHours / 24)}d ago`;
 }
 
-export function ActivityFeed({ events, maxHeight = '100%' }: ActivityFeedProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+export function ActivityFeed({ events }: ActivityFeedProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new events added
+  // Auto-scroll to top when new events added
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
   }, [events.length]);
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-white rounded-lg shadow-sm">
+    <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-mono text-neutral-600">LIVE FEED</span>
-        </div>
-        <span className="text-xs font-mono text-neutral-400">{events.length} events</span>
+      <div className="px-3 py-2 border-b flex items-center justify-between shrink-0">
+        <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Activity</h3>
+        <span className="text-xs text-muted-foreground">{events.length} events</span>
       </div>
 
-      {/* Event Log */}
-      <div 
-        className="flex-1 overflow-y-auto p-3 font-mono text-xs"
-        style={{ maxHeight }}
-      >
+      {/* Event List */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-neutral-400">
-            <span className="text-sm mb-1">$ waiting for events...</span>
-            <span className="animate-pulse">_</span>
+          <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+            <Activity className="h-5 w-5 mb-1" />
+            <span className="text-xs">No events yet</span>
           </div>
         ) : (
-          <div className="space-y-1">
-            {events.map((event) => (
-              <div
-                key={event.id}
-                className={`py-1.5 px-2 rounded transition-colors hover:bg-neutral-50 ${
-                  event.severity === 'critical' ? 'bg-red-50/50' : ''
-                }`}
-              >
-                {/* Main line */}
-                <div className="flex items-start gap-2">
-                  {/* Timestamp */}
-                  <span className="text-neutral-400 shrink-0 w-16">
-                    [{formatTimestamp(event.timestamp)}]
-                  </span>
+          <div className="divide-y">
+            {events.map((event) => {
+              const Icon = eventIcons[event.type];
+              const colorClass = eventColors[event.type];
+              
+              return (
+                <div
+                  key={event.id}
+                  className={cn(
+                    "px-3 py-2 hover:bg-muted/30 transition-colors",
+                    event.severity === 'critical' && "bg-red-50/50"
+                  )}
+                >
+                  <div className="flex items-start gap-2">
+                    {/* Icon */}
+                    <div className={cn("w-6 h-6 rounded flex items-center justify-center shrink-0 mt-0.5", colorClass)}>
+                      <Icon className="w-3 h-3" />
+                    </div>
 
-                  {/* Event type badge */}
-                  <span className={`shrink-0 w-14 ${eventTypeColors[event.type]}`}>
-                    [{eventTypeLabels[event.type]}]
-                  </span>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <span className={severityColors[event.severity]}>
-                      {event.roomName && (
-                        <span className="text-neutral-500">{event.roomName} - </span>
-                      )}
-                      {event.title}
-                    </span>
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          {event.roomName && (
+                            <span className="text-xs font-medium text-foreground">{event.roomName}</span>
+                          )}
+                          <p className={cn(
+                            "text-xs leading-relaxed",
+                            event.severity === 'critical' ? "text-red-700 font-medium" : "text-foreground"
+                          )}>
+                            {event.title}
+                          </p>
+                          {event.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                              {event.description}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {getRelativeTime(event.timestamp)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-
-                  {/* Relative time */}
-                  <span className="text-neutral-400 shrink-0 text-[10px]">
-                    {getRelativeTime(event.timestamp)}
-                  </span>
                 </div>
-
-                {/* Description line */}
-                {event.description && (
-                  <div className="ml-[7.5rem] mt-0.5 text-neutral-500 text-[11px]">
-                    {event.description}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Auto-scroll anchor */}
-            <div ref={bottomRef} className="h-1" />
+              );
+            })}
           </div>
         )}
-      </div>
-
-      {/* Footer status */}
-      <div className="px-4 py-2 border-t border-neutral-100 bg-neutral-50 shrink-0">
-        <div className="flex items-center justify-between text-[10px] font-mono text-neutral-500">
-          <span>System monitoring active</span>
-          <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Connected
-          </span>
-        </div>
       </div>
     </div>
   );

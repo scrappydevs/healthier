@@ -607,7 +607,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                         onClick={() => loadSession(session)}
                         className={`w-full text-left px-4 py-2.5 border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50 transition-colors ${
                           sessionId === session.id
-                            ? 'bg-emerald-50 border-l-2 border-l-emerald-600'
+                            ? 'bg-blue-50 border-l-2 border-l-blue-600'
                             : ''
                         }`}
                       >
@@ -645,7 +645,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                   />
                   <p className="text-xs text-neutral-400 mt-4 pt-3 border-t border-neutral-100">
                     Type{' '}
-                    <code className="bg-neutral-100 px-1 py-0.5 rounded text-emerald-700 text-[11px]">
+                    <code className="bg-neutral-100 px-1 py-0.5 rounded text-blue-700 text-[11px]">
                       @
                     </code>{' '}
                     to reference rooms
@@ -666,7 +666,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                       <div
                         className={`max-w-[80%] px-4 py-3 text-sm font-light leading-relaxed ${
                           msg.role === 'user'
-                            ? 'bg-emerald-600 text-white'
+                            ? 'bg-blue-600 text-white'
                             : 'bg-neutral-100 text-neutral-900'
                         }`}
                         style={{
@@ -725,7 +725,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                           </ReactMarkdown>
                         </div>
                         {msg.isStreaming && (
-                          <span className="inline-block w-1.5 h-3.5 bg-emerald-600 ml-0.5 animate-pulse" />
+                          <span className="inline-block w-1.5 h-3.5 bg-blue-600 ml-0.5 animate-pulse" />
                         )}
                       </div>
                     </motion.div>
@@ -778,7 +778,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                       onClick={() => selectAutocompleteItem(room)}
                       className={`w-full text-left px-3 py-2 text-xs font-light transition-colors ${
                         idx === selectedAutocompleteIndex
-                          ? 'bg-emerald-100 text-emerald-900 border-l-2 border-emerald-600'
+                          ? 'bg-blue-100 text-blue-900 border-l-2 border-blue-600'
                           : 'text-neutral-900 hover:bg-neutral-50'
                       }`}
                     >
@@ -805,12 +805,12 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                       : 'Ask me anything... (@ to tag rooms)'
                   }
                   disabled={isLoading || isStreaming}
-                  className="flex-1 px-3 py-2 text-sm font-light text-neutral-900 placeholder:text-neutral-500 border border-neutral-200 rounded-lg focus:outline-none focus:border-emerald-600 transition-colors disabled:opacity-50 disabled:bg-neutral-50"
+                  className="flex-1 px-3 py-2 text-sm font-light text-neutral-900 placeholder:text-neutral-500 border border-neutral-200 rounded-lg focus:outline-none focus:border-blue-600 transition-colors disabled:opacity-50 disabled:bg-neutral-50"
                 />
                 <button
                   onClick={handleSendMessage}
                   disabled={isLoading || isStreaming || input.trim() === ''}
-                  className="px-4 py-2 bg-emerald-600 text-white text-sm font-light rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-light rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <svg
                     className="w-4 h-4"
@@ -867,7 +867,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
               whileTap={{ scale: 0.95 }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
               onClick={() => setIsOpen(true)}
-              className="w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center rounded-full"
+              className="w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center rounded-full"
               title="PillPal AI Assistant"
             >
               <svg
