@@ -11,12 +11,16 @@ import UIKit
 // MARK: - Claude API Configuration
 
 struct ClaudeConfig {
-    // Store your API key securely - use environment variable or Keychain
+    // Store your API key securely - use environment variable or Secrets.swift
     static var apiKey: String {
-        guard let key = ProcessInfo.processInfo.environment["CLAUDE_API_KEY"], !key.isEmpty else {
-            fatalError("CLAUDE_API_KEY environment variable not set")
+        // 1. Try environment variable (CI/CD or Scheme)
+        if let key = ProcessInfo.processInfo.environment["CLAUDE_API_KEY"], !key.isEmpty {
+            return key
         }
-        return key
+        
+        // 2. Fallback to Secrets.swift (Local Dev)
+        // Note: Make sure you have added Secrets.swift to your Xcode project!
+        return Secrets.claudeApiKey
     }
     static let baseURL = "https://api.anthropic.com/v1/messages"
     static let model = "claude-sonnet-4-20250514"

@@ -60,16 +60,8 @@ struct MedicationScheduleView: View {
 
     var body: some View {
         ZStack {
-            // Gradient background
-            LinearGradient(
-                colors: [
-                    Color(red: 0.93, green: 0.91, blue: 0.89),
-                    Color(red: 0.95, green: 0.93, blue: 0.91)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // Background matching other views
+            Color.appBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header
