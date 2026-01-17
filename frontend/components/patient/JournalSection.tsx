@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { BookOpen, AlertCircle, Clock, Smile, Meh, Frown } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { getPatientJournal, type JournalEntry } from "@/lib/api";
+import { getPatientJournal, generateJournalSummary, type JournalEntry } from "@/lib/api";
 
 interface JournalSectionProps {
   patientId: string;
@@ -12,8 +12,8 @@ interface JournalSectionProps {
 }
 
 const moodIcons: Record<string, { icon: typeof Smile; color: string; label: string }> = {
-  very_positive: { icon: Smile, color: "text-blue-500", label: "Very Positive" },
-  positive: { icon: Smile, color: "text-blue-600", label: "Positive" },
+  very_positive: { icon: Smile, color: "text-slate-900", label: "Very Positive" },
+  positive: { icon: Smile, color: "text-slate-900", label: "Positive" },
   neutral: { icon: Meh, color: "text-slate-400", label: "Neutral" },
   negative: { icon: Frown, color: "text-amber-500", label: "Negative" },
   very_negative: { icon: Frown, color: "text-red-500", label: "Very Negative" },
@@ -46,6 +46,18 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
 }
 
+function getEntrySummary(transcript: string): string {
+  // Try to get first sentence, or truncate to ~100 chars
+  const firstSentence = transcript.split(/[.!?]/)[0];
+  if (firstSentence && firstSentence.length < 120) {
+    return firstSentence.trim() + (transcript.length > firstSentence.length ? "..." : "");
+  }
+  // Truncate at word boundary
+  if (transcript.length <= 100) return transcript;
+  const truncated = transcript.slice(0, 100).replace(/\s+\S*$/, "");
+  return truncated + "...";
+}
+
 function groupEntriesByDay(entries: JournalEntry[]): Record<string, JournalEntry[]> {
   return entries.reduce((acc, entry) => {
     const dateKey = new Date(entry.logged_at).toDateString();
@@ -62,6 +74,7 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
+  const [summaries, setSummaries] = useState<Record<string, string>>({});
 
   useEffect(() => {
     async function fetchJournal() {
@@ -70,6 +83,22 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
       try {
         const response = await getPatientJournal(patientId, startDate, endDate);
         setEntries(response.entries);
+        
+        // Generate summaries
+        const summariesMap: Record<string, string> = {};
+        for (const entry of response.entries) {
+          if (entry.ai_analysis && typeof entry.ai_analysis === "object" && "summary" in entry.ai_analysis) {
+            summariesMap[entry.id] = String(entry.ai_analysis.summary);
+          } else {
+            try {
+              const summaryRes = await generateJournalSummary(entry.id);
+              summariesMap[entry.id] = summaryRes.summary;
+            } catch {
+              summariesMap[entry.id] = getEntrySummary(entry.transcript);
+            }
+          }
+        }
+        setSummaries(summariesMap);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load journal");
       } finally {
@@ -141,12 +170,17 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
                 const isExpanded = expandedEntryId === entry.id;
                 const moodInfo = entry.mood ? moodIcons[entry.mood] : null;
                 const MoodIcon = moodInfo?.icon;
+                const summary = summaries[entry.id] || getEntrySummary(entry.transcript);
+                const hasMoreContent = entry.transcript.length > (summary.length || 0);
 
                 return (
                   <div 
                     key={entry.id} 
-                    className="px-4 py-3 hover:bg-muted/10 transition-colors cursor-pointer"
-                    onClick={() => setExpandedEntryId(isExpanded ? null : entry.id)}
+                    className={cn(
+                      "px-4 py-3 transition-colors",
+                      hasMoreContent && "cursor-pointer hover:bg-muted/10"
+                    )}
+                    onClick={() => hasMoreContent && setExpandedEntryId(isExpanded ? null : entry.id)}
                   >
                     {/* Entry Header Row */}
                     <div className="flex items-start gap-3">
@@ -156,41 +190,53 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
                         {formatTime(entry.logged_at)}
                       </div>
 
-                      {/* Content Preview */}
+                      {/* Content */}
                       <div className="flex-1 min-w-0">
-                        <p className={cn(
-                          "text-sm text-foreground",
-                          !isExpanded && "line-clamp-2"
-                        )}>
-                          {entry.transcript}
+                        {/* Summary (always shown) */}
+                        <p className="text-sm text-foreground">
+                          {summary}
                         </p>
+                        
+                        {/* Expand hint */}
+                        {hasMoreContent && !isExpanded && (
+                          <span className="text-[10px] text-muted-foreground mt-1 inline-block">
+                            Click to see full transcript
+                          </span>
+                        )}
 
-                        {/* Expanded Content */}
-                        {isExpanded && (
-                          <div className="mt-3 space-y-3">
-                            {/* Tags */}
-                            {entry.tags && entry.tags.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5">
-                                {entry.tags.map((tag, idx) => (
-                                  <span 
-                                    key={idx}
-                                    className="px-2 py-0.5 text-xs bg-muted rounded-full text-muted-foreground"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                        {/* Full Transcript (expanded) */}
+                        {isExpanded && hasMoreContent && (
+                          <div className="mt-3 pt-3 border-t border-dashed">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                              Full Transcript
+                            </p>
+                            <p className="text-sm text-muted-foreground leading-relaxed">
+                              {entry.transcript}
+                            </p>
+                          </div>
+                        )}
 
-                            {/* AI Analysis Summary */}
-                            {entry.ai_analysis && Object.keys(entry.ai_analysis).length > 0 && (
-                              <div className="text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
-                                <span className="font-medium">AI Summary: </span>
-                                {typeof entry.ai_analysis === "object" && "summary" in entry.ai_analysis 
-                                  ? String(entry.ai_analysis.summary)
-                                  : "Analysis available"}
-                              </div>
-                            )}
+                        {/* Tags */}
+                        {entry.tags && entry.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {entry.tags.map((tag, idx) => (
+                              <span 
+                                key={idx}
+                                className="px-2 py-0.5 text-xs bg-muted rounded-full text-muted-foreground"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Analysis Summary */}
+                        {isExpanded && entry.ai_analysis && Object.keys(entry.ai_analysis).length > 0 && (
+                          <div className="text-xs text-muted-foreground bg-muted/30 rounded-md p-2 mt-2">
+                            <span className="font-medium">Analysis: </span>
+                            {typeof entry.ai_analysis === "object" && "summary" in entry.ai_analysis 
+                              ? String(entry.ai_analysis.summary)
+                              : "Analysis available"}
                           </div>
                         )}
                       </div>

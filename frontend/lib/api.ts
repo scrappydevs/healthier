@@ -20,20 +20,31 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       "Content-Type": "application/json",
       ...headers,
     },
+    signal: AbortSignal.timeout(10000), // 10 second timeout
   };
 
   if (body) {
     config.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, config);
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, config);
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: "Request failed" }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new Error("Request timed out. Please check if the backend is running.");
+    }
+    if (err instanceof TypeError && err.message.includes("Failed to fetch")) {
+      throw new Error(`Cannot connect to backend at ${API_URL}. Is the server running?`);
+    }
+    throw err;
   }
-
-  return response.json();
 }
 
 // ============================================
@@ -410,4 +421,145 @@ export async function getPatientJournal(
   if (endDate) params.set("end_date", endDate);
   const query = params.toString();
   return request<PatientJournalResponse>(`/api/v1/patients/${patientId}/journal${query ? `?${query}` : ""}`);
+}
+
+
+// ============================================
+// DAILY SUMMARY
+// ============================================
+
+export type DailySummaryAlert = {
+  severity: "high" | "medium" | "low";
+  type: string;
+  message: string;
+};
+
+export type DailySummaryStats = {
+  meals: number;
+  total_calories: number;
+  exercises: number;
+  exercise_minutes: number;
+  calories_burned: number;
+  medications_taken: number;
+  medications_missed: number;
+  medications_late: number;
+  medications_pending: number;
+  adherence_percent: number;
+  journal_entries: number;
+};
+
+export type DailySummaryResponse = {
+  date: string;
+  patient_name: string;
+  summary: string;
+  journal_summary?: string;
+  meals_summary?: string;
+  activity_summary?: string;
+  alerts: DailySummaryAlert[];
+  stats: DailySummaryStats;
+};
+
+export async function generateDailySummary(
+  patientId: string,
+  date?: string
+): Promise<DailySummaryResponse> {
+  const query = date ? `?summary_date=${date}` : "";
+  return request<DailySummaryResponse>(`/api/v1/patients/${patientId}/daily-summary${query}`, {
+    method: "POST",
+  });
+}
+
+
+// ============================================
+// PATIENT PLANS (Diet & Exercise)
+// ============================================
+
+export type PatientPlan = {
+  id: string;
+  patient_id: string;
+  plan_type: "diet" | "exercise";
+  title: string | null;
+  notes: string | null;
+  goals: string[];
+  restrictions: string[];
+  calorie_target: number | null;
+  protein_target: number | null;
+  carb_target: number | null;
+  fat_target: number | null;
+  exercise_minutes_target: number | null;
+  exercise_days_per_week: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PatientPlansResponse = {
+  plans: PatientPlan[];
+};
+
+export async function getPatientPlans(
+  patientId: string,
+  planType?: "diet" | "exercise"
+): Promise<PatientPlansResponse> {
+  const query = planType ? `?plan_type=${planType}` : "";
+  return request<PatientPlansResponse>(`/api/v1/patients/${patientId}/plans${query}`);
+}
+
+export async function createPatientPlan(
+  patientId: string,
+  plan: Partial<PatientPlan>
+): Promise<{ plan: PatientPlan }> {
+  return request<{ plan: PatientPlan }>(`/api/v1/patients/${patientId}/plans`, {
+    method: "POST",
+    body: plan,
+  });
+}
+
+export async function updatePatientPlan(
+  patientId: string,
+  planId: string,
+  updates: Partial<PatientPlan>
+): Promise<{ plan: PatientPlan }> {
+  return request<{ plan: PatientPlan }>(`/api/v1/patients/${patientId}/plans/${planId}`, {
+    method: "PATCH",
+    body: updates,
+  });
+}
+
+export async function deletePatientPlan(
+  patientId: string,
+  planId: string
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(`/api/v1/patients/${patientId}/plans/${planId}`, {
+    method: "DELETE",
+  });
+}
+
+
+// ============================================
+// SUMMARIES
+// ============================================
+
+export async function generateJournalSummary(
+  entryId: string
+): Promise<{ summary: string }> {
+  return request<{ summary: string }>(`/api/v1/journal-entries/${entryId}/summary`, {
+    method: "POST",
+  });
+}
+
+export async function generateMealSummary(
+  mealId: string
+): Promise<{ summary: string }> {
+  return request<{ summary: string }>(`/api/v1/meals/${mealId}/summary`, {
+    method: "POST",
+  });
+}
+
+export async function generateExerciseSummary(
+  exerciseId: string
+): Promise<{ summary: string }> {
+  return request<{ summary: string }>(`/api/v1/exercises/${exerciseId}/summary`, {
+    method: "POST",
+  });
 }

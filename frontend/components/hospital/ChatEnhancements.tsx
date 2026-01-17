@@ -200,7 +200,7 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps) {
     <button
       onClick={onClick}
       className={`w-full text-left px-4 py-2.5 border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50 transition-colors ${
-        isActive ? 'bg-blue-50 border-l-2 border-l-blue-600' : ''
+        isActive ? 'bg-slate-50 border-l-2 border-l-slate-900' : ''
       }`}
     >
       <p className="text-sm font-light text-neutral-900 mb-1 truncate">

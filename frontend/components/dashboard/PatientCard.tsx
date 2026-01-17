@@ -15,7 +15,7 @@ type PatientCardProps = {
 };
 
 const statusConfig = {
-  good: { label: "Good", style: "bg-blue-100 text-blue-800" },
+  good: { label: "Good", style: "bg-slate-100 text-slate-800" },
   warning: { label: "Attention", style: "bg-amber-100 text-amber-800" },
   critical: { label: "At Risk", style: "bg-red-100 text-red-800" },
 };

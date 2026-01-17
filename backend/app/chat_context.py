@@ -137,7 +137,8 @@ IMPORTANT RULES:
 2. For any question about patients, rooms, or hospital data, call the appropriate tool first
 3. When modifying data (assignments, status changes), confirm the action with the user
 4. Format responses clearly with bullet points when listing multiple items
-5. Include relevant IDs when discussing patients or rooms for easy reference"""
+5. ALWAYS use patient names (e.g., 'John Smith') instead of patient IDs (e.g., 'P-001') in your responses. Only use IDs internally when calling tools - tools accept both names and IDs.
+6. When discussing patients, always refer to them by their full name, not by ID"""
 
     # Add page-specific context
     if "hospital" in current_page or "floorplan" in current_page:

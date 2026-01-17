@@ -234,7 +234,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID"
+                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
                     }
                 },
                 "required": ["patient_id"]
@@ -251,7 +251,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID"
+                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
                     }
                 },
                 "required": ["patient_id"]
@@ -268,7 +268,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID"
+                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
                     }
                 },
                 "required": ["patient_id"]
@@ -285,7 +285,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID"
+                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
                     },
                     "status": {
                         "type": "string",
@@ -311,7 +311,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID to transfer"
+                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001') to transfer"
                     },
                     "from_room": {
                         "type": "string",
@@ -340,7 +340,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID"
+                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
                     },
                     "note_type": {
                         "type": "string",
@@ -353,6 +353,31 @@ PILLPAL_TOOLS = [
                     }
                 },
                 "required": ["patient_id", "note_type", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_food_instructions",
+            "description": "Add food or dietary instructions for a patient. Use this when a doctor wants to add specific food recommendations like 'eat more vegetables like broccoli' or dietary restrictions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                    },
+                    "instructions": {
+                        "type": "string",
+                        "description": "Food or dietary instructions to add (e.g., 'Eat more vegetables like broccoli', 'Low sodium diet', 'Increase protein intake')"
+                    },
+                    "duration_days": {
+                        "type": "integer",
+                        "description": "Number of days this instruction should be active (optional, defaults to ongoing)"
+                    }
+                },
+                "required": ["patient_id", "instructions"]
             }
         }
     },
@@ -552,7 +577,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID (optional - if not provided, returns all)"
+                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001') - optional, if not provided returns all"
                     }
                 },
                 "required": []
@@ -569,7 +594,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID"
+                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
                     },
                     "medication_id": {
                         "type": "string",
@@ -795,6 +820,19 @@ def fuzzy_match_room(query: str, rooms: List[Dict]) -> Optional[Dict]:
     return None
 
 
+def fuzzy_match_patient(query: str, patients: List[Dict]) -> Optional[Dict]:
+    """Fuzzy match patient by ID or name"""
+    query_lower = query.lower().strip()
+    
+    for patient in patients:
+        if query_lower == patient["id"].lower() or query_lower == patient["name"].lower():
+            return patient
+        if query_lower in patient["name"].lower():
+            return patient
+    
+    return None
+
+
 async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a tool call and return results"""
     try:
@@ -839,6 +877,8 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
             return await transfer_patient(tool_input.get("patient_id"), tool_input.get("from_room"), tool_input.get("to_room", ""), tool_input.get("reason"), supabase)
         elif tool_name == "add_patient_note":
             return await add_patient_note(tool_input.get("patient_id", ""), tool_input.get("note_type", ""), tool_input.get("content", ""), supabase)
+        elif tool_name == "add_food_instructions":
+            return await add_food_instructions(tool_input.get("patient_id", ""), tool_input.get("instructions", ""), tool_input.get("duration_days"), supabase)
         
         # Hazard Management
         elif tool_name == "list_active_hazards":
@@ -867,6 +907,8 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
         # Medication Adherence
         elif tool_name == "get_medication_schedule":
             return await get_medication_schedule(tool_input.get("patient_id"), supabase)
+        elif tool_name == "add_food_instructions":
+            return await add_food_instructions(tool_input.get("patient_id", ""), tool_input.get("instructions", ""), tool_input.get("duration_days"), supabase)
         elif tool_name == "mark_medication_given":
             return await mark_medication_given(tool_input.get("patient_id", ""), tool_input.get("medication_id", ""), tool_input.get("administered_by"), tool_input.get("notes"), supabase)
         elif tool_name == "get_missed_medications":
@@ -991,7 +1033,7 @@ async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dic
     if not room:
         return {"error": f"Room '{room_id}' not found"}
     
-    patient = next((p for p in MOCK_PATIENTS if p["id"] == patient_id), None)
+    patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
@@ -1002,7 +1044,7 @@ async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dic
     
     return {
         "success": True,
-        "patient_id": patient_id,
+        "patient_id": patient["id"],
         "patient_name": patient["name"],
         "room_name": room["name"],
         "previous_room": old_room
@@ -1044,6 +1086,43 @@ async def get_hallways(supabase) -> Dict[str, Any]:
 # --- Patient Operations ---
 
 async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any]:
+    """Fetch real patients from Supabase database"""
+    try:
+        if supabase:
+            response = supabase.table("patients").select("id, name, date_of_birth, gender, phone, conditions, allergies, notes, created_at").execute()
+            patients = response.data if response.data else []
+            
+            # Format patients for response
+            formatted = []
+            for p in patients:
+                age = None
+                if p.get("date_of_birth"):
+                    from datetime import date
+                    try:
+                        dob = datetime.strptime(p["date_of_birth"], "%Y-%m-%d").date()
+                        today = date.today()
+                        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    except:
+                        pass
+                
+                formatted.append({
+                    "id": p["id"],
+                    "name": p.get("name", "Unknown"),
+                    "age": age,
+                    "gender": p.get("gender"),
+                    "conditions": p.get("conditions", []),
+                    "allergies": p.get("allergies", []),
+                    "notes": p.get("notes")
+                })
+            
+            return {
+                "patients": formatted,
+                "count": len(formatted)
+            }
+    except Exception as e:
+        print(f"Error fetching patients from Supabase: {e}")
+    
+    # Fallback to mock data if Supabase fails
     patients = [p for p in MOCK_PATIENTS if include_discharged or p.get("room")]
     return {
         "patients": patients,
@@ -1052,6 +1131,45 @@ async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any
 
 
 async def search_patients(query: str, supabase) -> Dict[str, Any]:
+    """Search for real patients in Supabase database"""
+    try:
+        if supabase:
+            # Search by name (case insensitive)
+            response = supabase.table("patients").select("id, name, date_of_birth, gender, conditions, allergies, notes").ilike("name", f"%{query}%").execute()
+            patients = response.data if response.data else []
+            
+            # Format patients for response
+            formatted = []
+            for p in patients:
+                age = None
+                if p.get("date_of_birth"):
+                    from datetime import date
+                    try:
+                        dob = datetime.strptime(p["date_of_birth"], "%Y-%m-%d").date()
+                        today = date.today()
+                        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    except:
+                        pass
+                
+                formatted.append({
+                    "id": p["id"],
+                    "name": p.get("name", "Unknown"),
+                    "age": age,
+                    "gender": p.get("gender"),
+                    "conditions": p.get("conditions", []),
+                    "allergies": p.get("allergies", []),
+                    "notes": p.get("notes")
+                })
+            
+            return {
+                "patients": formatted,
+                "count": len(formatted),
+                "query": query
+            }
+    except Exception as e:
+        print(f"Error searching patients in Supabase: {e}")
+    
+    # Fallback to mock data
     query_lower = query.lower()
     matches = [
         p for p in MOCK_PATIENTS
@@ -1067,18 +1185,71 @@ async def search_patients(query: str, supabase) -> Dict[str, Any]:
 
 
 async def get_patient_details(patient_id: str, supabase) -> Dict[str, Any]:
-    patient = next((p for p in MOCK_PATIENTS if p["id"] == patient_id), None)
+    """Fetch real patient details from Supabase database"""
+    try:
+        if supabase:
+            # Try to fetch by ID first
+            response = supabase.table("patients").select("*").eq("id", patient_id).execute()
+            
+            # If not found by ID, try by name (fuzzy match)
+            if not response.data:
+                response = supabase.table("patients").select("*").ilike("name", f"%{patient_id}%").limit(1).execute()
+            
+            if response.data:
+                p = response.data[0]
+                
+                # Calculate age
+                age = None
+                if p.get("date_of_birth"):
+                    from datetime import date
+                    try:
+                        dob = datetime.strptime(p["date_of_birth"], "%Y-%m-%d").date()
+                        today = date.today()
+                        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    except:
+                        pass
+                
+                # Fetch medications for this patient
+                meds_response = supabase.table("patient_medication_schedules").select("*, pills(name, dosage)").eq("patient_id", p["id"]).execute()
+                medications = meds_response.data if meds_response.data else []
+                
+                # Fetch alerts for this patient
+                alerts_response = supabase.table("alerts").select("*").eq("patient_id", p["id"]).eq("is_resolved", False).execute()
+                alerts = alerts_response.data if alerts_response.data else []
+                
+                return {
+                    "patient": {
+                        "id": p["id"],
+                        "name": p.get("name", "Unknown"),
+                        "age": age,
+                        "gender": p.get("gender"),
+                        "conditions": p.get("conditions", []),
+                        "allergies": p.get("allergies", []),
+                        "notes": p.get("notes")
+                    },
+                    "patient_name": p.get("name", "Unknown"),
+                    "medications": medications,
+                    "alerts": alerts
+                }
+    except Exception as e:
+        print(f"Error fetching patient details from Supabase: {e}")
+    
+    # Fallback to mock data
+    patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
+    actual_patient_id = patient["id"]
+    
     # Get medications
-    meds = [m for m in MOCK_MEDICATIONS if m["patient_id"] == patient_id]
+    meds = [m for m in MOCK_MEDICATIONS if m["patient_id"] == actual_patient_id]
     
     # Get alerts
-    alerts = [a for a in MOCK_ALERTS if a.get("patient_id") == patient_id]
+    alerts = [a for a in MOCK_ALERTS if a.get("patient_id") == actual_patient_id]
     
     return {
         "patient": patient,
+        "patient_name": patient["name"],
         "medications": meds,
         "alerts": alerts,
         "vitals": {
@@ -1091,21 +1262,27 @@ async def get_patient_details(patient_id: str, supabase) -> Dict[str, Any]:
 
 
 async def get_patient_medications(patient_id: str, supabase) -> Dict[str, Any]:
-    meds = [m for m in MOCK_MEDICATIONS if m["patient_id"] == patient_id]
+    patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    actual_patient_id = patient["id"]
+    meds = [m for m in MOCK_MEDICATIONS if m["patient_id"] == actual_patient_id]
     return {
-        "patient_id": patient_id,
+        "patient_id": actual_patient_id,
+        "patient_name": patient["name"],
         "medications": meds,
         "count": len(meds)
     }
 
 
 async def get_patient_vitals(patient_id: str, supabase) -> Dict[str, Any]:
-    patient = next((p for p in MOCK_PATIENTS if p["id"] == patient_id), None)
+    patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
     return {
-        "patient_id": patient_id,
+        "patient_id": patient["id"],
         "patient_name": patient["name"],
         "vitals": {
             "heart_rate": 72,
@@ -1119,7 +1296,7 @@ async def get_patient_vitals(patient_id: str, supabase) -> Dict[str, Any]:
 
 
 async def update_patient_status(patient_id: str, status: str, notes: Optional[str], supabase) -> Dict[str, Any]:
-    patient = next((p for p in MOCK_PATIENTS if p["id"] == patient_id), None)
+    patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
@@ -1128,7 +1305,7 @@ async def update_patient_status(patient_id: str, status: str, notes: Optional[st
     
     return {
         "success": True,
-        "patient_id": patient_id,
+        "patient_id": patient["id"],
         "patient_name": patient["name"],
         "old_status": old_status,
         "new_status": status,
@@ -1144,7 +1321,7 @@ async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], 
     # Find patient
     patient = None
     if patient_id:
-        patient = next((p for p in MOCK_PATIENTS if p["id"] == patient_id), None)
+        patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
     elif from_room:
         source = fuzzy_match_room(from_room, MOCK_ROOMS)
         if source:
@@ -1168,17 +1345,41 @@ async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], 
 
 
 async def add_patient_note(patient_id: str, note_type: str, content: str, supabase) -> Dict[str, Any]:
-    patient = next((p for p in MOCK_PATIENTS if p["id"] == patient_id), None)
+    patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
     return {
         "success": True,
-        "patient_id": patient_id,
+        "patient_id": patient["id"],
         "patient_name": patient["name"],
         "note_type": note_type,
         "content": content,
         "created_at": datetime.now().isoformat()
+    }
+
+
+async def add_food_instructions(patient_id: str, instructions: str, duration_days: Optional[int], supabase) -> Dict[str, Any]:
+    patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    # In a real implementation, this would save to a database table for food instructions
+    # For now, return success confirmation
+    end_date = None
+    if duration_days:
+        from datetime import timedelta
+        end_date = (datetime.now() + timedelta(days=duration_days)).isoformat()
+    
+    return {
+        "success": True,
+        "patient_id": patient["id"],
+        "patient_name": patient["name"],
+        "instructions": instructions,
+        "duration_days": duration_days,
+        "end_date": end_date,
+        "created_at": datetime.now().isoformat(),
+        "message": f"Food instructions added for {patient['name']}: {instructions}"
     }
 
 
@@ -1331,9 +1532,22 @@ async def get_activity_summary(hours: int, supabase) -> Dict[str, Any]:
 
 async def get_medication_schedule(patient_id: Optional[str], supabase) -> Dict[str, Any]:
     if patient_id:
-        meds = [m for m in MOCK_MEDICATIONS if m["patient_id"] == patient_id]
+        patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
+        if patient:
+            actual_patient_id = patient["id"]
+            meds = [m for m in MOCK_MEDICATIONS if m["patient_id"] == actual_patient_id]
+            # Add patient names to medications
+            for med in meds:
+                med["patient_name"] = patient["name"]
+        else:
+            meds = []
     else:
-        meds = MOCK_MEDICATIONS
+        meds = MOCK_MEDICATIONS.copy()
+        # Add patient names to all medications
+        for med in meds:
+            patient = next((p for p in MOCK_PATIENTS if p["id"] == med["patient_id"]), None)
+            if patient:
+                med["patient_name"] = patient["name"]
     
     return {
         "medications": meds,
@@ -1343,7 +1557,12 @@ async def get_medication_schedule(patient_id: Optional[str], supabase) -> Dict[s
 
 
 async def mark_medication_given(patient_id: str, medication_id: str, administered_by: Optional[str], notes: Optional[str], supabase) -> Dict[str, Any]:
-    med = next((m for m in MOCK_MEDICATIONS if m["id"] == medication_id and m["patient_id"] == patient_id), None)
+    patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    actual_patient_id = patient["id"]
+    med = next((m for m in MOCK_MEDICATIONS if m["id"] == medication_id and m["patient_id"] == actual_patient_id), None)
     if not med:
         return {"error": f"Medication '{medication_id}' not found for patient '{patient_id}'"}
     
@@ -1353,14 +1572,56 @@ async def mark_medication_given(patient_id: str, medication_id: str, administere
         "success": True,
         "medication_id": medication_id,
         "medication_name": med["name"],
-        "patient_id": patient_id,
+        "patient_id": actual_patient_id,
+        "patient_name": patient["name"],
         "administered_by": administered_by,
         "administered_at": datetime.now().isoformat()
     }
 
 
 async def get_missed_medications(supabase) -> Dict[str, Any]:
-    overdue = [m for m in MOCK_MEDICATIONS if m["status"] == "overdue"]
+    """Fetch real missed medications from Supabase database"""
+    try:
+        if supabase:
+            from datetime import date, timedelta
+            today = date.today().isoformat()
+            
+            # Get all pill logs for today that are missed or late
+            response = supabase.table("pill_logs").select(
+                "*, patients(id, name), pills(name, dosage)"
+            ).in_("status", ["missed", "late"]).gte("scheduled_time", today).execute()
+            
+            missed = response.data if response.data else []
+            
+            # Format the response
+            formatted = []
+            for m in missed:
+                patient = m.get("patients", {})
+                pill = m.get("pills", {})
+                formatted.append({
+                    "id": m.get("id"),
+                    "patient_id": m.get("patient_id"),
+                    "patient_name": patient.get("name", "Unknown") if patient else "Unknown",
+                    "medication_name": pill.get("name", "Unknown") if pill else "Unknown",
+                    "dosage": pill.get("dosage") if pill else None,
+                    "scheduled_time": m.get("scheduled_time"),
+                    "status": m.get("status")
+                })
+            
+            return {
+                "missed_medications": formatted,
+                "count": len(formatted)
+            }
+    except Exception as e:
+        print(f"Error fetching missed medications from Supabase: {e}")
+    
+    # Fallback to mock data
+    overdue = [m.copy() for m in MOCK_MEDICATIONS if m["status"] == "overdue"]
+    # Add patient names to missed medications
+    for med in overdue:
+        patient = next((p for p in MOCK_PATIENTS if p["id"] == med["patient_id"]), None)
+        if patient:
+            med["patient_name"] = patient["name"]
     return {
         "missed_medications": overdue,
         "count": len(overdue)
@@ -1368,7 +1629,46 @@ async def get_missed_medications(supabase) -> Dict[str, Any]:
 
 
 async def get_medication_alerts(supabase) -> Dict[str, Any]:
-    med_alerts = [a for a in MOCK_ALERTS if "medication" in a["title"].lower() or "medication" in a["description"].lower()]
+    """Fetch real medication alerts from Supabase database"""
+    try:
+        if supabase:
+            # Get medication-related alerts (missed_dose, low_adherence)
+            response = supabase.table("alerts").select(
+                "*, patients(id, name)"
+            ).in_("type", ["missed_dose", "low_adherence"]).eq("is_resolved", False).execute()
+            
+            alerts = response.data if response.data else []
+            
+            # Format the response
+            formatted = []
+            for a in alerts:
+                patient = a.get("patients", {})
+                formatted.append({
+                    "id": a.get("id"),
+                    "title": a.get("title"),
+                    "message": a.get("message"),
+                    "severity": a.get("severity"),
+                    "type": a.get("type"),
+                    "patient_id": a.get("patient_id"),
+                    "patient_name": patient.get("name", "Unknown") if patient else "Unknown",
+                    "created_at": a.get("created_at")
+                })
+            
+            return {
+                "alerts": formatted,
+                "count": len(formatted)
+            }
+    except Exception as e:
+        print(f"Error fetching medication alerts from Supabase: {e}")
+    
+    # Fallback to mock data
+    med_alerts = [a.copy() for a in MOCK_ALERTS if "medication" in a["title"].lower() or "medication" in a["description"].lower()]
+    # Add patient names to alerts
+    for alert in med_alerts:
+        if alert.get("patient_id"):
+            patient = next((p for p in MOCK_PATIENTS if p["id"] == alert["patient_id"]), None)
+            if patient:
+                alert["patient_name"] = patient["name"]
     return {
         "alerts": med_alerts,
         "count": len(med_alerts)
@@ -1378,9 +1678,51 @@ async def get_medication_alerts(supabase) -> Dict[str, Any]:
 # --- Alert System ---
 
 async def get_active_alerts(severity: Optional[str], supabase) -> Dict[str, Any]:
-    alerts = [a for a in MOCK_ALERTS if a["status"] == "active"]
+    """Fetch real active alerts from Supabase database"""
+    try:
+        if supabase:
+            query = supabase.table("alerts").select("*, patients(id, name)").eq("is_resolved", False)
+            
+            if severity:
+                query = query.eq("severity", severity)
+            
+            response = query.execute()
+            alerts = response.data if response.data else []
+            
+            # Format the response
+            formatted = []
+            for a in alerts:
+                patient = a.get("patients", {})
+                formatted.append({
+                    "id": a.get("id"),
+                    "title": a.get("title"),
+                    "message": a.get("message"),
+                    "severity": a.get("severity"),
+                    "type": a.get("type"),
+                    "patient_id": a.get("patient_id"),
+                    "patient_name": patient.get("name", "Unknown") if patient else None,
+                    "created_at": a.get("created_at")
+                })
+            
+            return {
+                "alerts": formatted,
+                "count": len(formatted),
+                "severity_filter": severity
+            }
+    except Exception as e:
+        print(f"Error fetching active alerts from Supabase: {e}")
+    
+    # Fallback to mock data
+    alerts = [a.copy() for a in MOCK_ALERTS if a["status"] == "active"]
     if severity:
         alerts = [a for a in alerts if a["severity"] == severity]
+    
+    # Add patient names to alerts
+    for alert in alerts:
+        if alert.get("patient_id"):
+            patient = next((p for p in MOCK_PATIENTS if p["id"] == alert["patient_id"]), None)
+            if patient:
+                alert["patient_name"] = patient["name"]
     
     return {
         "alerts": alerts,
@@ -1390,13 +1732,24 @@ async def get_active_alerts(severity: Optional[str], supabase) -> Dict[str, Any]
 
 
 async def create_alert(title: str, description: str, severity: str, patient_id: Optional[str], room_id: Optional[str], supabase) -> Dict[str, Any]:
+    actual_patient_id = None
+    patient_name = None
+    if patient_id:
+        patient = fuzzy_match_patient(patient_id, MOCK_PATIENTS)
+        if patient:
+            actual_patient_id = patient["id"]
+            patient_name = patient["name"]
+        else:
+            actual_patient_id = patient_id
+    
     new_alert = {
         "id": f"A-{str(uuid.uuid4())[:8]}",
         "title": title,
         "description": description,
         "severity": severity,
         "status": "active",
-        "patient_id": patient_id,
+        "patient_id": actual_patient_id,
+        "patient_name": patient_name,
         "room_id": room_id,
         "created_at": datetime.now().isoformat()
     }

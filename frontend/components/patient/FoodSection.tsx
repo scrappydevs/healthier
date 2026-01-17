@@ -252,10 +252,10 @@ function MealCard({
               </div>
             )}
 
-            {/* AI Analysis */}
+            {/* Analysis */}
             {meal.ai_analysis && (
               <div>
-                <p className="text-xs text-muted-foreground mb-1">AI Analysis</p>
+                <p className="text-xs text-muted-foreground mb-1">Analysis</p>
                 <p className="text-xs text-foreground leading-relaxed">{meal.ai_analysis}</p>
               </div>
             )}
