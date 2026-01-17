@@ -1093,9 +1093,17 @@ async def create_patient_plan(
     if not patient_res.data:
         raise HTTPException(status_code=404, detail="Patient not found")
     
+    plan_type = plan.get("plan_type", "diet")
+    
+    # Deactivate all existing active plans of the same type for this patient
+    # This ensures only one active plan per type per patient
+    db.table("patient_plans").update({"is_active": False}).eq(
+        "patient_id", str(patient_id)
+    ).eq("plan_type", plan_type).eq("is_active", True).execute()
+    
     plan_data = {
         "patient_id": str(patient_id),
-        "plan_type": plan.get("plan_type", "diet"),
+        "plan_type": plan_type,
         "title": plan.get("title"),
         "notes": plan.get("notes"),
         "goals": plan.get("goals", []),
