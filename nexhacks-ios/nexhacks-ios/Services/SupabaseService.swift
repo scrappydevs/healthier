@@ -287,6 +287,54 @@ class SupabaseService: ObservableObject {
         
         return response.first
     }
+    
+    // MARK: - Journal Database Operations
+    
+    func createJournalEntry(_ entry: JournalEntry) async throws {
+        let supabaseEntry = SupabaseJournalEntry(from: entry)
+        try await supabase
+            .from("journal_entries")
+            .insert(supabaseEntry)
+            .execute()
+    }
+    
+    func fetchJournalEntries(userId: UUID = defaultUserId) async throws -> [JournalEntry] {
+        let response: [SupabaseJournalEntry] = try await supabase
+            .from("journal_entries")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .execute()
+            .value
+        return response.map { $0.toJournalEntry() }
+    }
+    
+    func updateJournalEntry(_ entry: JournalEntry) async throws {
+        let supabaseEntry = SupabaseJournalEntry(from: entry)
+        try await supabase
+            .from("journal_entries")
+            .update(supabaseEntry)
+            .eq("id", value: entry.id.uuidString)
+            .execute()
+    }
+    
+    func deleteJournalEntry(_ id: UUID) async throws {
+        try await supabase
+            .from("journal_entries")
+            .delete()
+            .eq("id", value: id.uuidString)
+            .execute()
+    }
+    
+    func getJournalContextForQuestion(_ question: String) async throws -> [JournalEntry] {
+        let response: [SupabaseJournalEntry] = try await supabase
+            .from("journal_entries")
+            .select()
+            .textSearch("transcript", query: question)
+            .limit(5)
+            .execute()
+            .value
+        return response.map { $0.toJournalEntry() }
+    }
 }
 
 // MARK: - Supabase Data Models
@@ -458,5 +506,50 @@ struct SupabaseDailySummary: Codable {
         case medicationsScheduled = "medications_scheduled"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+}
+
+struct SupabaseJournalEntry: Codable {
+    let id: UUID
+    let userId: UUID
+    let date: Date
+    var transcript: String
+    var duration: Double?
+    var tags: [String]
+    var createdAt: Date?
+    var updatedAt: Date?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case date
+        case transcript
+        case duration
+        case tags
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+    
+    init(from entry: JournalEntry) {
+        self.id = entry.id
+        self.userId = SupabaseService.defaultUserId
+        self.date = entry.date
+        self.transcript = entry.transcript
+        self.duration = entry.duration
+        self.tags = entry.tags
+        self.createdAt = entry.createdAt
+        self.updatedAt = entry.updatedAt
+    }
+    
+    func toJournalEntry() -> JournalEntry {
+        return JournalEntry(
+            id: id,
+            transcript: transcript,
+            date: date,
+            duration: duration,
+            tags: tags,
+            createdAt: createdAt ?? Date(),
+            updatedAt: updatedAt ?? Date()
+        )
     }
 }
