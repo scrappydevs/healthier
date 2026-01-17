@@ -32,7 +32,7 @@ export interface Room {
 }
 
 export const roomStatusColors: Record<RoomStatus, string> = {
-  normal: '#2563eb',
+  normal: '#64748b',
   attention: '#f59e0b',
   critical: '#ef4444',
   vacant: '#94a3b8',

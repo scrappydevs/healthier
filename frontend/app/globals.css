@@ -7,8 +7,8 @@
   --color-card: #FFFFFF;
   --color-card-foreground: #0F172A;
   
-  /* Blue primary - matches landing page */
-  --color-primary: #2563EB;
+  /* Dark blue primary - matches landing page */
+  --color-primary: #0F172A;
   --color-primary-foreground: #FFFFFF;
   
   /* Muted/neutral tones - slate based */
@@ -22,7 +22,7 @@
   --color-destructive: #DC2626;
   --color-destructive-foreground: #FFFFFF;
   --color-warning: #F59E0B;
-  --color-success: #22C55E;
+  --color-success: #0F172A;
 
   /* Brand colors - slate/blue palette */
   --color-sage-950: #0F172A;

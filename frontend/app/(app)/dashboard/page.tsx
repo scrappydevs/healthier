@@ -30,7 +30,7 @@ import { ExerciseSection } from "@/components/patient/ExerciseSection";
 import { MedicationSection } from "@/components/patient/MedicationSection";
 import { JournalSection } from "@/components/patient/JournalSection";
 
-type Tab = "overview" | "food" | "exercise" | "medications" | "journal";
+type Tab = "overview" | "food" | "exercise" | "medications" | "journal" | "plans";
 
 const DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -175,13 +175,24 @@ export default function DashboardPage() {
                       {patient.full_name}
                     </span>
                     {hasMeds ? (
-                      <span className={cn(
-                        "text-xs font-semibold tabular-nums",
-                        status === "good" ? "text-primary" :
-                        status === "warning" ? "text-amber-600" : "text-red-600"
-                      )}>
-                        {Math.round(patient.adherence_rate)}%
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={cn(
+                          "text-xs font-semibold tabular-nums",
+                          "text-muted-foreground"
+                        )}>
+                          {Math.round(patient.adherence_rate)}%
+                        </span>
+                        {status === "critical" && (
+                          <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                        )}
+                        {status === "warning" && (
+                          <svg className="w-3 h-3 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
@@ -256,7 +267,7 @@ export default function DashboardPage() {
             {/* Tabs */}
             <div className="px-4 bg-white border-b">
               <div className="flex gap-0">
-                {(["overview", "food", "exercise", "medications", "journal"] as Tab[]).map((tab) => (
+                {(["overview", "food", "exercise", "medications", "journal", "plans"] as Tab[]).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -301,6 +312,9 @@ export default function DashboardPage() {
                   <JournalSection patientId={selectedPatient.id} />
                 </div>
               )}
+              {activeTab === "plans" && (
+                <PlansContent patient={selectedPatient} />
+              )}
             </div>
           </>
         ) : (
@@ -319,19 +333,19 @@ function StatusBadge({ status }: { status: "good" | "warning" | "critical" }) {
       "text-xs px-1.5 py-0.5 rounded font-medium",
       status === "critical" ? "bg-red-50 text-red-700" :
       status === "warning" ? "bg-amber-50 text-amber-700" :
-      "bg-blue-50 text-blue-700"
+      "bg-slate-50 text-slate-700"
     )}>
       {status === "good" ? "On Track" : status === "warning" ? "Attention" : "At Risk"}
     </span>
   );
 }
 
-function OverviewContent({ patient }: { patient: Patient }) {
-  const [stats, setStats] = useState({ meals: 0, exercises: 0, medications: 0 });
-  const [isLoading, setIsLoading] = useState(true);
+function PlansContent({ patient }: { patient: Patient }) {
   const [showMedForm, setShowMedForm] = useState(false);
   const [showDietForm, setShowDietForm] = useState(false);
   const [showExerciseForm, setShowExerciseForm] = useState(false);
+  const [stats, setStats] = useState({ meals: 0, exercises: 0, medications: 0 });
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function fetchStats() {
@@ -347,8 +361,8 @@ function OverviewContent({ patient }: { patient: Patient }) {
           exercises: exercisesRes.total,
           medications: medsRes.total,
         });
-      } catch {
-        // Ignore errors
+      } catch (err) {
+        console.error("Failed to fetch stats:", err);
       } finally {
         setIsLoading(false);
       }
@@ -358,158 +372,198 @@ function OverviewContent({ patient }: { patient: Patient }) {
 
   return (
     <div className="space-y-4">
-      {/* Compact Stats Row */}
+      {/* Medication Assignment */}
       <div className="bg-white rounded-lg border p-4">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Adherence</span>
-            {patient.medication_count > 0 ? (
-              <span className={cn(
-                "text-lg font-semibold tabular-nums",
-                patient.adherence_rate >= 85 ? "text-primary" :
-                patient.adherence_rate >= 70 ? "text-amber-600" : "text-red-600"
-              )}>
-                {Math.round(patient.adherence_rate)}%
-              </span>
-            ) : (
-              <span className="text-lg font-semibold text-muted-foreground">—</span>
-            )}
+            <Pill className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-medium text-foreground">Medication Plans</h3>
           </div>
-          <div className="h-6 w-px bg-border" />
-          <div className="flex items-center gap-2">
-            <Pill className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm text-foreground">{isLoading ? "—" : stats.medications} medications</span>
-          </div>
-          <div className="h-6 w-px bg-border" />
-          <div className="flex items-center gap-2">
-            <Utensils className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm text-foreground">{isLoading ? "—" : stats.meals} meals</span>
-          </div>
-          <div className="h-6 w-px bg-border" />
-          <div className="flex items-center gap-2">
-            <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm text-foreground">{isLoading ? "—" : stats.exercises} exercises</span>
-          </div>
-          {patient.age && (
-            <>
-              <div className="h-6 w-px bg-border" />
-              <span className="text-sm text-muted-foreground">{patient.age} years</span>
-            </>
-          )}
+          <button 
+            onClick={() => setShowMedForm(!showMedForm)}
+            className="text-xs text-primary hover:underline flex items-center gap-1"
+          >
+            <Plus className="h-3 w-3" />
+            {showMedForm ? "Cancel" : "Assign"}
+          </button>
         </div>
+        
+        {showMedForm && (
+          <MedicationAssignForm 
+            patientId={patient.id} 
+            onClose={() => setShowMedForm(false)} 
+          />
+        )}
+        
+        {!showMedForm && (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {isLoading ? "Loading..." : `${stats.medications} active prescriptions`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Manage medication schedules, dosages, and reminders for this patient.
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Quick Assignment Cards */}
-      <div className="grid grid-cols-3 gap-3">
-        {/* Medication Assignment */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Pill className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-medium text-foreground">Medications</h3>
-            </div>
-            <button 
-              onClick={() => setShowMedForm(!showMedForm)}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              <Plus className="h-3 w-3" />
-              Assign
-            </button>
+      {/* Diet Instructions */}
+      <div className="bg-white rounded-lg border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Utensils className="h-4 w-4 text-amber-600" />
+            <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
           </div>
-          
-          {showMedForm && (
-            <MedicationAssignForm 
-              patientId={patient.id} 
-              onClose={() => setShowMedForm(false)} 
-            />
-          )}
-          
-          {!showMedForm && (
-            <p className="text-xs text-muted-foreground">
-              {stats.medications} active prescriptions
-            </p>
-          )}
+          <button 
+            onClick={() => setShowDietForm(!showDietForm)}
+            className="text-xs text-primary hover:underline flex items-center gap-1"
+          >
+            <Plus className="h-3 w-3" />
+            {showDietForm ? "Cancel" : "Add"}
+          </button>
         </div>
-
-        {/* Diet Instructions */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Utensils className="h-4 w-4 text-amber-600" />
-              <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
-            </div>
-            <button 
-              onClick={() => setShowDietForm(!showDietForm)}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              <Plus className="h-3 w-3" />
-              Add
-            </button>
-          </div>
-          
-          {showDietForm && (
-            <DietInstructionForm 
-              patientId={patient.id} 
-              onClose={() => setShowDietForm(false)} 
-            />
-          )}
-          
-          {!showDietForm && (
+        
+        {showDietForm && (
+          <DietInstructionForm 
+            patientId={patient.id} 
+            onClose={() => setShowDietForm(false)} 
+          />
+        )}
+        
+        {!showDietForm && (
+          <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              Set dietary guidelines
+              Set dietary guidelines and restrictions
             </p>
-          )}
-        </div>
-
-        {/* Exercise Plan */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-blue-600" />
-              <h3 className="text-sm font-medium text-foreground">Exercise Plan</h3>
-            </div>
-            <button 
-              onClick={() => setShowExerciseForm(!showExerciseForm)}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              <Plus className="h-3 w-3" />
-              Add
-            </button>
+            <p className="text-xs text-muted-foreground">
+              Create meal plans and track nutritional requirements.
+            </p>
           </div>
-          
-          {showExerciseForm && (
-            <ExercisePlanForm 
-              patientId={patient.id} 
-              onClose={() => setShowExerciseForm(false)} 
-            />
-          )}
-          
-          {!showExerciseForm && (
+        )}
+      </div>
+
+      {/* Exercise Plan */}
+      <div className="bg-white rounded-lg border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-slate-600" />
+            <h3 className="text-sm font-medium text-foreground">Exercise Plan</h3>
+          </div>
+          <button 
+            onClick={() => setShowExerciseForm(!showExerciseForm)}
+            className="text-xs text-primary hover:underline flex items-center gap-1"
+          >
+            <Plus className="h-3 w-3" />
+            {showExerciseForm ? "Cancel" : "Add"}
+          </button>
+        </div>
+        
+        {showExerciseForm && (
+          <ExercisePlanForm 
+            patientId={patient.id} 
+            onClose={() => setShowExerciseForm(false)} 
+          />
+        )}
+        
+        {!showExerciseForm && (
+          <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
               Set exercise recommendations
             </p>
-          )}
-        </div>
+            <p className="text-xs text-muted-foreground">
+              Define workout routines, frequency, and activity goals.
+            </p>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
 
-      {/* Patient Info & Conditions */}
-      {patient.medical_conditions && patient.medical_conditions.length > 0 && (
-        <div className="bg-white rounded-lg border p-4">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Conditions
-          </h3>
-          <div className="flex flex-wrap gap-1.5">
-            {patient.medical_conditions.map((condition, i) => (
-              <span 
-                key={i} 
-                className="px-2 py-1 text-xs bg-muted/50 text-foreground rounded"
-              >
-                {condition}
+function OverviewContent({ patient }: { patient: Patient }) {
+  const [todayStats, setTodayStats] = useState({ meals: 0, exercises: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const todayDate = new Date().toISOString().split("T")[0];
+
+  useEffect(() => {
+    async function fetchTodayStats() {
+      setIsLoading(true);
+      try {
+        const [mealsRes, exercisesRes] = await Promise.all([
+          getPatientMeals(patient.id, todayDate),
+          getPatientExercises(patient.id, todayDate),
+        ]);
+        
+        setTodayStats({
+          meals: mealsRes.meals.length,
+          exercises: exercisesRes.exercises.length,
+        });
+      } catch {
+        // Ignore errors
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchTodayStats();
+  }, [patient.id, todayDate]);
+
+  const getStatusFromAdherence = (rate: number): "good" | "warning" | "critical" => {
+    if (rate >= 85) return "good";
+    if (rate >= 70) return "warning";
+    return "critical";
+  };
+
+  const status = getStatusFromAdherence(patient.adherence_rate);
+
+  return (
+    <div className="space-y-4">
+      {/* Today's Status */}
+      <div className="bg-white rounded-lg border p-4">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+          Today's Status
+        </h3>
+        
+        <div className="space-y-4">
+          {/* Overall Status */}
+          <div className="flex items-center justify-between pb-4 border-b">
+            <span className="text-sm text-muted-foreground">Overall Status</span>
+            <StatusBadge status={status} />
+          </div>
+
+          {/* Today's Activity */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Pill className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-foreground">Medications</span>
+              </div>
+              <span className="text-sm font-medium text-foreground">
+                {patient.medication_count > 0 ? `${Math.round(patient.adherence_rate)}% adherence` : "No medications"}
               </span>
-            ))}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Utensils className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-foreground">Meals</span>
+              </div>
+              <span className="text-sm font-medium text-foreground">
+                {isLoading ? "—" : `${todayStats.meals} logged today`}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-foreground">Exercises</span>
+              </div>
+              <span className="text-sm font-medium text-foreground">
+                {isLoading ? "—" : `${todayStats.exercises} logged today`}
+              </span>
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -734,7 +788,7 @@ function ExercisePlanForm({ patientId, onClose }: { patientId: string; onClose: 
               className={cn(
                 "w-7 h-6 text-[10px] rounded transition-colors",
                 selectedDays.includes(day) 
-                  ? "bg-blue-600 text-white" 
+                  ? "bg-slate-600 text-white" 
                   : "bg-muted/50 text-muted-foreground hover:bg-muted"
               )}
             >

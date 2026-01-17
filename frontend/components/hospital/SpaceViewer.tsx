@@ -38,17 +38,17 @@ export interface SpaceViewerProps {
 
 // Room type icon mapping (small colored dots with meaning)
 const roomTypeColors: Record<RoomType, string> = {
-  patient: '#3b82f6',      // blue
+  patient: '#64748b',      // slate
   icu: '#ef4444',          // red
   operating: '#8b5cf6',    // purple
   emergency: '#f97316',    // orange
-  pharmacy: '#2563eb',     // blue
-  lab: '#06b6d4',          // cyan
-  nurses_station: '#ec4899', // pink
-  reception: '#6366f1',    // indigo
+  pharmacy: '#94a3b8',     // slate
+  lab: '#64748b',          // slate
+  nurses_station: '#94a3b8', // slate
+  reception: '#94a3b8',    // slate
   hallway: '#9ca3af',      // gray
   storage: '#78716c',      // stone
-  ward: '#0ea5e9',         // sky
+  ward: '#64748b',         // slate
   common: '#a3a3a3',       // neutral
 };
 
@@ -111,7 +111,7 @@ export function SpaceViewer({
         spaceRef.current.startViewer({
           preview: false,
           allowModeChange: true,
-          mode: '2d', // Start in 2D for cleaner floor plan view
+          mode: '3d', // Start in 3D mode
           renderOptions: {
             backgroundColor: '#f8fafc',
             annotations: {
@@ -205,7 +205,7 @@ export function SpaceViewer({
           const statusColors = {
             active: { bg: '#fef2f2', color: '#dc2626' },
             responding: { bg: '#fffbeb', color: '#d97706' },
-            resolved: { bg: '#dbeafe', color: '#2563eb' },
+            resolved: { bg: '#f1f5f9', color: '#64748b' },
           };
           const sc = statusColors[d.status];
           return `
@@ -258,7 +258,7 @@ export function SpaceViewer({
         },
         tooltip: (d: Room) => {
           const statusConfig = {
-            normal: { bg: '#dbeafe', color: '#2563eb' },
+            normal: { bg: '#f1f5f9', color: '#64748b' },
             attention: { bg: '#fffbeb', color: '#d97706' },
             critical: { bg: '#fef2f2', color: '#dc2626' },
             vacant: { bg: '#f5f5f5', color: '#737373' },

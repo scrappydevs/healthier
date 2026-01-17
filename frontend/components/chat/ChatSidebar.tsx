@@ -149,6 +149,14 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
         "Medication breakdown",
       ];
     }
+    if (pathname === "/dashboard" || pathname?.endsWith("/dashboard")) {
+      return [
+        "Show patients with low adherence",
+        "Who missed medications today?",
+        "Patient summary",
+        "Recent activity",
+      ];
+    }
     return [
       "Show room status",
       "Active alerts",

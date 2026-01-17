@@ -12,8 +12,8 @@ interface JournalSectionProps {
 }
 
 const moodIcons: Record<string, { icon: typeof Smile; color: string; label: string }> = {
-  very_positive: { icon: Smile, color: "text-blue-500", label: "Very Positive" },
-  positive: { icon: Smile, color: "text-blue-600", label: "Positive" },
+  very_positive: { icon: Smile, color: "text-slate-900", label: "Very Positive" },
+  positive: { icon: Smile, color: "text-slate-900", label: "Positive" },
   neutral: { icon: Meh, color: "text-slate-400", label: "Neutral" },
   negative: { icon: Frown, color: "text-amber-500", label: "Negative" },
   very_negative: { icon: Frown, color: "text-red-500", label: "Very Negative" },

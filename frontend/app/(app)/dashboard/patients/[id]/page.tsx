@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, AlertCircle, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, AlertCircle, Calendar, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { getPatient, type Patient } from "@/lib/api";
@@ -174,7 +174,7 @@ export default function PatientDetailPage({
       {/* Tab Content */}
       <div className="bg-white rounded-md p-4">
         {activeTab === "overview" && (
-          <OverviewTab patient={patient} />
+          <OverviewTab patient={patient} setActiveTab={setActiveTab} />
         )}
         {activeTab === "food" && (
           <FoodSection patientId={id} date={selectedDate} />
@@ -190,7 +190,7 @@ export default function PatientDetailPage({
   );
 }
 
-function OverviewTab({ patient }: { patient: Patient }) {
+function OverviewTab({ patient, setActiveTab }: { patient: Patient; setActiveTab: (tab: Tab) => void }) {
   return (
     <div className="space-y-6">
       {/* Basic Info */}
@@ -272,7 +272,7 @@ function OverviewTab({ patient }: { patient: Patient }) {
         </div>
       )}
 
-      {/* Quick Links */}
+      {/* Quick View */}
       <div>
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           Quick View
@@ -281,17 +281,20 @@ function OverviewTab({ patient }: { patient: Patient }) {
           <QuickCard
             title="Food Journal"
             description="View meals logged today"
-            onClick={() => {}}
+            onView={() => setActiveTab("food")}
+            onAdd={() => setActiveTab("food")}
           />
           <QuickCard
             title="Exercise"
             description="View activity log"
-            onClick={() => {}}
+            onView={() => setActiveTab("exercise")}
+            onAdd={() => setActiveTab("exercise")}
           />
           <QuickCard
             title="Medications"
             description="View adherence details"
-            onClick={() => {}}
+            onView={() => setActiveTab("medications")}
+            onAdd={() => setActiveTab("medications")}
           />
         </div>
       </div>
@@ -302,19 +305,38 @@ function OverviewTab({ patient }: { patient: Patient }) {
 function QuickCard({
   title,
   description,
-  onClick,
+  onView,
+  onAdd,
 }: {
   title: string;
   description: string;
-  onClick: () => void;
+  onView: () => void;
+  onAdd: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className="p-3 text-left bg-muted/30 rounded-md hover:bg-muted/50 transition-colors"
-    >
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-    </button>
+    <div className="p-3 bg-muted/30 rounded-md">
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-foreground">{title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 mt-3">
+        <button
+          onClick={onView}
+          className="text-xs text-primary hover:underline"
+        >
+          View
+        </button>
+        <span className="text-muted-foreground/50">·</span>
+        <button
+          onClick={onAdd}
+          className="text-xs text-primary hover:underline flex items-center gap-1"
+        >
+          <Plus className="h-3 w-3" />
+          Add
+        </button>
+      </div>
+    </div>
   );
 }

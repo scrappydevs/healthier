@@ -42,8 +42,8 @@ const eventIcons: Record<EventType, React.ElementType> = {
 };
 
 const eventColors: Record<EventType, string> = {
-  vital_check: 'text-blue-600 bg-blue-50',
-  medication_given: 'text-blue-600 bg-blue-50',
+  vital_check: 'text-slate-600 bg-slate-50',
+  medication_given: 'text-slate-600 bg-slate-50',
   hazard_reported: 'text-amber-600 bg-amber-50',
   patient_moved: 'text-slate-600 bg-slate-50',
   alert_triggered: 'text-red-600 bg-red-50',
