@@ -275,18 +275,10 @@ CREATE INDEX idx_reminders_patient ON reminders(patient_id);
 CREATE INDEX idx_reminders_scheduled ON reminders(scheduled_time);
 
 -- ============================================
--- ROW LEVEL SECURITY
+-- ROW LEVEL SECURITY - DISABLED
 -- ============================================
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE patients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pills ENABLE ROW LEVEL SECURITY;
-ALTER TABLE patient_pills ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pill_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE food ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exercises ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vitals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
+-- RLS is disabled for this application
+-- All access control is handled at the application level
 
 -- ============================================
 -- FUNCTIONS

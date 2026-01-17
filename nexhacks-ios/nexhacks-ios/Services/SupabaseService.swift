@@ -36,9 +36,6 @@ class SupabaseService: ObservableObject {
     @Published var uploadProgress: Double = 0.0
     @Published var lastError: Error?
     
-    // Default user ID for demo (would be from auth in production)
-    nonisolated static let defaultUserId = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
-    
     // MARK: - Storage Operations
     
     /// Upload an image to a storage bucket
@@ -130,11 +127,12 @@ class SupabaseService: ObservableObject {
             .execute()
     }
     
-    func fetchMedications(userId: UUID = defaultUserId) async throws -> [SupabaseMedication] {
+    func fetchMedications(userId: UUID? = nil) async throws -> [SupabaseMedication] {
+        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
         let response: [SupabaseMedication] = try await supabase
             .from("medications")
             .select()
-            .eq("user_id", value: userId.uuidString)
+            .eq("user_id", value: currentUserId.uuidString)
             .execute()
             .value
         return response
@@ -184,11 +182,12 @@ class SupabaseService: ObservableObject {
             .execute()
     }
     
-    func fetchMeals(userId: UUID = defaultUserId, date: Date? = nil) async throws -> [SupabaseMeal] {
+    func fetchMeals(userId: UUID? = nil, date: Date? = nil) async throws -> [SupabaseMeal] {
+        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
         var query = supabase
             .from("meals")
             .select()
-            .eq("user_id", value: userId.uuidString)
+            .eq("user_id", value: currentUserId.uuidString)
         
         if let date = date {
             let calendar = Calendar.current
@@ -229,11 +228,12 @@ class SupabaseService: ObservableObject {
             .execute()
     }
     
-    func fetchExercises(userId: UUID = defaultUserId, date: Date? = nil) async throws -> [SupabaseExercise] {
+    func fetchExercises(userId: UUID? = nil, date: Date? = nil) async throws -> [SupabaseExercise] {
+        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
         var query = supabase
             .from("exercises")
             .select()
-            .eq("user_id", value: userId.uuidString)
+            .eq("user_id", value: currentUserId.uuidString)
         
         if let date = date {
             let calendar = Calendar.current
@@ -274,13 +274,14 @@ class SupabaseService: ObservableObject {
             .execute()
     }
     
-    func fetchDailySummary(userId: UUID = defaultUserId, date: Date) async throws -> SupabaseDailySummary? {
+    func fetchDailySummary(userId: UUID? = nil, date: Date) async throws -> SupabaseDailySummary? {
+        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
         let dateString = ISO8601DateFormatter().string(from: date).prefix(10) // Just the date part
         
         let response: [SupabaseDailySummary] = try await supabase
             .from("daily_summaries")
             .select()
-            .eq("user_id", value: userId.uuidString)
+            .eq("user_id", value: currentUserId.uuidString)
             .eq("date", value: String(dateString))
             .execute()
             .value
@@ -288,148 +289,201 @@ class SupabaseService: ObservableObject {
         return response.first
     }
     
-    // MARK: - Journal Entry Operations
+    // MARK: - Journal Database Operations
     
-    /// Get patient_id from user_id
-    private func getPatientId(userId: UUID) async throws -> UUID {
-        struct PatientIdResponse: Codable {
-            let id: UUID
-        }
-        
-        let response: [PatientIdResponse] = try await supabase
-            .from("patients")
-            .select("id")
-            .eq("user_id", value: userId.uuidString)
+    func createJournalEntry(_ entry: JournalEntry, userId: UUID? = nil) async throws {
+        let currentUserId = userId ?? getCurrentUserId()
+        let supabaseEntry = SupabaseJournalEntry(from: entry, userId: currentUserId)
+        try await supabase
+            .from("journal_entries")
+            .insert(supabaseEntry)
+            .execute()
+    }
+    
+    func fetchJournalEntries(userId: UUID? = nil) async throws -> [JournalEntry] {
+        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        let response: [SupabaseJournalEntry] = try await supabase
+            .from("journal_entries")
+            .select()
+            .eq("user_id", value: currentUserId.uuidString)
             .execute()
             .value
-        
-        guard let patient = response.first else {
-            throw NSError(domain: "SupabaseService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Patient not found for user"])
-        }
-        
-        return patient.id
+        return response.map { $0.toJournalEntry() }
     }
     
-    func createJournalEntry(_ entry: JournalEntry, userId: UUID = defaultUserId) async throws {
-        let patientId = try await getPatientId(userId: userId)
-        
-        let journalLog = SupabaseJournalLog(
-            id: entry.id,
-            patientId: patientId,
-            transcript: entry.transcript,
-            voiceTranscription: nil,
-            durationSeconds: entry.duration.map { Double($0) },
-            tags: entry.tags,
-            mood: nil,
-            sentimentScore: nil,
-            aiAnalysis: nil,
-            metadata: nil,
-            loggedAt: entry.date,
-            createdAt: entry.createdAt,
-            updatedAt: entry.updatedAt
-        )
-        
+    func updateJournalEntry(_ entry: JournalEntry, userId: UUID? = nil) async throws {
+        let currentUserId = userId ?? getCurrentUserId()
+        let supabaseEntry = SupabaseJournalEntry(from: entry, userId: currentUserId)
         try await supabase
-            .from("journal_logs")
-            .insert(journalLog)
-            .execute()
-    }
-    
-    func updateJournalEntry(_ entry: JournalEntry, userId: UUID = defaultUserId) async throws {
-        let patientId = try await getPatientId(userId: userId)
-        
-        let journalLog = SupabaseJournalLog(
-            id: entry.id,
-            patientId: patientId,
-            transcript: entry.transcript,
-            voiceTranscription: nil,
-            durationSeconds: entry.duration.map { Double($0) },
-            tags: entry.tags,
-            mood: nil,
-            sentimentScore: nil,
-            aiAnalysis: nil,
-            metadata: nil,
-            loggedAt: entry.date,
-            createdAt: entry.createdAt,
-            updatedAt: entry.updatedAt
-        )
-        
-        try await supabase
-            .from("journal_logs")
-            .update(journalLog)
+            .from("journal_entries")
+            .update(supabaseEntry)
             .eq("id", value: entry.id.uuidString)
             .execute()
     }
     
     func deleteJournalEntry(_ id: UUID) async throws {
         try await supabase
-            .from("journal_logs")
+            .from("journal_entries")
             .delete()
             .eq("id", value: id.uuidString)
             .execute()
     }
     
-    func fetchJournalEntries(userId: UUID = defaultUserId) async throws -> [JournalEntry] {
-        let patientId = try await getPatientId(userId: userId)
-        
-        let response: [SupabaseJournalLog] = try await supabase
-            .from("journal_logs")
+    func getJournalContextForQuestion(_ question: String) async throws -> [JournalEntry] {
+        let response: [SupabaseJournalEntry] = try await supabase
+            .from("journal_entries")
             .select()
-            .eq("patient_id", value: patientId.uuidString)
-            .order("logged_at", ascending: false)
+            .textSearch("transcript", query: question)
+            .limit(5)
             .execute()
             .value
-        
-        return response.map { log in
-            JournalEntry(
-                id: log.id,
-                transcript: log.transcript,
-                date: log.loggedAt,
-                duration: log.durationSeconds.map { TimeInterval($0) },
-                tags: log.tags ?? [],
-                createdAt: log.createdAt,
-                updatedAt: log.updatedAt
-            )
-        }
+        return response.map { $0.toJournalEntry() }
     }
     
-    func getJournalContextForQuestion(_ question: String, userId: UUID = defaultUserId, limit: Int = 10) async throws -> [JournalEntry] {
-        let patientId = try await getPatientId(userId: userId)
-        
-        // Use full-text search on transcript - search for entries containing question keywords
-        // For now, fetch recent entries and filter client-side
-        // In production, you'd use PostgreSQL full-text search or vector similarity
-        let response: [SupabaseJournalLog] = try await supabase
-            .from("journal_logs")
+    // MARK: - User Database Operations
+    
+    func createUser(_ user: SupabaseUser) async throws {
+        try await supabase
+            .from("users")
+            .insert(user)
+            .execute()
+    }
+    
+    func fetchUser(userId: UUID) async throws -> SupabaseUser? {
+        let response: [SupabaseUser] = try await supabase
+            .from("users")
             .select()
-            .eq("patient_id", value: patientId.uuidString)
-            .order("logged_at", ascending: false)
-            .limit(limit * 2)
+            .eq("id", value: userId.uuidString)
             .execute()
             .value
-        
-        // Filter entries that contain question keywords
-        let keywords = question.lowercased().components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
-        let filtered = response.filter { log in
-            let transcriptLower = log.transcript.lowercased()
-            return keywords.isEmpty || keywords.allSatisfy { transcriptLower.contains($0) }
-        }
-        
-        return Array(filtered.prefix(limit)).map { log in
-            JournalEntry(
-                id: log.id,
-                transcript: log.transcript,
-                date: log.loggedAt,
-                duration: log.durationSeconds.map { TimeInterval($0) },
-                tags: log.tags ?? [],
-                createdAt: log.createdAt,
-                updatedAt: log.updatedAt
-            )
-        }
+        return response.first
+    }
+    
+    func updateUser(_ user: SupabaseUser) async throws {
+        try await supabase
+            .from("users")
+            .update(user)
+            .eq("id", value: user.id.uuidString)
+            .execute()
+    }
+    
+    // MARK: - Patient Database Operations
+    
+    func createPatient(_ patient: SupabasePatient) async throws {
+        try await supabase
+            .from("patients")
+            .insert(patient)
+            .execute()
+    }
+    
+    func fetchPatient(userId: UUID) async throws -> SupabasePatient? {
+        let response: [SupabasePatient] = try await supabase
+            .from("patients")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .execute()
+            .value
+        return response.first
+    }
+    
+    func fetchPatientById(patientId: UUID) async throws -> SupabasePatient? {
+        let response: [SupabasePatient] = try await supabase
+            .from("patients")
+            .select()
+            .eq("id", value: patientId.uuidString)
+            .execute()
+            .value
+        return response.first
+    }
+    
+    func updatePatient(_ patient: SupabasePatient) async throws {
+        try await supabase
+            .from("patients")
+            .update(patient)
+            .eq("id", value: patient.id.uuidString)
+            .execute()
+    }
+    
+    func getCurrentUserId() -> UUID? {
+        return supabase.auth.currentUser?.id
     }
 }
 
 // MARK: - Supabase Data Models
+
+// MARK: - Auth-Related Models
+
+struct SupabaseUser: Codable {
+    let id: UUID
+    let email: String
+    let fullName: String
+    let role: String
+    var phone: String?
+    var avatarUrl: String?
+    var preferences: [String: String]?
+    var isActive: Bool
+    var lastLoginAt: Date?
+    var createdAt: Date?
+    var updatedAt: Date?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case email
+        case fullName = "full_name"
+        case role
+        case phone
+        case avatarUrl = "avatar_url"
+        case preferences
+        case isActive = "is_active"
+        case lastLoginAt = "last_login_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct SupabasePatient: Codable {
+    let id: UUID
+    let userId: UUID
+    var clinicianId: UUID?
+    var dateOfBirth: String?
+    var age: Int?
+    var gender: String?
+    var heightCm: Double?
+    var weightKg: Double?
+    var bloodType: String?
+    var medicalConditions: [String]
+    var allergies: [String]
+    var emergencyContactName: String?
+    var emergencyContactPhone: String?
+    var emergencyContactRelationship: String?
+    var address: String?
+    var notes: String?
+    var status: String
+    var createdAt: Date?
+    var updatedAt: Date?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case clinicianId = "clinician_id"
+        case dateOfBirth = "date_of_birth"
+        case age
+        case gender
+        case heightCm = "height_cm"
+        case weightKg = "weight_kg"
+        case bloodType = "blood_type"
+        case medicalConditions = "medical_conditions"
+        case allergies
+        case emergencyContactName = "emergency_contact_name"
+        case emergencyContactPhone = "emergency_contact_phone"
+        case emergencyContactRelationship = "emergency_contact_relationship"
+        case address
+        case notes
+        case status
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
 
 struct SupabaseMedication: Codable {
     let id: UUID
@@ -601,34 +655,47 @@ struct SupabaseDailySummary: Codable {
     }
 }
 
-struct SupabaseJournalLog: Codable {
+struct SupabaseJournalEntry: Codable {
     let id: UUID
-    let patientId: UUID
-    let transcript: String
-    var voiceTranscription: String?
-    var durationSeconds: Double?
-    var tags: [String]?
-    var mood: String?
-    var sentimentScore: Double?
-    var aiAnalysis: String?  // JSONB stored as JSON string for simplicity
-    var metadata: String?    // JSONB stored as JSON string for simplicity
-    let loggedAt: Date
-    let createdAt: Date
-    var updatedAt: Date
+    let userId: UUID
+    let date: Date
+    var transcript: String
+    var duration: Double?
+    var tags: [String]
+    var createdAt: Date?
+    var updatedAt: Date?
     
     enum CodingKeys: String, CodingKey {
         case id
-        case patientId = "patient_id"
+        case userId = "user_id"
+        case date
         case transcript
-        case voiceTranscription = "voice_transcription"
-        case durationSeconds = "duration_seconds"
+        case duration
         case tags
-        case mood
-        case sentimentScore = "sentiment_score"
-        case aiAnalysis = "ai_analysis"
-        case metadata
-        case loggedAt = "logged_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+    
+    init(from entry: JournalEntry, userId: UUID? = nil) {
+        self.id = entry.id
+        self.userId = userId ?? supabase.auth.currentUser?.id ?? UUID()
+        self.date = entry.date
+        self.transcript = entry.transcript
+        self.duration = entry.duration
+        self.tags = entry.tags
+        self.createdAt = entry.createdAt
+        self.updatedAt = entry.updatedAt
+    }
+    
+    func toJournalEntry() -> JournalEntry {
+        return JournalEntry(
+            id: id,
+            transcript: transcript,
+            date: date,
+            duration: duration,
+            tags: tags,
+            createdAt: createdAt ?? Date(),
+            updatedAt: updatedAt ?? Date()
+        )
     }
 }

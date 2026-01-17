@@ -4,5 +4,28 @@
 <dict>
 	<key>NSCameraReactionEffectGesturesEnabledDefault</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>We need camera access to scan your rooms and create 3D models using AR.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>We need access to save scanned room models to your photo library.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to provide indoor positioning and location tracking features.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We need microphone access for voice journaling.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>We need speech recognition to transcribe your journal entries.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.nexhacks.healthier</string>
+			</array>
+		</dict>
+	</array>
+	<key>GIDClientID</key>
+	<string>758399115010-716v47jfkrttih984jaicn20un8hib9j.apps.googleusercontent.com</string>
 </dict>
 </plist>
