@@ -13,6 +13,7 @@ from openai import OpenAI
 
 from app.api.health import router as health_router
 from app.api.v1 import router as v1_router
+from app.api.medications import router as medications_router
 from app.core.config import get_settings
 from app.ai_tools import PILLPAL_TOOLS, execute_tool
 from app.chat_context import (
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(health_router)
     app.include_router(v1_router)
+    app.include_router(medications_router)
 
     return app
 
