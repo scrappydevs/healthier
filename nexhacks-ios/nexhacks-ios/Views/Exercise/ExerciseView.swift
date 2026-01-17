@@ -14,6 +14,7 @@ struct ExerciseView: View {
     @StateObject var viewModel: ExerciseViewModel
     @State private var showingAddExercise = false
     @State private var showingVideoCapture = false
+    @State private var showingLiveRecording = false
     
     init(viewModel: ExerciseViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -38,25 +39,44 @@ struct ExerciseView: View {
                     .padding(AppTheme.Spacing.md)
                 }
                 
-                // Floating Action Button
+                // Floating Action Buttons
                 VStack {
                     Spacer()
-                    HStack {
+                    HStack(spacing: 16) {
                         Spacer()
+                        
+                        // Upload existing video
                         Button {
                             showingVideoCapture = true
                         } label: {
-                            Image(systemName: "video.fill")
-                                .font(.title2)
+                            Image(systemName: "photo.on.rectangle")
+                                .font(.title3)
                                 .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Color.appPrimary)
+                                .frame(width: 50, height: 50)
+                                .background(Color.textSecondary)
                                 .clipShape(Circle())
                                 .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
                         }
-                        .padding(.trailing, AppTheme.Spacing.lg)
-                        .padding(.bottom, AppTheme.Spacing.lg)
+                        
+                        // Live record with AI feedback
+                        Button {
+                            showingLiveRecording = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "video.fill")
+                                Text("Live")
+                                    .font(.headline)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .frame(height: 60)
+                            .background(Color.appPrimary)
+                            .clipShape(Capsule())
+                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                        }
                     }
+                    .padding(.trailing, AppTheme.Spacing.lg)
+                    .padding(.bottom, AppTheme.Spacing.lg)
                 }
             }
             .navigationTitle("Exercise")
@@ -65,6 +85,9 @@ struct ExerciseView: View {
             }
             .sheet(isPresented: $showingVideoCapture) {
                 VideoUploadView(viewModel: viewModel)
+            }
+            .fullScreenCover(isPresented: $showingLiveRecording) {
+                LiveExerciseView(viewModel: viewModel)
             }
         }
     }
