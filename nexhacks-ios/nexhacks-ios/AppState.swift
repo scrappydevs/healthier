@@ -10,6 +10,10 @@ import Combine
 
 @MainActor
 class AppState: ObservableObject {
+    // MARK: - Auth
+    let authService: AuthService
+    let authViewModel: AuthViewModel
+    
     // MARK: - Repositories
     let userRepository: UserRepository
     let medicationRepository: MedicationRepository
@@ -38,26 +42,33 @@ class AppState: ObservableObject {
     // MARK: - Published State
     @Published var isInitialized: Bool = false
     @Published var currentUser: User?
+    
+    // MARK: - Computed Properties
+    var isAuthenticated: Bool {
+        authViewModel.authState == .ready
+    }
 
     // MARK: - Initialization
     init() {
-        // Initialize Repositories
-        self.userRepository = UserRepository()
-        self.medicationRepository = MedicationRepository()
-        self.mealRepository = MealRepository()
-        self.exerciseRepository = ExerciseRepository()
-        self.roomRepository = RoomRepository()
-
-        // Initialize Services
+        // Initialize Services first
+        self.supabaseService = SupabaseService()
         self.syncService = SyncService()
         self.locationService = LocationTrackingService()
         self.roomPlanService = RoomPlanService()
         self.notificationService = NotificationService()
         self.liveKitService = LiveKitService()
-        self.supabaseService = SupabaseService()
         self.claudeAPIService = ClaudeAPIService()
-
-        // Initialize Journal Repository (depends on SupabaseService)
+        
+        // Initialize Auth Services
+        self.authService = AuthService()
+        self.authViewModel = AuthViewModel(authService: authService, supabaseService: supabaseService)
+        
+        // Initialize Repositories
+        self.userRepository = UserRepository(supabaseService: supabaseService)
+        self.medicationRepository = MedicationRepository()
+        self.mealRepository = MealRepository()
+        self.exerciseRepository = ExerciseRepository()
+        self.roomRepository = RoomRepository()
         self.journalRepository = JournalRepository(supabaseService: supabaseService)
 
         // Initialize ViewModels with dependencies
@@ -108,11 +119,17 @@ class AppState: ObservableObject {
     // MARK: - Lifecycle Methods
 
     func initialize() async {
-        // Request necessary permissions
-        await requestPermissions()
-
-        // Load current user
-        currentUser = userRepository.currentUser
+        // Check auth state first
+        await authViewModel.checkAuthState()
+        
+        // Only proceed if authenticated
+        if authViewModel.authState == .ready {
+            // Load current user from AuthViewModel
+            currentUser = authViewModel.currentUser
+            
+            // Request necessary permissions
+            await requestPermissions()
+        }
 
         // Mark as initialized
         isInitialized = true

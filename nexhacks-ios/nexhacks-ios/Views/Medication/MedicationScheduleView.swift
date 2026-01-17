@@ -10,14 +10,15 @@ import SwiftUI
 struct MedicationScheduleView: View {
     @ObservedObject var viewModel: MedicationViewModel
     @State private var selectedDate: Date = Date()
-    @State private var selectedMedication: Medication?
-    @State private var showingVerification = false
+    @State private var medicationForVerification: Medication?
+    @State private var medicationForDetail: Medication?
 
     private var calendar: Calendar { Calendar.current }
 
     // Group medications by their scheduled times for the selected date
     private var scheduledSlots: [ScheduleTimeSlot] {
         let medications = viewModel.activeMedications
+        let now = Date()
 
         var timeSlotMap: [Int: [ScheduledMedicationItem]] = [:]
 
@@ -26,10 +27,15 @@ struct MedicationScheduleView: View {
                 let hour = calendar.component(.hour, from: reminderTime)
                 let minute = calendar.component(.minute, from: reminderTime)
 
+                let status = getMedicationStatus(medication: medication, hour: hour, minute: minute)
+                
+                // Only include upcoming or due now medications
+                guard status == .upcoming || status == .dueNow else { continue }
+
                 let item = ScheduledMedicationItem(
                     medication: medication,
                     scheduledTime: reminderTime,
-                    status: getMedicationStatus(medication: medication, hour: hour, minute: minute)
+                    status: status
                 )
 
                 let key = hour * 100 + minute // Unique key for hour:minute
@@ -79,8 +85,10 @@ struct MedicationScheduleView: View {
                                 LiquidGlassMedicationSlotView(
                                     slot: slot,
                                     onTakeMedication: { medication in
-                                        selectedMedication = medication
-                                        showingVerification = true
+                                        medicationForVerification = medication
+                                    },
+                                    onCardTap: { medication in
+                                        medicationForDetail = medication
                                     }
                                 )
                             }
@@ -91,14 +99,15 @@ struct MedicationScheduleView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingVerification) {
-            if let medication = selectedMedication {
-                PillVerificationView(medication: medication) { verified in
-                    if verified {
-                        viewModel.logMedicationTaken(medication, wasOnTime: true, verificationStatus: .verified)
-                    }
+        .sheet(item: $medicationForVerification) { medication in
+            PillVerificationView(medication: medication) { verified in
+                if verified {
+                    viewModel.logMedicationTaken(medication, wasOnTime: true, verificationStatus: .verified)
                 }
             }
+        }
+        .sheet(item: $medicationForDetail) { medication in
+            MedicationDetailView(viewModel: viewModel, medication: medication)
         }
     }
     
@@ -110,7 +119,7 @@ struct MedicationScheduleView: View {
             HStack {
                 Text("Medication\nReminder")
                     .font(.system(size: 36, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                 
                 Spacer()
                 
@@ -120,7 +129,7 @@ struct MedicationScheduleView: View {
                 } label: {
                     Image(systemName: "bell.fill")
                         .font(.title2)
-                        .foregroundColor(Color(red: 0.6, green: 0.5, blue: 0.8))
+                        .foregroundColor(.black)
                         .frame(width: 50, height: 50)
                         .background(.white)
                         .clipShape(Circle())
@@ -148,36 +157,27 @@ struct MedicationScheduleView: View {
     
     private var datePickerSection: some View {
         HStack(spacing: AppTheme.Spacing.md) {
-            // Date display button
+            // Date display button with pill shape
             Button {
                 // Show date picker
             } label: {
-                HStack {
+                HStack(spacing: AppTheme.Spacing.sm) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
                     Text(selectedDate, format: .dateTime.month(.abbreviated).day())
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(.primary)
-                    
-                    Spacer()
                 }
                 .padding(.horizontal, AppTheme.Spacing.lg)
                 .padding(.vertical, AppTheme.Spacing.md)
                 .background(.white)
-                .cornerRadius(AppTheme.CornerRadius.lg)
+                .clipShape(Capsule())
                 .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
             }
             
-            // Calendar button
-            Button {
-                // Show calendar
-            } label: {
-                Image(systemName: "calendar")
-                    .font(.title3)
-                    .foregroundColor(.primary)
-                    .frame(width: 50, height: 50)
-                    .background(.white)
-                    .cornerRadius(AppTheme.CornerRadius.md)
-                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-            }
+            Spacer()
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
     }
@@ -312,12 +312,14 @@ struct ScheduleTimeSlot: Identifiable {
 struct LiquidGlassMedicationSlotView: View {
     let slot: ScheduleTimeSlot
     let onTakeMedication: (Medication) -> Void
+    let onCardTap: (Medication) -> Void
 
     var body: some View {
         ForEach(slot.medications) { item in
             LiquidGlassMedicationCard(
                 item: item,
-                onTake: { onTakeMedication(item.medication) }
+                onTake: { onTakeMedication(item.medication) },
+                onCardTap: { onCardTap(item.medication) }
             )
         }
     }
@@ -328,151 +330,99 @@ struct LiquidGlassMedicationSlotView: View {
 struct LiquidGlassMedicationCard: View {
     let item: ScheduledMedicationItem
     let onTake: () -> Void
+    let onCardTap: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            HStack(spacing: AppTheme.Spacing.md) {
-                // Circular medication icon
-                ZStack {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 60, height: 60)
-                        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-                    
-                    Image(systemName: iconForForm(item.medication.form))
-                        .font(.title2)
-                        .foregroundColor(.black)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.medication.name)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(.black)
-                    
-                    // Wavy line decoration
-                    Wave()
-                        .stroke(Color(red: 0.6, green: 0.5, blue: 0.8), lineWidth: 2)
-                        .frame(width: 60, height: 8)
-                }
-                
-                Spacer()
-            }
-            
-            // Next pill intake section
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Next pill intake")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color(red: 0.6, green: 0.5, blue: 0.8))
+        Button {
+            onCardTap()
+        } label: {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                HStack(spacing: AppTheme.Spacing.md) {
+                    // Circular medication icon
+                    ZStack {
+                        Circle()
+                            .fill(.white)
+                            .frame(width: 60, height: 60)
+                            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                         
-                        HStack(spacing: 0) {
-                            Text(item.scheduledTime, format: .dateTime.month(.abbreviated).day())
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.black)
-                            Text(", ")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.black)
-                            Text(item.scheduledTime, format: .dateTime.hour().minute())
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.black)
-                        }
+                        Image(systemName: iconForForm(item.medication.form))
+                            .font(.title2)
+                            .foregroundColor(.black)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.medication.name)
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(.black)
+                        
+                        // Wavy line decoration
+                        Wave()
+                            .stroke(Color(red: 0.6, green: 0.5, blue: 0.8), lineWidth: 2)
+                            .frame(width: 60, height: 8)
                     }
                     
                     Spacer()
-                    
-                    // Show future doses if any
-                    if let nextDose = getNextDose() {
-                        VStack(alignment: .trailing, spacing: 4) {
+                }
+                
+                // Next pill intake section
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("Next pill intake")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(red: 0.6, green: 0.5, blue: 0.8).opacity(0.7))
+                                .font(.system(size: 14))
+                                .foregroundColor(Color(red: 0.6, green: 0.5, blue: 0.8))
                             
                             HStack(spacing: 0) {
-                                Text(nextDose, format: .dateTime.month(.abbreviated).day())
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.black.opacity(0.7))
+                                Text(item.scheduledTime, format: .dateTime.month(.abbreviated).day())
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.black)
                                 Text(", ")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.black.opacity(0.7))
-                                Text(nextDose, format: .dateTime.hour().minute())
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.black.opacity(0.7))
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.black)
+                                Text(item.scheduledTime, format: .dateTime.hour().minute())
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.black)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        // Show future doses if any
+                        if let nextDose = getNextDose() {
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("Next pill intake")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(red: 0.6, green: 0.5, blue: 0.8).opacity(0.7))
+                                
+                                HStack(spacing: 0) {
+                                    Text(nextDose, format: .dateTime.month(.abbreviated).day())
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.black.opacity(0.7))
+                                    Text(", ")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.black.opacity(0.7))
+                                    Text(nextDose, format: .dateTime.hour().minute())
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.black.opacity(0.7))
+                                }
                             }
                         }
                     }
-                }
-                
-                // Pill visualization
-                HStack(spacing: AppTheme.Spacing.lg) {
-                    // Dotted pill
-                    ZStack {
-                        PillShape()
-                            .fill(.white)
-                            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-                        
-                        DottedPattern()
-                            .fill(Color.black.opacity(0.3))
-                    }
-                    .frame(width: 120, height: 40)
                     
-                    // Waveform pattern
-                    WaveformPattern()
-                        .stroke(Color.black.opacity(0.15), lineWidth: 2)
-                        .frame(width: 100, height: 40)
                 }
             }
-            
-            // Action buttons row
-            if item.status != .taken {
-                HStack(spacing: AppTheme.Spacing.md) {
-                    Button {
-                        // Home action
-                    } label: {
-                        Image(systemName: "house.fill")
-                            .font(.title3)
-                            .foregroundColor(.white)
-                            .frame(width: 50, height: 50)
-                            .background(Color(red: 0.6, green: 0.5, blue: 0.8))
-                            .clipShape(Circle())
-                    }
-                    
-                    Button {
-                        // Calendar action
-                    } label: {
-                        Image(systemName: "calendar")
-                            .font(.title3)
-                            .foregroundColor(.black)
-                            .frame(width: 50, height: 50)
-                            .background(.white)
-                            .clipShape(Circle())
-                    }
-                    
-                    Button {
-                        onTake()
-                    } label: {
-                        Image(systemName: "camera.viewfinder")
-                            .font(.title3)
-                            .foregroundColor(.black)
-                            .frame(width: 50, height: 50)
-                            .background(.white)
-                            .clipShape(Circle())
-                    }
-                    
-                    Spacer()
-                }
-            }
+            .padding(AppTheme.Spacing.lg)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(.ultraThinMaterial)
+                    .shadow(color: .black.opacity(0.1), radius: 12, x: 0, y: 6)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24)
+                    .stroke(.white.opacity(0.5), lineWidth: 1)
+            )
         }
-        .padding(AppTheme.Spacing.lg)
-        .background(
-            RoundedRectangle(cornerRadius: 24)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.1), radius: 12, x: 0, y: 6)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(.white.opacity(0.5), lineWidth: 1)
-        )
+        .buttonStyle(PlainButtonStyle())
     }
     
     private func iconForForm(_ form: MedicationForm) -> String {
@@ -527,68 +477,6 @@ struct Wave: Shape {
             let x = i
             let y = height / 2 + sin(i / 5) * (height / 4)
             path.addLine(to: CGPoint(x: x, y: y))
-        }
-        
-        return path
-    }
-}
-
-struct PillShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        let radius = rect.height / 2
-        var path = Path()
-        
-        path.move(to: CGPoint(x: radius, y: 0))
-        path.addLine(to: CGPoint(x: rect.width - radius, y: 0))
-        path.addArc(center: CGPoint(x: rect.width - radius, y: radius),
-                   radius: radius,
-                   startAngle: .degrees(-90),
-                   endAngle: .degrees(90),
-                   clockwise: false)
-        path.addLine(to: CGPoint(x: radius, y: rect.height))
-        path.addArc(center: CGPoint(x: radius, y: radius),
-                   radius: radius,
-                   startAngle: .degrees(90),
-                   endAngle: .degrees(270),
-                   clockwise: false)
-        
-        return path
-    }
-}
-
-struct DottedPattern: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let dotSize: CGFloat = 2
-        let spacing: CGFloat = 6
-        
-        for y in stride(from: spacing, to: rect.height - spacing, by: spacing) {
-            for x in stride(from: spacing, to: rect.width - spacing, by: spacing) {
-                path.addEllipse(in: CGRect(x: x, y: y, width: dotSize, height: dotSize))
-            }
-        }
-        
-        return path
-    }
-}
-
-struct WaveformPattern: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let barWidth: CGFloat = 3
-        let spacing: CGFloat = 2
-        let heights: [CGFloat] = [0.3, 0.6, 0.4, 0.8, 0.5, 0.7, 0.4, 0.6, 0.3, 0.5, 0.7, 0.4]
-        
-        var x: CGFloat = 0
-        for height in heights {
-            let barHeight = rect.height * height
-            let y = (rect.height - barHeight) / 2
-            
-            path.move(to: CGPoint(x: x, y: y))
-            path.addLine(to: CGPoint(x: x, y: y + barHeight))
-            
-            x += barWidth + spacing
-            if x >= rect.width { break }
         }
         
         return path

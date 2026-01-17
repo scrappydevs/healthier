@@ -156,23 +156,32 @@ CREATE TABLE IF NOT EXISTS food (
 -- ============================================
 CREATE TABLE IF NOT EXISTS exercises (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-    exercise_type TEXT NOT NULL, -- walking, stretching, swimming, etc.
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    patient_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    exercise_type TEXT, -- backward compat
     category TEXT CHECK (category IN ('cardio', 'strength', 'flexibility', 'balance', 'other')),
-    duration_minutes INTEGER,
-    distance_meters DECIMAL(10,2),
+    duration INTEGER NOT NULL,
+    duration_minutes INTEGER, -- backward compat
+    calories_burned DECIMAL(10,2) DEFAULT 0,
+    distance DECIMAL(10,2),
+    distance_meters DECIMAL(10,2), -- backward compat
     steps INTEGER,
-    calories_burned INTEGER,
+    start_time TIMESTAMPTZ,
+    end_time TIMESTAMPTZ,
+    heart_rate_avg DECIMAL(5,2),
+    heart_rate_max DECIMAL(5,2),
     intensity TEXT CHECK (intensity IN ('light', 'moderate', 'vigorous')),
-    heart_rate_avg INTEGER,
-    heart_rate_max INTEGER,
+    video_url TEXT,
     voice_notes TEXT,
     notes TEXT,
     weather TEXT,
     location TEXT,
     completed BOOLEAN DEFAULT TRUE,
-    logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    logged_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ============================================
@@ -250,9 +259,11 @@ CREATE INDEX IF NOT EXISTS idx_pill_logs_scheduled ON pill_logs(scheduled_time);
 CREATE INDEX IF NOT EXISTS idx_food_patient ON food(patient_id);
 CREATE INDEX IF NOT EXISTS idx_food_logged_at ON food(logged_at);
 CREATE INDEX IF NOT EXISTS idx_food_meal_type ON food(meal_type);
+CREATE INDEX IF NOT EXISTS idx_exercises_user ON exercises(user_id);
 CREATE INDEX IF NOT EXISTS idx_exercises_patient ON exercises(patient_id);
 CREATE INDEX IF NOT EXISTS idx_exercises_logged_at ON exercises(logged_at);
-CREATE INDEX IF NOT EXISTS idx_exercises_type ON exercises(exercise_type);
+CREATE INDEX IF NOT EXISTS idx_exercises_type ON exercises(type);
+CREATE INDEX IF NOT EXISTS idx_exercises_start_time ON exercises(start_time);
 CREATE INDEX IF NOT EXISTS idx_vitals_patient ON vitals(patient_id);
 CREATE INDEX IF NOT EXISTS idx_vitals_type ON vitals(type);
 CREATE INDEX IF NOT EXISTS idx_vitals_measured_at ON vitals(measured_at);
@@ -264,18 +275,10 @@ CREATE INDEX IF NOT EXISTS idx_reminders_patient ON reminders(patient_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_scheduled ON reminders(scheduled_time);
 
 -- ============================================
--- ROW LEVEL SECURITY
+-- ROW LEVEL SECURITY - DISABLED
 -- ============================================
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE patients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pills ENABLE ROW LEVEL SECURITY;
-ALTER TABLE patient_pills ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pill_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE food ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exercises ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vitals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
+-- RLS is disabled for this application
+-- All access control is handled at the application level
 
 -- ============================================
 -- FUNCTIONS
@@ -396,4 +399,123 @@ CREATE TRIGGER update_pills_updated_at BEFORE UPDATE ON pills
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS update_patient_pills_updated_at ON patient_pills;
 CREATE TRIGGER update_patient_pills_updated_at BEFORE UPDATE ON patient_pills 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS update_exercises_updated_at ON exercises;
+CREATE TRIGGER update_exercises_updated_at BEFORE UPDATE ON exercises 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================
+-- ADDITIONAL TABLES FOR IOS APP
+-- ============================================
+
+-- Medications (simplified for iOS app)
+CREATE TABLE IF NOT EXISTS medications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    dosage TEXT NOT NULL,
+    frequency TEXT NOT NULL,
+    form TEXT NOT NULL,
+    instructions TEXT,
+    prescribed_by TEXT,
+    start_date TIMESTAMPTZ,
+    end_date TIMESTAMPTZ,
+    reminder_times TEXT[] DEFAULT '{}',
+    is_active BOOLEAN DEFAULT TRUE,
+    side_effects TEXT[] DEFAULT '{}',
+    plan_image_url TEXT,
+    pill_description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Medication Logs
+CREATE TABLE IF NOT EXISTS medication_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    medication_id UUID NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    taken_at TIMESTAMPTZ,
+    was_on_time BOOLEAN DEFAULT TRUE,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Meals
+CREATE TABLE IF NOT EXISTS meals (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    meal_type TEXT NOT NULL CHECK (meal_type IN ('breakfast', 'lunch', 'dinner', 'snack', 'other')),
+    consumed_at TIMESTAMPTZ DEFAULT NOW(),
+    image_url TEXT,
+    total_calories DECIMAL(10,2) DEFAULT 0,
+    total_protein DECIMAL(10,2) DEFAULT 0,
+    total_carbs DECIMAL(10,2) DEFAULT 0,
+    total_fat DECIMAL(10,2) DEFAULT 0,
+    health_rating DECIMAL(3,2) DEFAULT 0,
+    vitamins_summary TEXT,
+    food_groups TEXT[] DEFAULT '{}',
+    ai_analysis TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Daily Summaries
+CREATE TABLE IF NOT EXISTS daily_summaries (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    overall_health_score DECIMAL(5,2) DEFAULT 0,
+    meal_health_rating DECIMAL(5,2) DEFAULT 0,
+    exercise_score DECIMAL(5,2) DEFAULT 0,
+    medication_adherence_score DECIMAL(5,2) DEFAULT 0,
+    total_calories_consumed DECIMAL(10,2) DEFAULT 0,
+    total_calories_burned DECIMAL(10,2) DEFAULT 0,
+    total_exercise_minutes INTEGER DEFAULT 0,
+    medications_taken INTEGER DEFAULT 0,
+    medications_scheduled INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, date)
+);
+
+-- Journal Entries
+CREATE TABLE IF NOT EXISTS journal_entries (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    transcript TEXT NOT NULL,
+    duration DECIMAL(10,2),
+    tags TEXT[] DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for new tables
+CREATE INDEX IF NOT EXISTS idx_medications_user ON medications(user_id);
+CREATE INDEX IF NOT EXISTS idx_medications_active ON medications(is_active);
+CREATE INDEX IF NOT EXISTS idx_medication_logs_medication ON medication_logs(medication_id);
+CREATE INDEX IF NOT EXISTS idx_medication_logs_user ON medication_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_meals_user ON meals(user_id);
+CREATE INDEX IF NOT EXISTS idx_meals_consumed_at ON meals(consumed_at);
+CREATE INDEX IF NOT EXISTS idx_daily_summaries_user_date ON daily_summaries(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_journal_entries_user ON journal_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_journal_entries_date ON journal_entries(date);
+
+-- Triggers for updated_at on new tables
+DROP TRIGGER IF EXISTS update_medications_updated_at ON medications;
+CREATE TRIGGER update_medications_updated_at BEFORE UPDATE ON medications 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS update_meals_updated_at ON meals;
+CREATE TRIGGER update_meals_updated_at BEFORE UPDATE ON meals 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS update_daily_summaries_updated_at ON daily_summaries;
+CREATE TRIGGER update_daily_summaries_updated_at BEFORE UPDATE ON daily_summaries 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS update_journal_entries_updated_at ON journal_entries;
+CREATE TRIGGER update_journal_entries_updated_at BEFORE UPDATE ON journal_entries 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();

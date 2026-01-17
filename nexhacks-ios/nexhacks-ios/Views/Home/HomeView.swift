@@ -40,22 +40,15 @@ struct HomeView: View {
                 .padding(AppTheme.Spacing.md)
             }
             .background(Color.appBackground)
-            .navigationTitle("Home")
         }
     }
 
     // MARK: - Welcome Section
     private var welcomeSection: some View {
         HStack {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                Text("Welcome back,")
-                    .font(AppTheme.Typography.callout)
-                    .foregroundColor(.textSecondary)
-
-                Text(appState.currentUser?.name ?? "User")
-                    .font(AppTheme.Typography.title)
-                    .foregroundColor(.textPrimary)
-            }
+            Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
+                .font(AppTheme.Typography.title)
+                .foregroundColor(.textPrimary)
 
             Spacer()
         }
