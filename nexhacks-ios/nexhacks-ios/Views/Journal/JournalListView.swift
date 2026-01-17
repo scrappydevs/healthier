@@ -17,11 +17,10 @@ struct JournalListView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        ZStack {
+            Color.appBackground.ignoresSafeArea()
 
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
                     // Header
                     HStack {
                         Text("Journal")
@@ -102,14 +101,12 @@ struct JournalListView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarHidden(true)
             .onChange(of: searchText) { _, newValue in
                 viewModel.searchEntries(query: newValue)
             }
             .sheet(isPresented: $showingVoiceJournal) {
                 VoiceJournalView(viewModel: viewModel)
             }
-        }
     }
 
     private var emptyStateView: some View {

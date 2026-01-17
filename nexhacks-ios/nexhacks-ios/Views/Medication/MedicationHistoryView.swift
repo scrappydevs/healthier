@@ -122,7 +122,9 @@ struct FilterChip: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        Button {
+            action()
+        } label: {
             Text(title)
                 .font(AppTheme.Typography.caption)
                 .foregroundColor(isSelected ? .white : .textPrimary)
