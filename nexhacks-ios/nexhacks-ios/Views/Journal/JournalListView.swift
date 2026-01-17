@@ -99,8 +99,6 @@ struct JournalListView: View {
                     }
                 }
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
             .onChange(of: searchText) { _, newValue in
                 viewModel.searchEntries(query: newValue)
             }
