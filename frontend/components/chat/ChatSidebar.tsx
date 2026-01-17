@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { usePathname } from "next/navigation";
-import { Send, X, Plus, ChevronDown, Wrench, Copy, Download, Sparkles } from "lucide-react";
+import { Send, X, Plus, ChevronDown, Wrench, Copy, Download } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Fuse from "fuse.js";
@@ -488,7 +488,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
             onClick={() => setShowSessions(!showSessions)}
             className="flex items-center gap-1.5 hover:bg-muted/50 transition-colors px-2 py-1 rounded max-w-[180px]"
           >
-            <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
             <span className="text-sm font-medium text-foreground truncate">
               {sessionTitle && messages.length > 0 ? sessionTitle : "New Chat"}
             </span>
@@ -648,7 +647,7 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
                 ? "Thinking..."
                 : isStreaming
                 ? "Responding..."
-                : "Ask anything... (@ to tag rooms)"
+                : "Ask anything..."
             }
             disabled={isLoading || isStreaming}
             rows={1}
@@ -670,13 +669,10 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
           </Button>
         </div>
 
-        {/* Context indicator */}
-        <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-            Context: {pageLabel}
-          </span>
-          <span>Type @ to tag rooms</span>
+        {/* Location indicator */}
+        <div className="flex items-center gap-1.5 mt-2">
+          <span className="text-sm">📍</span>
+          <span className="text-sm font-medium text-foreground">{pageLabel}</span>
         </div>
       </div>
     </div>
@@ -687,7 +683,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
 function EmptyState({
   suggestions,
   onSuggestionClick,
-  pageLabel,
 }: {
   suggestions: string[];
   onSuggestionClick: (prompt: string) => void;
@@ -695,9 +690,8 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8">
-      <Sparkles className="h-8 w-8 text-primary/50 mb-3" />
       <p className="text-xs text-muted-foreground mb-4 max-w-[220px]">
-        Context-aware help for {pageLabel.toLowerCase()}. Ask questions or use suggestions below.
+        Ask questions or use suggestions below.
       </p>
       <div className="space-y-2 w-full max-w-[240px]">
         {suggestions.map((text, i) => (

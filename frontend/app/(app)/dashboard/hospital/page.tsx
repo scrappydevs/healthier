@@ -164,7 +164,7 @@ export default function HospitalViewPage() {
                         ? 'bg-red-50 text-red-700' 
                         : selectedHazard.status === 'responding'
                         ? 'bg-amber-50 text-amber-700'
-                        : 'bg-emerald-50 text-emerald-700'
+                        : 'bg-blue-50 text-blue-700'
                     }`}>
                       {selectedHazard.status === 'active' ? 'Active' : 
                        selectedHazard.status === 'responding' ? 'Responding' : 'Resolved'}

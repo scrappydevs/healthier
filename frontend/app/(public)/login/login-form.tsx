@@ -32,7 +32,7 @@ export function LoginForm() {
           className={cn(
             "border px-3 py-2 text-sm",
             state.ok
-              ? "border-emerald-500 bg-emerald-50 text-emerald-900"
+              ? "border-blue-500 bg-blue-50 text-blue-900"
               : "border-red-500 bg-red-50 text-red-900",
           )}
         >

@@ -354,3 +354,60 @@ export async function getRecentActivity(limit?: number): Promise<RecentActivityR
   const query = limit ? `?limit=${limit}` : "";
   return request<RecentActivityResponse>(`/api/v1/activity/recent${query}`);
 }
+
+// ============================================
+// PILLS (Medication Reference)
+// ============================================
+
+export type Pill = {
+  id: string;
+  name: string;
+  generic_name: string | null;
+  dosage_form: string;
+  strength: string;
+  unit: string;
+  instructions: string | null;
+};
+
+export type PillsResponse = {
+  pills: Pill[];
+};
+
+export async function getPills(): Promise<PillsResponse> {
+  return request<PillsResponse>("/api/v1/pills");
+}
+
+// ============================================
+// JOURNAL LOGS
+// ============================================
+
+export type JournalEntry = {
+  id: string;
+  patient_id: string;
+  transcript: string;
+  voice_transcription: string | null;
+  duration_seconds: number | null;
+  tags: string[] | null;
+  mood: "very_positive" | "positive" | "neutral" | "negative" | "very_negative" | null;
+  sentiment_score: number | null;
+  ai_analysis: Record<string, unknown> | null;
+  logged_at: string;
+  created_at: string;
+};
+
+export type PatientJournalResponse = {
+  entries: JournalEntry[];
+  total: number;
+};
+
+export async function getPatientJournal(
+  patientId: string,
+  startDate?: string,
+  endDate?: string
+): Promise<PatientJournalResponse> {
+  const params = new URLSearchParams();
+  if (startDate) params.set("start_date", startDate);
+  if (endDate) params.set("end_date", endDate);
+  const query = params.toString();
+  return request<PatientJournalResponse>(`/api/v1/patients/${patientId}/journal${query ? `?${query}` : ""}`);
+}

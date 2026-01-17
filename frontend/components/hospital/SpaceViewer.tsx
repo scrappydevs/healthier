@@ -42,7 +42,7 @@ const roomTypeColors: Record<RoomType, string> = {
   icu: '#ef4444',          // red
   operating: '#8b5cf6',    // purple
   emergency: '#f97316',    // orange
-  pharmacy: '#10b981',     // emerald
+  pharmacy: '#2563eb',     // blue
   lab: '#06b6d4',          // cyan
   nurses_station: '#ec4899', // pink
   reception: '#6366f1',    // indigo

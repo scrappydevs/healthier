@@ -22,7 +22,7 @@ const interTight = Inter_Tight({
 });
 
 export const metadata: Metadata = {
-  title: "Healthier - Medication Adherence for Elderly Care",
+  title: "healthier - Medication Adherence for Elderly Care",
   description: "Helping elderly patients and their clinicians track medication adherence.",
 };
 

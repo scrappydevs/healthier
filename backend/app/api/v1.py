@@ -622,3 +622,47 @@ async def get_recent_activity(
     # Sort by timestamp and limit
     activities.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
     return {"activities": activities[:limit]}
+
+
+# ============================================
+# PILLS (Medication Reference)
+# ============================================
+
+@router.get("/pills")
+async def get_pills(db: Client = Depends(get_db)):
+    """Get all available pills/medications for assignment."""
+    response = db.table("pills").select(
+        "id, name, generic_name, dosage_form, strength, unit, instructions"
+    ).order("name").execute()
+    
+    return {"pills": response.data or []}
+
+
+# ============================================
+# JOURNAL LOGS
+# ============================================
+
+@router.get("/patients/{patient_id}/journal")
+async def get_patient_journal(
+    patient_id: UUID,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: Client = Depends(get_db)
+):
+    """Get journal entries for a patient, optionally filtered by date range."""
+    query = db.table("journal_logs").select(
+        "id, patient_id, transcript, voice_transcription, duration_seconds, "
+        "tags, mood, sentiment_score, ai_analysis, logged_at, created_at"
+    ).eq("patient_id", str(patient_id))
+    
+    if start_date:
+        query = query.gte("logged_at", f"{start_date}T00:00:00")
+    if end_date:
+        query = query.lte("logged_at", f"{end_date}T23:59:59")
+    
+    response = query.order("logged_at", desc=True).execute()
+    
+    return {
+        "entries": response.data or [],
+        "total": len(response.data or [])
+    }
