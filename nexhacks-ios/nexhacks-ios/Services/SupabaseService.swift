@@ -221,19 +221,66 @@ class SupabaseService: ObservableObject {
     
     // MARK: - Exercise Database Operations
     
-    func saveExercise(_ exercise: SupabaseExercise) async throws {
+    func saveExercise(_ exercise: Exercise, userId: UUID? = nil) async throws {
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            throw NSError(domain: "SupabaseService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not signed in"])
+        }
+        let patientId = try await getPatientId(userId: currentUserId)
+        
+        let supabaseExercise = SupabaseExerciseRow(
+            id: exercise.id,
+            patientId: patientId,
+            userId: currentUserId,
+            exerciseType: exercise.type.rawValue.lowercased(),
+            category: mapExerciseTypeToCategory(exercise.type),
+            name: exercise.name,
+            type: exercise.type.rawValue.lowercased(),
+            durationMinutes: Int(exercise.duration / 60),
+            duration: Int(exercise.duration),
+            distanceMeters: exercise.distance,
+            distance: exercise.distance,
+            caloriesBurned: Int(exercise.caloriesBurned),
+            intensity: nil,
+            heartRateAvg: exercise.heartRateAvg.map { Int($0) },
+            heartRateMax: exercise.heartRateMax.map { Int($0) },
+            notes: exercise.notes,
+            startTime: exercise.startTime,
+            endTime: exercise.endTime,
+            videoUrl: exercise.videoURL,
+            loggedAt: Date(),
+            createdAt: exercise.createdAt,
+            updatedAt: exercise.updatedAt
+        )
+        
         try await supabase
             .from("exercises")
-            .insert(exercise)
+            .insert(supabaseExercise)
             .execute()
     }
     
-    func fetchExercises(userId: UUID? = nil, date: Date? = nil) async throws -> [SupabaseExercise] {
-        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+    private func mapExerciseTypeToCategory(_ type: ExerciseType) -> String {
+        switch type {
+        case .running, .walking, .cycling, .swimming, .hiit:
+            return "cardio"
+        case .weightlifting:
+            return "strength"
+        case .yoga:
+            return "flexibility"
+        case .sports, .other:
+            return "other"
+        }
+    }
+    
+    func fetchExercises(userId: UUID? = nil, date: Date? = nil) async throws -> [Exercise] {
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            return []
+        }
+        let patientId = try await getPatientId(userId: currentUserId)
+        
         var query = supabase
             .from("exercises")
             .select()
-            .eq("user_id", value: currentUserId.uuidString)
+            .eq("patient_id", value: patientId.uuidString)
         
         if let date = date {
             let calendar = Calendar.current
@@ -241,18 +288,69 @@ class SupabaseService: ObservableObject {
             let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
             
             query = query
-                .gte("start_time", value: ISO8601DateFormatter().string(from: startOfDay))
-                .lt("start_time", value: ISO8601DateFormatter().string(from: endOfDay))
+                .gte("logged_at", value: ISO8601DateFormatter().string(from: startOfDay))
+                .lt("logged_at", value: ISO8601DateFormatter().string(from: endOfDay))
         }
         
-        let response: [SupabaseExercise] = try await query.execute().value
-        return response
+        let response: [SupabaseExerciseRow] = try await query
+            .order("logged_at", ascending: false)
+            .execute()
+            .value
+        
+        return response.map { row in
+            Exercise(
+                id: row.id,
+                name: row.name ?? row.exerciseType,
+                type: ExerciseType(rawValue: row.exerciseType.capitalized) ?? .other,
+                duration: TimeInterval(row.duration ?? row.durationMinutes.map { $0 * 60 } ?? 0),
+                caloriesBurned: Double(row.caloriesBurned ?? 0),
+                distance: row.distance ?? row.distanceMeters,
+                startTime: row.startTime ?? row.loggedAt,
+                endTime: row.endTime ?? row.loggedAt,
+                heartRateAvg: row.heartRateAvg.map { Double($0) },
+                heartRateMax: row.heartRateMax.map { Double($0) },
+                videoURL: row.videoUrl,
+                notes: row.notes,
+                createdAt: row.createdAt ?? Date(),
+                updatedAt: row.updatedAt ?? Date()
+            )
+        }
     }
     
-    func updateExercise(_ exercise: SupabaseExercise) async throws {
+    func updateExercise(_ exercise: Exercise, userId: UUID? = nil) async throws {
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            throw NSError(domain: "SupabaseService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not signed in"])
+        }
+        let patientId = try await getPatientId(userId: currentUserId)
+        
+        let supabaseExercise = SupabaseExerciseRow(
+            id: exercise.id,
+            patientId: patientId,
+            userId: currentUserId,
+            exerciseType: exercise.type.rawValue.lowercased(),
+            category: mapExerciseTypeToCategory(exercise.type),
+            name: exercise.name,
+            type: exercise.type.rawValue.lowercased(),
+            durationMinutes: Int(exercise.duration / 60),
+            duration: Int(exercise.duration),
+            distanceMeters: exercise.distance,
+            distance: exercise.distance,
+            caloriesBurned: Int(exercise.caloriesBurned),
+            intensity: nil,
+            heartRateAvg: exercise.heartRateAvg.map { Int($0) },
+            heartRateMax: exercise.heartRateMax.map { Int($0) },
+            notes: exercise.notes,
+            startTime: exercise.startTime,
+            endTime: exercise.endTime,
+            videoUrl: exercise.videoURL,
+            loggedAt: exercise.startTime,
+            createdAt: exercise.createdAt,
+            updatedAt: Date()
+        )
+        
         try await supabase
             .from("exercises")
-            .update(exercise)
+            .update(supabaseExercise)
             .eq("id", value: exercise.id.uuidString)
             .execute()
     }
@@ -767,37 +865,61 @@ struct SupabaseMeal: Codable {
     }
 }
 
-struct SupabaseExercise: Codable {
+struct SupabaseExerciseRow: Codable {
     let id: UUID
-    let userId: UUID
-    let name: String
-    let type: String
-    let duration: Int
-    var caloriesBurned: Double
+    let patientId: UUID
+    var userId: UUID?
+    let exerciseType: String
+    var category: String?
+    var name: String?
+    var type: String?
+    var durationMinutes: Int?
+    var duration: Int?
+    var distanceMeters: Double?
     var distance: Double?
+    var steps: Int?
+    var caloriesBurned: Int?
+    var intensity: String?
+    var heartRateAvg: Int?
+    var heartRateMax: Int?
+    var voiceNotes: String?
+    var notes: String?
+    var weather: String?
+    var location: String?
+    var completed: Bool?
     var startTime: Date?
     var endTime: Date?
-    var heartRateAvg: Double?
-    var heartRateMax: Double?
     var videoUrl: String?
-    var notes: String?
+    var loggedAt: Date
     var createdAt: Date?
     var updatedAt: Date?
     
     enum CodingKeys: String, CodingKey {
         case id
+        case patientId = "patient_id"
         case userId = "user_id"
+        case exerciseType = "exercise_type"
+        case category
         case name
         case type
+        case durationMinutes = "duration_minutes"
         case duration
-        case caloriesBurned = "calories_burned"
+        case distanceMeters = "distance_meters"
         case distance
-        case startTime = "start_time"
-        case endTime = "end_time"
+        case steps
+        case caloriesBurned = "calories_burned"
+        case intensity
         case heartRateAvg = "heart_rate_avg"
         case heartRateMax = "heart_rate_max"
-        case videoUrl = "video_url"
+        case voiceNotes = "voice_notes"
         case notes
+        case weather
+        case location
+        case completed
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case videoUrl = "video_url"
+        case loggedAt = "logged_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

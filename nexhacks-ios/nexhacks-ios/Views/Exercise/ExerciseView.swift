@@ -8,6 +8,7 @@
 import SwiftUI
 import PhotosUI
 import AVKit
+import UIKit
 
 struct ExerciseView: View {
     @StateObject var viewModel: ExerciseViewModel
@@ -497,6 +498,7 @@ struct VideoUploadView: View {
     @State private var selectedVideoURL: URL?
     @State private var selectedVideoItem: PhotosPickerItem?
     @State private var showVideoPicker = false
+    @State private var showCameraRecorder = false
     @State private var name = ""
     @State private var selectedType: ExerciseType = .other
     @State private var durationMinutes: Int = 30
@@ -607,6 +609,9 @@ struct VideoUploadView: View {
             } message: {
                 Text(errorMessage)
             }
+            .fullScreenCover(isPresented: $showCameraRecorder) {
+                VideoCameraRecorder(videoURL: $selectedVideoURL)
+            }
         }
     }
     
@@ -625,19 +630,36 @@ struct VideoUploadView: View {
                 .foregroundColor(.textSecondary)
                 .multilineTextAlignment(.center)
             
-            Button {
-                showVideoPicker = true
-            } label: {
-                HStack {
-                    Image(systemName: "photo.on.rectangle")
-                    Text("Choose Video from Library")
+            VStack(spacing: AppTheme.Spacing.md) {
+                Button {
+                    showCameraRecorder = true
+                } label: {
+                    HStack {
+                        Image(systemName: "video.fill")
+                        Text("Record New Video")
+                    }
+                    .font(AppTheme.Typography.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppTheme.Spacing.md)
+                    .background(Color.appAccent)
+                    .cornerRadius(AppTheme.CornerRadius.md)
                 }
-                .font(AppTheme.Typography.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppTheme.Spacing.md)
-                .background(Color.appPrimary)
-                .cornerRadius(AppTheme.CornerRadius.md)
+                
+                Button {
+                    showVideoPicker = true
+                } label: {
+                    HStack {
+                        Image(systemName: "photo.on.rectangle")
+                        Text("Choose from Library")
+                    }
+                    .font(AppTheme.Typography.headline)
+                    .foregroundColor(.appPrimary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppTheme.Spacing.md)
+                    .background(Color.appPrimary.opacity(0.1))
+                    .cornerRadius(AppTheme.CornerRadius.md)
+                }
             }
         }
         .padding(AppTheme.Spacing.lg)
@@ -701,6 +723,58 @@ struct VideoTransferable: Transferable {
                 .appendingPathExtension("mp4")
             try FileManager.default.copyItem(at: received.file, to: tempURL)
             return Self(url: tempURL)
+        }
+    }
+}
+
+// MARK: - Video Camera Recorder
+
+struct VideoCameraRecorder: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var videoURL: URL?
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.mediaTypes = ["public.movie"]
+        picker.videoQuality = .typeMedium
+        picker.videoMaximumDuration = 300 // 5 minutes max
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: VideoCameraRecorder
+        
+        init(_ parent: VideoCameraRecorder) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let url = info[.mediaURL] as? URL {
+                // Copy to temp location
+                let tempURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension("mp4")
+                
+                do {
+                    try FileManager.default.copyItem(at: url, to: tempURL)
+                    parent.videoURL = tempURL
+                } catch {
+                    print("Failed to copy video: \(error)")
+                }
+            }
+            parent.dismiss()
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
         }
     }
 }
