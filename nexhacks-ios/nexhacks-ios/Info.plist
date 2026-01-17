@@ -14,5 +14,16 @@
 	<string>We need microphone access for voice journaling.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>We need speech recognition to transcribe your journal entries.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.nexhacks.healthier</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

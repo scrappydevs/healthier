@@ -203,9 +203,14 @@ class ExerciseViewModel: ObservableObject {
     }
     
     private func syncExerciseToSupabase(_ exercise: Exercise) async {
+        guard let currentUserId = supabaseService.getCurrentUserId() else {
+            print("Cannot sync exercise: No authenticated user")
+            return
+        }
+        
         let supabaseExercise = SupabaseExercise(
             id: exercise.id,
-            userId: SupabaseService.defaultUserId,
+            userId: currentUserId,
             name: exercise.name,
             type: exercise.type.rawValue.lowercased(),
             duration: Int(exercise.duration),

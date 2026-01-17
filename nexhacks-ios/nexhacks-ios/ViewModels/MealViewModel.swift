@@ -176,9 +176,14 @@ class MealViewModel: ObservableObject {
     }
     
     private func syncMealToSupabase(_ meal: Meal) async {
+        guard let currentUserId = supabaseService.getCurrentUserId() else {
+            print("Cannot sync meal: No authenticated user")
+            return
+        }
+        
         let supabaseMeal = SupabaseMeal(
             id: meal.id,
-            userId: SupabaseService.defaultUserId,
+            userId: currentUserId,
             name: meal.name,
             mealType: meal.mealType.rawValue.lowercased(),
             consumedAt: meal.consumedAt,

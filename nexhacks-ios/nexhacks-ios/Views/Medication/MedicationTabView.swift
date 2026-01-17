@@ -36,17 +36,10 @@ struct MedicationTabView: View {
                                 .font(.title2)
                                 .foregroundColor(.white)
                                 .frame(width: 56, height: 56)
-                        }
-                        .background(
-                            Circle()
-                                .fill(.ultraThinMaterial)
+                                .background(Color.appPrimary)
+                                .clipShape(Circle())
                                 .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 6)
-                                .overlay(
-                                    Circle()
-                                        .stroke(.white.opacity(0.5), lineWidth: 1)
-                                )
-                        )
-                        .clipShape(Circle())
+                        }
                         .padding(.trailing, AppTheme.Spacing.lg)
                         .padding(.bottom, AppTheme.Spacing.xl)
                     }
