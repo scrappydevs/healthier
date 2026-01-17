@@ -169,19 +169,23 @@ struct MedicationScheduleView: View {
 
     private var emptyState: some View {
         VStack(spacing: AppTheme.Spacing.lg) {
-            Image(systemName: "calendar.badge.clock")
+            let allDone = !viewModel.activeMedications.isEmpty
+            
+            Image(systemName: allDone ? "checkmark.circle.fill" : "calendar.badge.clock")
                 .font(.system(size: 60))
-                .foregroundColor(.textSecondary)
+                .foregroundColor(allDone ? .success : .textSecondary)
 
-            Text("No medications scheduled")
+            Text(allDone ? "All done for today" : "No medications scheduled")
                 .font(AppTheme.Typography.title3)
                 .foregroundColor(.textPrimary)
 
-            Text("Add medications with reminder times to see them in your daily schedule")
-                .font(AppTheme.Typography.body)
-                .foregroundColor(.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, AppTheme.Spacing.xl)
+            if !allDone {
+                Text("Add medications with reminder times to see them in your daily schedule")
+                    .font(AppTheme.Typography.body)
+                    .foregroundColor(.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AppTheme.Spacing.xl)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
