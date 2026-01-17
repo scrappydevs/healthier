@@ -7,8 +7,8 @@ export default function LandingPage() {
       {/* Navbar */}
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-sage-100">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <Link href="/" className="text-xl font-medium text-sage-900 tracking-wide">
-            healthier
+          <Link href="/" className="text-3xl font-light text-sage-900 tracking-tight" style={{ fontFamily: 'SF Pro Display, -apple-system, sans-serif' }}>
+            Healthier
           </Link>
 
           <nav className="hidden md:flex items-center gap-10">
@@ -25,16 +25,10 @@ export default function LandingPage() {
 
           <div className="flex items-center gap-4">
             <Link
-              href="/login"
-              className="text-sm text-sage-600 hover:text-sage-900 transition-colors"
-            >
-              Log in
-            </Link>
-            <Link
               href="/dashboard"
               className="btn-pill-dark text-sm"
             >
-              Get started
+              Demo App
             </Link>
           </div>
         </div>
@@ -55,7 +49,7 @@ export default function LandingPage() {
               
               <div className="flex items-center gap-4">
                 <Link href="/dashboard" className="btn-pill-dark bg-sage-950 hover:bg-sage-900 text-base px-6 py-3">
-                  Get started
+                  Demo App
                 </Link>
                 <a
                   href="#how-it-works"
