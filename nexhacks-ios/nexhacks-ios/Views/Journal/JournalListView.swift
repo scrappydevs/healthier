@@ -21,34 +21,93 @@ struct JournalListView: View {
             ZStack {
                 Color.appBackground.ignoresSafeArea()
 
-                if viewModel.entries.isEmpty && searchText.isEmpty {
-                    emptyStateView
-                } else {
-                    entriesList
+                VStack(spacing: 0) {
+                    // Header
+                    HStack {
+                        Text("Journal")
+                            .font(AppTheme.Typography.title)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+
+                        Button {
+                            Task {
+                                await viewModel.syncFromSupabase()
+                            }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.title3)
+                                .foregroundColor(.appPrimary)
+                                .frame(width: 44, height: 44)
+                                .background(Color.cardBackground)
+                                .clipShape(Circle())
+                                .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+                        }
+                    }
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .padding(.bottom, AppTheme.Spacing.md)
+
+                    // Custom Search Bar
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.textSecondary)
+                        TextField("Search entries", text: $searchText)
+                            .foregroundColor(.textPrimary)
+                    }
+                    .padding(AppTheme.Spacing.md)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppTheme.CornerRadius.md)
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.bottom, AppTheme.Spacing.md)
+
+                    if viewModel.entries.isEmpty && searchText.isEmpty {
+                        emptyStateView
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: AppTheme.Spacing.md) {
+                                ForEach(viewModel.entries) { entry in
+                                    NavigationLink(destination: JournalDetailView(entry: entry, viewModel: viewModel)) {
+                                        JournalEntryCard(entry: entry)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                            .padding(.horizontal, AppTheme.Spacing.lg)
+                            .padding(.vertical, AppTheme.Spacing.lg)
+                        }
+                    }
+                }
+
+                // Floating Action Button
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button {
+                            showingVoiceJournal = true
+                        } label: {
+                            Image(systemName: "mic.fill")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Color.appPrimary)
+                                .clipShape(Circle())
+                                .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                        }
+                        .padding(.trailing, AppTheme.Spacing.lg)
+                        .padding(.bottom, AppTheme.Spacing.lg)
+                    }
                 }
             }
-            .navigationTitle("Journal")
-            .searchable(text: $searchText, prompt: "Search entries")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
             .onChange(of: searchText) { _, newValue in
                 viewModel.searchEntries(query: newValue)
             }
             .sheet(isPresented: $showingVoiceJournal) {
                 VoiceJournalView(viewModel: viewModel)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        Task {
-                            await viewModel.syncFromSupabase()
-                        }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundColor(.appPrimary)
-                    }
-                }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                floatingActionButton
             }
         }
     }
@@ -71,34 +130,6 @@ struct JournalListView: View {
         .padding(AppTheme.Spacing.xl)
     }
 
-    private var entriesList: some View {
-        ScrollView {
-            LazyVStack(spacing: AppTheme.Spacing.md) {
-                ForEach(viewModel.entries) { entry in
-                    NavigationLink(destination: JournalDetailView(entry: entry, viewModel: viewModel)) {
-                        JournalEntryCard(entry: entry)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-            .padding(AppTheme.Spacing.md)
-        }
-    }
-
-    private var floatingActionButton: some View {
-        Button {
-            showingVoiceJournal = true
-        } label: {
-            Image(systemName: "mic.fill")
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.appPrimary)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-        }
-        .padding(AppTheme.Spacing.lg)
-    }
 }
 
 struct JournalEntryCard: View {

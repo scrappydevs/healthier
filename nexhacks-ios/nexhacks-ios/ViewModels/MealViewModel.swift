@@ -60,11 +60,6 @@ class MealViewModel: ObservableObject {
         do {
             try mealRepository.create(meal)
             loadMeals()
-            
-            // Sync to Supabase in background
-            Task {
-                await syncMealToSupabase(meal)
-            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -120,6 +115,10 @@ class MealViewModel: ObservableObject {
             totalCarbs: analysis.estimatedCarbs,
             totalFat: analysis.estimatedFat,
             healthRating: analysis.healthRating,
+            gutHealthScore: analysis.gutHealthScore,
+            proteinQualityScore: analysis.proteinQualityScore,
+            fiberScore: analysis.fiberScore,
+            sugarScore: analysis.sugarScore,
             vitaminsSummary: analysis.vitaminsSummary,
             foodGroups: foodGroups,
             aiAnalysis: analysis.analysis,
@@ -173,37 +172,6 @@ class MealViewModel: ObservableObject {
         todayProtein = todaysMeals.reduce(0) { $0 + $1.totalProtein }
         todayCarbs = todaysMeals.reduce(0) { $0 + $1.totalCarbs }
         todayFat = todaysMeals.reduce(0) { $0 + $1.totalFat }
-    }
-    
-    private func syncMealToSupabase(_ meal: Meal) async {
-        guard let currentUserId = supabaseService.getCurrentUserId() else {
-            print("Cannot sync meal: No authenticated user")
-            return
-        }
-        
-        let supabaseMeal = SupabaseMeal(
-            id: meal.id,
-            userId: currentUserId,
-            name: meal.name,
-            mealType: meal.mealType.rawValue.lowercased(),
-            consumedAt: meal.consumedAt,
-            imageUrl: meal.imageURL,
-            totalCalories: meal.totalCalories,
-            totalProtein: meal.totalProtein,
-            totalCarbs: meal.totalCarbs,
-            totalFat: meal.totalFat,
-            healthRating: meal.healthRating,
-            vitaminsSummary: meal.vitaminsSummary,
-            foodGroups: meal.foodGroups.map { $0.rawValue },
-            aiAnalysis: meal.aiAnalysis,
-            notes: meal.notes
-        )
-        
-        do {
-            try await supabaseService.saveMeal(supabaseMeal)
-        } catch {
-            print("Failed to sync meal to Supabase: \(error)")
-        }
     }
 }
 
