@@ -55,6 +55,8 @@ struct HomeView: View {
                     }
                 }
             }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationBarHidden(true)
         }
     }

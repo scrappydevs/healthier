@@ -45,6 +45,8 @@ struct MedicationTabView: View {
                     }
                 }
             }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationBarHidden(true)
             .sheet(isPresented: $showingAddMedication) {
                 AddMedicationView(viewModel: viewModel)

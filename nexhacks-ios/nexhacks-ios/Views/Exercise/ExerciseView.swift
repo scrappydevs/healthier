@@ -73,6 +73,8 @@ struct ExerciseView: View {
                     }
                 }
             }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationBarHidden(true)
             .sheet(isPresented: $showingAddExercise) {
                 QuickExerciseSheet(viewModel: viewModel)
