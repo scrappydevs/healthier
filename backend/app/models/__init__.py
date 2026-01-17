@@ -36,6 +36,12 @@ from app.models.health_log import (
     ExerciseLogResponse,
     ActivitySummary,
 )
+from app.models.journal_log import (
+    JournalLogBase,
+    JournalLogCreate,
+    JournalLogUpdate,
+    JournalLogResponse,
+)
 
 __all__ = [
     # Patient
@@ -70,4 +76,9 @@ __all__ = [
     "ExerciseLogCreate",
     "ExerciseLogResponse",
     "ActivitySummary",
+    # Journal Logs
+    "JournalLogBase",
+    "JournalLogCreate",
+    "JournalLogUpdate",
+    "JournalLogResponse",
 ]
