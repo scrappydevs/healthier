@@ -8,7 +8,7 @@
 import Foundation
 import Combine
 
-enum AuthState {
+enum AuthState: Equatable {
     case loading
     case unauthenticated
     case authenticated(needsProfile: Bool)
@@ -74,7 +74,7 @@ class AuthViewModel: ObservableObject {
             }
         } catch {
             errorMessage = error.localizedDescription
-            authState = .unauthenticated
+            authState = .authenticated(needsProfile: true)
         }
     }
     
@@ -146,18 +146,6 @@ class AuthViewModel: ObservableObject {
         
         do {
             try await authService.signInWithGoogle()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-    
-    func signInWithApple() async {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        
-        do {
-            try await authService.signInWithApple()
         } catch {
             errorMessage = error.localizedDescription
         }

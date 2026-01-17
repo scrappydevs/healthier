@@ -2,11 +2,10 @@
 //  AuthView.swift
 //  nexhacks-ios
 //
-//  Authentication options screen with Apple, Google, and email sign-in
+//  Authentication options screen with Google and email sign-in
 //
 
 import SwiftUI
-import AuthenticationServices
 
 struct AuthView: View {
     @ObservedObject var viewModel: AuthViewModel
@@ -33,20 +32,6 @@ struct AuthView: View {
                 .padding(.bottom, AppTheme.Spacing.xxl)
                 
                 VStack(spacing: AppTheme.Spacing.md) {
-                    SignInWithAppleButton(.signIn) { request in
-                        request.requestedScopes = [.fullName, .email]
-                    } onCompletion: { result in
-                        Task {
-                            await viewModel.signInWithApple()
-                        }
-                    }
-                    .signInWithAppleButtonStyle(.black)
-                    .frame(height: 56)
-                    .overlay(
-                        Rectangle()
-                            .stroke(Color.textPrimary, lineWidth: 2)
-                    )
-                    
                     Button(action: {
                         Task {
                             await viewModel.signInWithGoogle()

@@ -44,7 +44,7 @@ struct nexhacks_iosApp: App {
                     case .authenticated(needsProfile: true):
                         ProfileSetupView(viewModel: appState.authViewModel)
                         
-                    case .ready:
+                    case .authenticated(needsProfile: false), .ready:
                         ContentView()
                             .environmentObject(appState)
                     }

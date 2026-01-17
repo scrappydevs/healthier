@@ -189,7 +189,7 @@ struct ProfileSetupView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.horizontal, AppTheme.Spacing.xl)
                     
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
                         Text("MEDICAL HISTORY")
@@ -229,7 +229,7 @@ struct ProfileSetupView: View {
                                 )
                         }
                     }
-                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.horizontal, AppTheme.Spacing.xl)
                     
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.lg) {
                         Text("EMERGENCY CONTACT")
@@ -289,7 +289,7 @@ struct ProfileSetupView: View {
                                 )
                         }
                     }
-                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.horizontal, AppTheme.Spacing.xl)
                     
                     Button(action: {
                         Task {
@@ -320,14 +320,14 @@ struct ProfileSetupView: View {
                             )
                     }
                     .disabled(!isFormValid || viewModel.isLoading)
-                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.horizontal, AppTheme.Spacing.xl)
                     
                     if let errorMessage = viewModel.errorMessage {
                         Text(errorMessage)
                             .font(.system(size: 11, weight: .regular))
                             .foregroundColor(.error)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, AppTheme.Spacing.lg)
+                            .padding(.horizontal, AppTheme.Spacing.xl)
                     }
                     
                     Text("* REQUIRED FIELDS")

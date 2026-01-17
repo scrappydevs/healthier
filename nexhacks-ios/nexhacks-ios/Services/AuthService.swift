@@ -8,7 +8,6 @@
 import Foundation
 import Supabase
 import Combine
-import AuthenticationServices
 
 enum AuthError: LocalizedError {
     case noSession
@@ -156,6 +155,27 @@ class AuthService: ObservableObject {
             currentUserId = session.user.id
             isAuthenticated = true
             
+            // Ensure user record exists in users table
+            let supabaseService = SupabaseService()
+            let existingUser = try? await supabaseService.fetchUser(userId: session.user.id)
+            
+            if existingUser == nil {
+                // Create user record if it doesn't exist
+                let fullName = session.user.userMetadata["full_name"]?.stringValue ?? email
+                let newUser = SupabaseUser(
+                    id: session.user.id,
+                    email: email,
+                    fullName: fullName,
+                    role: "patient",
+                    isActive: true,
+                    lastLoginAt: Date(),
+                    createdAt: Date(),
+                    updatedAt: Date()
+                )
+                
+                try await supabaseService.createUser(newUser)
+            }
+            
         } catch {
             throw AuthError.invalidCredentials
         }
@@ -175,17 +195,6 @@ class AuthService: ObservableObject {
         do {
             try await supabase.auth.signInWithOAuth(
                 provider: .google,
-                redirectTo: URL(string: "com.nexhacks.healthier://auth/callback")
-            )
-        } catch {
-            throw AuthError.unknown(error)
-        }
-    }
-    
-    func signInWithApple() async throws {
-        do {
-            try await supabase.auth.signInWithOAuth(
-                provider: .apple,
                 redirectTo: URL(string: "com.nexhacks.healthier://auth/callback")
             )
         } catch {
