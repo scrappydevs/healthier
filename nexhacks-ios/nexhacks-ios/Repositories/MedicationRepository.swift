@@ -121,6 +121,18 @@ class MedicationRepository: ObservableObject {
     func getActive() -> [Medication] {
         return storage.filter { $0.isActive }
     }
+    
+    /// Reload medications from Supabase
+    func reloadFromSupabase() {
+        guard let supabaseService = supabaseService,
+              let userId = supabaseService.getCurrentUserId() else {
+            return
+        }
+        
+        Task {
+            await loadFromSupabase(userId: userId)
+        }
+    }
 
     /// Log medication taken with verification status
     func logMedicationTaken(
