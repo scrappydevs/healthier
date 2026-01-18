@@ -128,11 +128,15 @@ class SupabaseService: ObservableObject {
     }
     
     func fetchMedications(userId: UUID? = nil) async throws -> [SupabaseMedication] {
-        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            return []
+        }
+        
         let response: [SupabaseMedication] = try await supabase
             .from("medications")
             .select()
             .eq("user_id", value: currentUserId.uuidString)
+            .order("created_at", ascending: false)
             .execute()
             .value
         return response

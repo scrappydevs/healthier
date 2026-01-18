@@ -392,8 +392,9 @@ struct LiquidGlassMedicationCard: View {
 
                         Spacer()
 
-                        // Show future doses if any
-                        if let nextDose = getNextDose() {
+                        // Show future doses if any (only if different from current scheduled time)
+                        if let nextDose = getNextDose(),
+                           !Calendar.current.isDate(nextDose, equalTo: item.scheduledTime, toGranularity: .minute) {
                             VStack(alignment: .trailing, spacing: 4) {
                                 Text("Next pill intake")
                                     .font(.system(size: 11))
