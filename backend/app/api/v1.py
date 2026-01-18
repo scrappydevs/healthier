@@ -1733,6 +1733,30 @@ async def get_exercise_catalog(
     return {"exercises": response.data or []}
 
 
+def _exercise_plan_schedule_from_frequency(frequency: str):
+    """
+    Map clinician frequency strings to a default reminder schedule for iOS.
+
+    - reminder_times: list of "HH:mm" strings
+    - days_of_week: list of ints where Monday=0 ... Sunday=6 (Python datetime.weekday())
+    """
+    freq = (frequency or "").lower().strip()
+    if freq == "as_needed":
+        return [], []
+
+    reminder_times = ["18:00"]
+
+    if freq == "3x_week":
+        return reminder_times, [0, 2, 4]  # Mon/Wed/Fri
+    if freq == "2x_week":
+        return reminder_times, [1, 3]  # Tue/Thu
+    if freq == "weekly":
+        return reminder_times, [0]  # Monday
+
+    # daily (or unknown -> default daily)
+    return reminder_times, []
+
+
 @router.get("/patients/{patient_id}/prescribed-exercises")
 async def get_prescribed_exercises(
     patient_id: UUID,
@@ -1798,7 +1822,36 @@ async def prescribe_exercise(
     full_response = db.table("prescribed_exercises").select(
         "*, exercise_catalog(*)"
     ).eq("id", response.data[0]["id"]).single().execute()
-    
+
+    # Best-effort: mirror clinician assignment into iOS-facing exercise_plan_items
+    try:
+        patient_user_res = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+        user_id = (patient_user_res.data or {}).get("user_id")
+
+        if user_id:
+            catalog_data = (full_response.data or {}).get("exercise_catalog") or {}
+            reminder_times, days_of_week = _exercise_plan_schedule_from_frequency(frequency)
+
+            db.table("exercise_plan_items").upsert({
+                "id": response.data[0]["id"],
+                "user_id": user_id,
+                "exercise_id": str(exercise_id),
+                "name": catalog_data.get("name") or "Exercise",
+                "category": catalog_data.get("category"),
+                "frequency": frequency,
+                "reminder_times": reminder_times,
+                "days_of_week": days_of_week,
+                "sets": sets,
+                "reps": reps,
+                "duration_seconds": duration_seconds,
+                "form_notes": form_notes,
+                "priority": priority,
+                "is_active": True,
+                "updated_at": "now()",
+            }).execute()
+    except Exception as e:
+        print(f"Failed to mirror prescribed exercise into exercise_plan_items: {e}")
+
     return {"prescribed_exercise": full_response.data}
 
 
@@ -1825,7 +1878,41 @@ async def update_prescribed_exercise(
     full_response = db.table("prescribed_exercises").select(
         "*, exercise_catalog(*)"
     ).eq("id", str(prescription_id)).single().execute()
-    
+
+    # Best-effort: mirror updates into iOS-facing exercise_plan_items
+    try:
+        patient_user_res = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+        user_id = (patient_user_res.data or {}).get("user_id")
+
+        if user_id and full_response.data:
+            catalog_data = full_response.data.get("exercise_catalog") or {}
+            freq_val = (full_response.data.get("frequency") or "daily")
+            is_active = full_response.data.get("is_active", True)
+
+            reminder_times, days_of_week = _exercise_plan_schedule_from_frequency(freq_val)
+            if not is_active:
+                reminder_times, days_of_week = [], []
+
+            db.table("exercise_plan_items").upsert({
+                "id": str(prescription_id),
+                "user_id": user_id,
+                "exercise_id": full_response.data.get("exercise_id"),
+                "name": catalog_data.get("name") or "Exercise",
+                "category": catalog_data.get("category"),
+                "frequency": freq_val,
+                "reminder_times": reminder_times,
+                "days_of_week": days_of_week,
+                "sets": full_response.data.get("sets"),
+                "reps": full_response.data.get("reps"),
+                "duration_seconds": full_response.data.get("duration_seconds"),
+                "form_notes": full_response.data.get("form_notes"),
+                "priority": full_response.data.get("priority") or 1,
+                "is_active": is_active,
+                "updated_at": "now()",
+            }).execute()
+    except Exception as e:
+        print(f"Failed to mirror prescribed exercise update into exercise_plan_items: {e}")
+
     return {"prescribed_exercise": full_response.data}
 
 
@@ -1840,6 +1927,18 @@ async def remove_prescribed_exercise(
         "is_active": False,
         "updated_at": "now()"
     }).eq("id", str(prescription_id)).eq("patient_id", str(patient_id)).execute()
+
+    # Best-effort: deactivate mirrored iOS-facing exercise_plan_items row
+    try:
+        patient_user_res = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+        user_id = (patient_user_res.data or {}).get("user_id")
+        if user_id:
+            db.table("exercise_plan_items").update({
+                "is_active": False,
+                "updated_at": "now()",
+            }).eq("id", str(prescription_id)).eq("user_id", str(user_id)).execute()
+    except Exception as e:
+        print(f"Failed to deactivate mirrored exercise_plan_items row: {e}")
     
     return {"success": True}
 

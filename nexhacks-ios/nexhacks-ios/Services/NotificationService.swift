@@ -2,7 +2,7 @@
 //  NotificationService.swift
 //  nexhacks-ios
 //
-//  Service for medication reminders and notifications
+//  Service for reminders and notifications
 //
 
 import Foundation
@@ -24,6 +24,7 @@ class NotificationService: ObservableObject {
         var body: String
         var scheduledDate: Date
         var medicationId: UUID?
+        var exercisePlanItemId: UUID?
     }
 
     // MARK: - Initialization
@@ -119,9 +120,130 @@ class NotificationService: ObservableObject {
                     title: content.title,
                     body: content.body,
                     scheduledDate: reminderTime,
-                    medicationId: medication.id
+                    medicationId: medication.id,
+                    exercisePlanItemId: nil
                 )
             )
+        }
+    }
+
+    /// Schedule exercise plan reminder (clinician-assigned)
+    func scheduleExerciseReminder(planItem: ExercisePlanItem) async throws {
+        if !isAuthorized {
+            try await requestPermissions()
+            await checkAuthorizationStatus()
+            guard isAuthorized else { return }
+        }
+
+        let prefix = "ex-\(planItem.id.uuidString)-"
+
+        let pending = await notificationCenter.pendingNotificationRequests()
+        let identifiersToRemove = pending
+            .map(\.identifier)
+            .filter { $0.hasPrefix(prefix) }
+
+        if !identifiersToRemove.isEmpty {
+            notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+        }
+        scheduledNotifications.removeAll { $0.exercisePlanItemId == planItem.id }
+
+        guard planItem.isActive else { return }
+        guard !planItem.reminderTimes.isEmpty else { return }
+
+        let calendar = Calendar.current
+
+        let timeFormatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "h:mm a"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            return formatter
+        }()
+
+        for reminderTime in planItem.reminderTimes {
+            let hour = calendar.component(.hour, from: reminderTime)
+            let minute = calendar.component(.minute, from: reminderTime)
+
+            let content = UNMutableNotificationContent()
+            content.title = "Exercise time"
+            let timeLabel = timeFormatter.string(from: reminderTime)
+
+            var details = ""
+            if let sets = planItem.sets, let reps = planItem.reps {
+                details = " \(sets) sets of \(reps)."
+            } else if let durationSeconds = planItem.durationSeconds, durationSeconds > 0 {
+                let minutes = max(Int(round(Double(durationSeconds) / 60.0)), 1)
+                details = " About \(minutes) minutes."
+            }
+
+            content.body = "It is \(timeLabel). Do \(planItem.name).\(details)"
+            content.sound = .default
+            content.categoryIdentifier = "EXERCISE_REMINDER"
+            content.userInfo = [
+                "type": "exercise_reminder",
+                "exercise_plan_item_id": planItem.id.uuidString,
+                "scheduled_time": String(format: "%02d:%02d", hour, minute)
+            ]
+
+            // If daysOfWeek is empty, treat as daily. Otherwise schedule on those weekdays.
+            let days = planItem.daysOfWeek.isEmpty ? nil : planItem.daysOfWeek
+
+            if let days {
+                for day in days {
+                    let weekday = ((day + 1) % 7) + 1 // backend Monday=0...Sunday=6 -> iOS Sunday=1...Saturday=7
+                    let identifier = "\(prefix)\(weekday)-\(String(format: "%02d%02d", hour, minute))"
+
+                    var dateComponents = DateComponents()
+                    dateComponents.weekday = weekday
+                    dateComponents.hour = hour
+                    dateComponents.minute = minute
+                    let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+
+                    let request = UNNotificationRequest(
+                        identifier: identifier,
+                        content: content,
+                        trigger: trigger
+                    )
+
+                    try await notificationCenter.add(request)
+
+                    scheduledNotifications.append(
+                        ScheduledNotification(
+                            id: request.identifier,
+                            title: content.title,
+                            body: content.body,
+                            scheduledDate: reminderTime,
+                            medicationId: nil,
+                            exercisePlanItemId: planItem.id
+                        )
+                    )
+                }
+            } else {
+                let identifier = "\(prefix)\(String(format: "%02d%02d", hour, minute))"
+
+                var dateComponents = DateComponents()
+                dateComponents.hour = hour
+                dateComponents.minute = minute
+                let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+
+                let request = UNNotificationRequest(
+                    identifier: identifier,
+                    content: content,
+                    trigger: trigger
+                )
+
+                try await notificationCenter.add(request)
+
+                scheduledNotifications.append(
+                    ScheduledNotification(
+                        id: request.identifier,
+                        title: content.title,
+                        body: content.body,
+                        scheduledDate: reminderTime,
+                        medicationId: nil,
+                        exercisePlanItemId: planItem.id
+                    )
+                )
+            }
         }
     }
 
@@ -141,6 +263,24 @@ class NotificationService: ObservableObject {
             }
 
             scheduledNotifications.removeAll { $0.medicationId == medicationId }
+        }
+    }
+
+    /// Cancel exercise reminders
+    func cancelExerciseReminders(planItemId: UUID) {
+        let prefix = "ex-\(planItemId.uuidString)-"
+
+        Task { @MainActor in
+            let pending = await notificationCenter.pendingNotificationRequests()
+            let identifiersToRemove = pending
+                .map(\.identifier)
+                .filter { $0.hasPrefix(prefix) }
+
+            if !identifiersToRemove.isEmpty {
+                notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+            }
+
+            scheduledNotifications.removeAll { $0.exercisePlanItemId == planItemId }
         }
     }
 

@@ -330,6 +330,24 @@ class SupabaseService: ObservableObject {
             )
         }
     }
+
+    // MARK: - Exercise Plan (Clinician Assignments)
+
+    func fetchExercisePlanItems(userId: UUID? = nil) async throws -> [SupabaseExercisePlanItem] {
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            return []
+        }
+
+        let response: [SupabaseExercisePlanItem] = try await supabase
+            .from("exercise_plan_items")
+            .select()
+            .eq("user_id", value: currentUserId.uuidString)
+            .order("priority", ascending: true)
+            .execute()
+            .value
+
+        return response
+    }
     
     func updateExercise(_ exercise: Exercise, userId: UUID? = nil) async throws {
         guard let currentUserId = userId ?? getCurrentUserId() else {
@@ -942,6 +960,44 @@ struct SupabaseExerciseRow: Codable {
         case endTime = "end_time"
         case videoUrl = "video_url"
         case loggedAt = "logged_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct SupabaseExercisePlanItem: Codable {
+    let id: UUID
+    let userId: UUID
+    var exerciseId: UUID?
+    let name: String
+    var category: String?
+    let frequency: String
+    var reminderTimes: [String]
+    var daysOfWeek: [Int]?
+    var sets: Int?
+    var reps: Int?
+    var durationSeconds: Int?
+    var formNotes: String?
+    var priority: Int
+    var isActive: Bool
+    var createdAt: Date?
+    var updatedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case exerciseId = "exercise_id"
+        case name
+        case category
+        case frequency
+        case reminderTimes = "reminder_times"
+        case daysOfWeek = "days_of_week"
+        case sets
+        case reps
+        case durationSeconds = "duration_seconds"
+        case formNotes = "form_notes"
+        case priority
+        case isActive = "is_active"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

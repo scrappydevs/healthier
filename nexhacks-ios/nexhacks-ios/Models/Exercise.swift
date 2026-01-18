@@ -79,3 +79,22 @@ enum ExerciseType: String, Codable, CaseIterable {
     case sports = "Sports"
     case other = "Other"
 }
+
+// MARK: - Clinician-assigned exercise plan items (web -> iOS)
+
+struct ExercisePlanItem: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var category: String?
+    var frequency: String
+    var reminderTimes: [Date]
+    var daysOfWeek: [Int] // Monday=0 ... Sunday=6 (matches backend)
+    var sets: Int?
+    var reps: Int?
+    var durationSeconds: Int?
+    var formNotes: String?
+    var priority: Int
+    var isActive: Bool
+    var createdAt: Date
+    var updatedAt: Date
+}

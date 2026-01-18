@@ -97,7 +97,8 @@ class AppState: ObservableObject {
         
         self.exerciseViewModel = ExerciseViewModel(
             exerciseRepository: exerciseRepository,
-            supabaseService: supabaseService
+            supabaseService: supabaseService,
+            notificationService: notificationService
         )
 
         self.roomViewModel = RoomViewModel(
