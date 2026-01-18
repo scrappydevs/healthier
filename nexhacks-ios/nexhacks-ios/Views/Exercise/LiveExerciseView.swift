@@ -92,52 +92,39 @@ struct LiveExerciseView: View {
     // MARK: - Top Bar
     
     private var topBar: some View {
-        VStack(spacing: 8) {
-            // Plan item name banner if from plan
-            if let planName = planItemName {
-                Text(planName)
-                    .font(.headline)
+        HStack {
+            Button {
+                Task {
+                    if isRecording {
+                        await stopRecording()
+                    }
+                    dismiss()
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title)
                     .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                    .background(Color.appPrimary.opacity(0.9))
-                    .cornerRadius(20)
+                    .shadow(radius: 4)
             }
             
-            HStack {
-                Button {
-                    Task {
-                        if isRecording {
-                            await stopRecording()
-                        }
-                        dismiss()
-                    }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title)
-                        .foregroundColor(.white)
-                        .shadow(radius: 4)
-                }
-                
-                Spacer()
-                
-                // Timer
-                Text(formatTime(elapsedSeconds))
-                    .font(.system(size: 24, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(isRecording ? Color.red : Color.black.opacity(0.5))
-                    .cornerRadius(8)
-                
-                Spacer()
-                
-                // Connection indicator
-                Circle()
-                    .fill(analysisService.isConnected ? Color.green : Color.orange)
-                    .frame(width: 12, height: 12)
-                    .shadow(radius: 2)
-            }
+            Spacer()
+            
+            // Timer
+            Text(formatTime(elapsedSeconds))
+                .font(.system(size: 24, weight: .bold, design: .monospaced))
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(isRecording ? Color.red : Color.black.opacity(0.5))
+                .cornerRadius(8)
+            
+            Spacer()
+            
+            // Connection indicator
+            Circle()
+                .fill(analysisService.isConnected ? Color.green : Color.orange)
+                .frame(width: 12, height: 12)
+                .shadow(radius: 2)
         }
         .padding(.top, 20)
     }
@@ -246,9 +233,9 @@ struct LiveExerciseView: View {
                     }
                     .padding(.horizontal)
                 }
-            } else if !isRecording && planItemName != nil {
-                // Show locked exercise type when from plan
-                Text(selectedType.rawValue)
+            } else if !isRecording, let planName = planItemName {
+                // Show locked plan item name when from plan
+                Text(planName)
                     .font(.headline)
                     .foregroundColor(.white)
                     .padding(.horizontal, 20)
