@@ -37,6 +37,9 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 - Analyze approximate nutrition signals (e.g. protein, vitamins, general healthiness)
 - Summarize on dashboard
 
+<img width="1728" height="991" alt="dash" src="https://github.com/user-attachments/assets/edb3602f-6057-4ab3-9909-8cdef1eaa485" />
+
+
 ### Exercise
 - Live video analysis
 - Check form + provide feedback
