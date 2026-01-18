@@ -137,10 +137,10 @@ wssMedication.on('connection', (ws) => {
               prompt,
               outputSchemaJson: outputSchema,
               processing: {
-                sampling_ratio: 0.3,
-                fps: 10,
-                clip_length_seconds: 2,
-                delay_seconds: 0.5
+                sampling_ratio: 0.8,
+                fps: 30,
+                clip_length_seconds: 0.2,
+                delay_seconds: 0.2
               },
               onResult: (result) => {
                 firstResultReceived = true;
@@ -346,10 +346,10 @@ wss.on('connection', (ws) => {
               prompt,
               outputSchemaJson: outputSchema,
               processing: {
-                sampling_ratio: 0.1,
+                sampling_ratio: 0.8,
                 fps: 30,
-                clip_length_seconds: 1,
-                delay_seconds: 1
+                clip_length_seconds: 0.2,
+                delay_seconds: 0.2
               },
               onResult: (result) => {
                 // Result payload is whatever Overshoot returns; try to pull the model output safely
