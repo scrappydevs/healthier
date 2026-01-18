@@ -72,7 +72,12 @@ class MedicationAssistantService: NSObject, ObservableObject {
     private var hasRequestedIntro: Bool = false
     private var lastVisionSent: String = ""
     private var lastVisionSentAt: Date = .distantPast
-    private let visionUpdateCooldown: TimeInterval = 2.0
+    private let visionUpdateCooldown: TimeInterval = 10.0
+    private var isAgentResponding: Bool = false
+    private var lastAgentActivityAt: Date = .distantPast
+    private var lastUserFinalUtteranceSentAt: Date = .distantPast
+    private var lastUserFinalUtteranceSent: String = ""
+    private let userUtteranceCooldown: TimeInterval = 3.0
     
     // Speech recognition for user transcription
     private let speechRecognizer: SFSpeechRecognizer? = SFSpeechRecognizer()
@@ -156,7 +161,8 @@ class MedicationAssistantService: NSObject, ObservableObject {
     
     /// Update vision context with current description for voice agent
     func updateAgentContext() async {
-        await sendVisionUpdateToAgentIfNeeded()
+        // Intentionally no-op: we do NOT push vision updates automatically.
+        // We only send vision context when the user asks (see speech recognition final utterances).
     }
 
     func sendMessage(_ message: String) async throws {
@@ -168,25 +174,131 @@ class MedicationAssistantService: NSObject, ObservableObject {
         try await room.localParticipant.sendText(message, for: "lk.chat")
     }
 
-    private func sendVisionUpdateToAgentIfNeeded() async {
+    private func markAgentActivity() {
+        lastAgentActivityAt = Date()
+        isAgentResponding = true
+
+        // Clear "responding" after a short idle period
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            let now = Date()
+            if now.timeIntervalSince(self.lastAgentActivityAt) >= 2.0 {
+                self.isAgentResponding = false
+            }
+        }
+    }
+
+    private func agentSeemsToNeedVision(_ text: String) -> Bool {
+        let t = text.lowercased()
+        if t.contains("don't have an image") { return true }
+        if t.contains("do not have an image") { return true }
+        if t.contains("no image") { return true }
+        if t.contains("no photo") { return true }
+        if t.contains("no picture") { return true }
+        if t.contains("can't see") { return true }
+        if t.contains("cannot see") { return true }
+        if t.contains("don't see") { return true }
+        if t.contains("do not see") { return true }
+        if t.contains("no description") { return true }
+        if t.contains("don't have a description") { return true }
+        if t.contains("do not have a description") { return true }
+        return false
+    }
+
+    private func currentVisionDescriptionForAgent() -> String? {
+        let vision = visionDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !vision.isEmpty else { return nil }
+
+        let lower = vision.lowercased()
+        if lower.contains("connecting to vision") { return nil }
+        if lower.contains("analyzing what the camera sees") { return nil }
+        if lower.contains("analyzing camera") { return nil }
+        if lower.contains("waiting for camera input") { return nil }
+        if lower.contains("vision connection error") { return nil }
+        if lower.contains("vision handshake failed") { return nil }
+
+        return vision
+    }
+
+    private func sendVisionContextNow(trigger: String) async {
         guard isVoiceConnected else { return }
-        guard !visionDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard let room = liveKitRoom else { return }
+
+        let vision = currentVisionDescriptionForAgent()
+        guard let vision else { return }
 
         let now = Date()
-        if visionDescription == lastVisionSent { return }
-        if now.timeIntervalSince(lastVisionSentAt) < visionUpdateCooldown { return }
+        if vision == lastVisionSent && now.timeIntervalSince(lastVisionSentAt) < visionUpdateCooldown {
+            return
+        }
 
-        lastVisionSent = visionDescription
+        lastVisionSent = vision
         lastVisionSentAt = now
 
+        let meds = medicationContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        let medsText = meds.isEmpty ? "No active medications on file." : meds
+
+        let message = """
+        [VISION UPDATE]
+        Trigger: \(trigger)
+        Camera view:
+        \(vision)
+
+        User's medication plan:
+        \(medsText)
+
+        Context update only. Do not claim you have no image/description if you can read this.
+        """
+
         do {
-            try await sendMessage("""
-            [VISION UPDATE]
-            \(visionDescription)
-            """)
+            try await room.localParticipant.sendText(message, for: "lk.chat")
         } catch {
-            // Non-fatal; keep UI updated and try again later
-            print("MedicationAssistant: Failed to send vision update - \(error)")
+            print("MedicationAssistant: Failed to send vision context - \(error)")
+        }
+    }
+
+    private func maybeSendVisionContextForUserUtterance(_ utterance: String) async {
+        guard isVoiceConnected else { return }
+
+        let trimmed = utterance.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let now = Date()
+        if now.timeIntervalSince(lastUserFinalUtteranceSentAt) < userUtteranceCooldown { return }
+        if trimmed == lastUserFinalUtteranceSent { return }
+
+        let vision = visionDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !vision.isEmpty else { return }
+
+        lastUserFinalUtteranceSentAt = now
+        lastUserFinalUtteranceSent = trimmed
+        lastVisionSent = vision
+        lastVisionSentAt = now
+
+        let meds = medicationContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        let medsText = meds.isEmpty ? "No active medications on file." : meds
+
+        let contextMessage = """
+        [VISION UPDATE]
+        Camera view:
+        \(vision)
+
+        User just asked (transcribed on-device):
+        "\(trimmed)"
+
+        User's medication plan:
+        \(medsText)
+        """
+
+        await sendContextMessageSafely(contextMessage)
+    }
+
+    private func sendContextMessageSafely(_ message: String) async {
+        do {
+            print("MedicationAssistant: Sending context to agent \(message.prefix(120))")
+            try await sendMessage(message)
+        } catch {
+            print("MedicationAssistant: Failed to send context message - \(error)")
         }
     }
 
@@ -195,6 +307,8 @@ class MedicationAssistantService: NSObject, ObservableObject {
             "type": "start",
             "medicationContext": medicationContext
         ]
+        visionStatus = "Start sent"
+        print("MedicationAssistant: Vision start sent to \(visionEndpointDescription)")
         await sendVisionJSON(startMessage)
     }
     
@@ -234,6 +348,7 @@ class MedicationAssistantService: NSObject, ObservableObject {
         }
         
         do {
+            print("MedicationAssistant: Vision WS send \(string.prefix(120))")
             try await visionWebSocket?.send(.string(string))
         } catch {
             print("MedicationAssistant: Vision send error - \(error)")
@@ -269,6 +384,7 @@ class MedicationAssistantService: NSObject, ObservableObject {
     private func handleVisionMessage(_ message: URLSessionWebSocketTask.Message) {
         switch message {
         case .string(let text):
+            print("MedicationAssistant: Vision WS recv \(text.prefix(200))")
             guard let data = text.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 return
@@ -276,6 +392,7 @@ class MedicationAssistantService: NSObject, ObservableObject {
             processVisionResult(json)
             
         case .data(let data):
+            print("MedicationAssistant: Vision WS recv binary \(data.count) bytes")
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 return
             }
@@ -294,9 +411,13 @@ class MedicationAssistantService: NSObject, ObservableObject {
             if let description = json["description"] as? String {
                 visionDescription = description
                 visionStatus = "Receiving"
-                // Update agent with new vision context
-                Task {
-                    await updateAgentContext()
+
+                // Prime the agent with the first real vision description so it has context even
+                // if on-device speech recognition is not enabled/authorized.
+                if isVoiceConnected && lastVisionSent.isEmpty {
+                    Task { @MainActor in
+                        await self.sendVisionContextNow(trigger: "first_vision_result")
+                    }
                 }
             }
             
@@ -470,6 +591,9 @@ class MedicationAssistantService: NSObject, ObservableObject {
                 if result.isFinal {
                     self.committedTranscript = self.combineTranscript(self.committedTranscript, segment)
                     self.userTranscript = self.committedTranscript
+                    Task { @MainActor in
+                        await self.maybeSendVisionContextForUserUtterance(segment)
+                    }
                     self.restartAfterFinalIfNeeded()
                 } else {
                     self.userTranscript = self.combineTranscript(self.committedTranscript, segment)
@@ -741,6 +865,11 @@ extension MedicationAssistantService: RoomDelegate {
             if topic == "lk.chat" || topic.isEmpty {
                 if let message = String(data: data, encoding: .utf8) {
                     self.agentResponse = message
+                    self.markAgentActivity()
+
+                    if self.agentSeemsToNeedVision(message) {
+                        await self.sendVisionContextNow(trigger: "agent_requested_vision")
+                    }
                 }
             }
         }
@@ -763,6 +892,11 @@ extension MedicationAssistantService: RoomDelegate {
             for segment in segments {
                 if segment.isFinal && !segment.text.isEmpty, participant.isAgent {
                     self.agentResponse = segment.text
+                    self.markAgentActivity()
+
+                    if self.agentSeemsToNeedVision(segment.text) {
+                        await self.sendVisionContextNow(trigger: "agent_requested_vision_transcription")
+                    }
                 }
             }
         }

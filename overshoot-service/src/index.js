@@ -74,10 +74,37 @@ wssMedication.on('connection', (ws) => {
   let frameCount = 0;
   let lastDescription = '';
   let medicationContext = '';
+  let resultTimeout = null;
+  let firstResultReceived = false;
+
+  function extractDescription(obj) {
+    if (!obj) return '';
+    if (typeof obj === 'string') return obj;
+    if (typeof obj.description === 'string' && obj.description.trim()) return obj.description;
+    if (typeof obj.text === 'string' && obj.text.trim()) return obj.text;
+    if (typeof obj.output === 'string' && obj.output.trim()) return obj.output;
+    if (typeof obj.result === 'string' && obj.result.trim()) return obj.result;
+    if (typeof obj.message === 'string' && obj.message.trim()) return obj.message;
+
+    // Try first string value in object
+    if (typeof obj === 'object') {
+      for (const k of Object.keys(obj)) {
+        const v = obj[k];
+        if (typeof v === 'string' && v.trim()) return v;
+      }
+    }
+    return '';
+  }
   
   ws.on('message', async (message) => {
     try {
-      const data = JSON.parse(message.toString());
+      const raw = message.toString();
+      const data = JSON.parse(raw);
+      
+      // Only log non-frame messages to reduce noise
+      if (data.type !== 'frame' && !data.frame) {
+        console.log('Medication WS message:', JSON.stringify(data).slice(0, 200));
+      }
       
       switch (data.type) {
         case 'start':
@@ -85,6 +112,11 @@ wssMedication.on('connection', (ws) => {
           medicationContext = data.medicationContext || '';
           frameCount = 0;
           lastDescription = '';
+          firstResultReceived = false;
+          if (resultTimeout) {
+            clearTimeout(resultTimeout);
+            resultTimeout = null;
+          }
           console.log('Started medication vision session');
           console.log('Medication context length:', medicationContext.length);
 
@@ -120,14 +152,30 @@ Make it brief, clear, and specific about colors and shapes.`;
               prompt,
               outputSchemaJson: outputSchema,
               processing: {
-                sampling_ratio: 0.5,
-                fps: 12,
-                clip_length_seconds: 1,
-                delay_seconds: 1
+                sampling_ratio: 0.3,
+                fps: 10,
+                clip_length_seconds: 2,
+                delay_seconds: 0.5
               },
               onResult: (result) => {
+                firstResultReceived = true;
+                if (resultTimeout) {
+                  clearTimeout(resultTimeout);
+                  resultTimeout = null;
+                }
+
+                try {
+                  const preview = JSON.stringify(result)?.slice(0, 500);
+                  console.log("Medication vision raw result:", preview);
+                } catch (e) {
+                  console.log("Medication vision raw result (stringify failed):", result);
+                }
+
                 const payload = result?.result ?? result;
-                if (!payload) return;
+                if (!payload) {
+                  console.log("Medication vision: no payload in result");
+                  return;
+                }
 
                 let parsed = payload;
                 if (typeof payload === "string") {
@@ -136,11 +184,20 @@ Make it brief, clear, and specific about colors and shapes.`;
                   try { parsed = JSON.parse(payload.result); } catch { parsed = payload; }
                 }
 
-                const description = (parsed?.description || "").toString().trim();
+                let description = extractDescription(parsed).toString().trim();
+                if (!description) {
+                  // Last-resort: stringify parsed object so the client gets something
+                  try {
+                    description = JSON.stringify(parsed);
+                  } catch {
+                    description = '';
+                  }
+                }
 
                 // Only send if description changed meaningfully
                 if (description && description !== lastDescription) {
                   lastDescription = description;
+                  console.log("Medication vision sending description:", description.slice(0, 100));
                   ws.send(JSON.stringify({
                     type: 'vision',
                     description: description,
@@ -150,12 +207,23 @@ Make it brief, clear, and specific about colors and shapes.`;
               },
               onError: (err) => {
                 console.error("Medication vision Overshoot error:", err);
+                if (resultTimeout) {
+                  clearTimeout(resultTimeout);
+                  resultTimeout = null;
+                }
                 ws.send(JSON.stringify({
                   type: 'error',
                   message: err.message || 'Vision analysis error'
                 }));
               }
             });
+
+            // Set a timeout to warn if no results after reasonable time
+            resultTimeout = setTimeout(() => {
+              if (!firstResultReceived) {
+                console.warn("Medication vision: No results received after 10 seconds. Check Overshoot configuration and API key.");
+              }
+            }, 10000);
 
             try {
               await overshootSession.start();
@@ -207,6 +275,10 @@ Make it brief, clear, and specific about colors and shapes.`;
           
         case 'stop':
           console.log(`Medication vision session ended. Frames processed: ${frameCount}`);
+          if (resultTimeout) {
+            clearTimeout(resultTimeout);
+            resultTimeout = null;
+          }
           if (overshootSession) {
             await overshootSession.stop();
             overshootSession = null;
@@ -231,6 +303,10 @@ Make it brief, clear, and specific about colors and shapes.`;
   
   ws.on('close', () => {
     console.log('Medication vision client disconnected');
+    if (resultTimeout) {
+      clearTimeout(resultTimeout);
+      resultTimeout = null;
+    }
     if (overshootSession) {
       overshootSession.stop().catch(() => {});
       overshootSession = null;
