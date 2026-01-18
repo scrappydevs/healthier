@@ -12,6 +12,7 @@ struct PillVerificationView: View {
     @Environment(\.dismiss) private var dismiss
     let medication: Medication
     let onVerified: (Bool) -> Void
+    private let useYoloForVerification = true
 
     @State private var selectedImage: UIImage?
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -23,6 +24,7 @@ struct PillVerificationView: View {
     @State private var showError = false
 
     private let claudeService = ClaudeAPIService()
+    private let pillDetectionService = PillDetectionService()
 
     // Determine if verification passed (correct medication AND correct dose)
     private var canConfirm: Bool {
@@ -539,13 +541,52 @@ struct PillVerificationView: View {
         verificationResult = nil
 
         do {
-            let result = try await claudeService.verifyPill(imageData: imageData, expectedMedication: medication)
-            verificationResult = result
+            if useYoloForVerification {
+                let output = try await pillDetectionService.detectPills(in: image)
+                verificationResult = buildYoloResult(output: output, expectedCount: medication.expectedPillCount)
+            } else {
+                let result = try await claudeService.verifyPill(imageData: imageData, expectedMedication: medication)
+                verificationResult = result
+            }
         } catch {
             errorMessage = error.localizedDescription
             showError = true
         }
 
         isVerifying = false
+    }
+
+    private func buildYoloResult(output: PillDetectionOutput, expectedCount: Int) -> PillVerificationResult {
+        let detected = output.count
+        let isCorrectDose = detected == expectedCount
+        let dosageWarning = dosageWarningText(detected: detected, expected: expectedCount)
+        let recommendation = isCorrectDose
+            ? "Dose verified. You can proceed to log this medication."
+            : "Please adjust the number of pills to match your prescribed dose."
+
+        return PillVerificationResult(
+            isMatch: true,
+            confidence: output.averageConfidence,
+            matchedMedicationName: medication.name,
+            detectedDescription: output.description,
+            warnings: output.warnings,
+            recommendation: recommendation,
+            detectedPillCount: detected,
+            expectedPillCount: expectedCount,
+            isCorrectDose: isCorrectDose,
+            dosageWarning: dosageWarning
+        )
+    }
+
+    private func dosageWarningText(detected: Int, expected: Int) -> String? {
+        if detected > expected {
+            let diff = detected - expected
+            return "TOO MANY PILLS: You have \(detected) pills but should only take \(expected). Please remove \(diff) pill(s)."
+        }
+        if detected < expected {
+            let diff = expected - detected
+            return "NOT ENOUGH PILLS: You have \(detected) pills but need \(expected). Please add \(diff) more pill(s)."
+        }
+        return nil
     }
 }

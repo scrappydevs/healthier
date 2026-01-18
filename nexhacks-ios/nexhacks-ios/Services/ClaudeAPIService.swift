@@ -101,6 +101,30 @@ struct PillVerificationResult: Codable {
         self.isCorrectDose = try container.decodeIfPresent(Bool.self, forKey: .isCorrectDose) ?? true
         self.dosageWarning = try container.decodeIfPresent(String.self, forKey: .dosageWarning)
     }
+
+    init(
+        isMatch: Bool,
+        confidence: Double,
+        matchedMedicationName: String?,
+        detectedDescription: String,
+        warnings: [String],
+        recommendation: String,
+        detectedPillCount: Int?,
+        expectedPillCount: Int?,
+        isCorrectDose: Bool,
+        dosageWarning: String?
+    ) {
+        self.isMatch = isMatch
+        self.confidence = confidence
+        self.matchedMedicationName = matchedMedicationName
+        self.detectedDescription = detectedDescription
+        self.warnings = warnings
+        self.recommendation = recommendation
+        self.detectedPillCount = detectedPillCount
+        self.expectedPillCount = expectedPillCount
+        self.isCorrectDose = isCorrectDose
+        self.dosageWarning = dosageWarning
+    }
 }
 
 struct NutritionAnalysis: Codable {

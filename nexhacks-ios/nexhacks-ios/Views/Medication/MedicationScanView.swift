@@ -244,7 +244,13 @@ struct MedicationScanView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, AppTheme.Spacing.lg)
                         .padding(.vertical, AppTheme.Spacing.sm)
-                        .background(Color.appPrimary)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.appPrimary, Color.appAccent]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .cornerRadius(AppTheme.CornerRadius.sm)
                     }
                 }
@@ -348,7 +354,13 @@ struct MedicationScanView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, AppTheme.Spacing.lg)
                         .padding(.vertical, AppTheme.Spacing.sm)
-                        .background(Color.appPrimary)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.appPrimary, Color.appAccent]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .cornerRadius(AppTheme.CornerRadius.sm)
                     }
                 }

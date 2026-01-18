@@ -11,7 +11,6 @@ struct MedicationTabView: View {
     @ObservedObject var viewModel: MedicationViewModel
     @State private var showingAddMedication = false
     @State private var showingScanMedication = false
-    @State private var selectedMedication: Medication?
     @State private var showingHistory = false
     @State private var showingAnalytics = false
     @State private var showingVoiceAssistant = false
@@ -94,7 +93,7 @@ struct MedicationTabView: View {
             .sheet(isPresented: $showingScanMedication) {
                 MedicationScanView(viewModel: viewModel)
             }
-            .sheet(item: $selectedMedication) { medication in
+            .sheet(item: $viewModel.selectedMedication) { medication in
                 MedicationDetailView(viewModel: viewModel, medication: medication)
             }
             .sheet(isPresented: $showingHistory) {

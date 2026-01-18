@@ -73,7 +73,8 @@ class MedicationViewModel: ObservableObject {
     convenience init(medicationRepository: MedicationRepository) {
         self.init(
             medicationRepository: medicationRepository,
-            notificationService: NotificationService()
+            notificationService: NotificationService(),
+            supabaseService: SupabaseService()
         )
     }
 

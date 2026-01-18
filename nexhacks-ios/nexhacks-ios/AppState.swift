@@ -10,6 +10,13 @@ import Combine
 
 @MainActor
 class AppState: ObservableObject {
+    enum AppTab: Hashable {
+        case home
+        case meds
+        case meals
+        case exercise
+        case journal
+    }
     // MARK: - Auth
     let authService: AuthService
     let authViewModel: AuthViewModel
@@ -42,6 +49,7 @@ class AppState: ObservableObject {
     // MARK: - Published State
     @Published var isInitialized: Bool = false
     @Published var currentUser: User?
+    @Published var selectedTab: AppTab = .home
     
     // MARK: - Computed Properties
     var isAuthenticated: Bool {
@@ -156,6 +164,11 @@ class AppState: ObservableObject {
     func refreshDailyMedicationDosesIfNeeded() {
         guard authViewModel.authState == .ready else { return }
         medicationViewModel.generateDailyDosesIfNeeded()
+    }
+
+    func openMedicationDetail(_ medication: Medication) {
+        selectedTab = .meds
+        medicationViewModel.selectedMedication = medication
     }
 
     // MARK: - Convenience Methods
