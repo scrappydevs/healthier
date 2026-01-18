@@ -588,10 +588,10 @@ struct MedicationAdherenceDetailView: View {
                             .foregroundColor(.textSecondary)
                             .tracking(1)
                         
-                        DetailRow(label: "Frequency", value: medication.frequency.rawValue)
-                        DetailRow(label: "Times per day", value: "\(medication.reminderTimes.count)")
-                        DetailRow(label: "Total Doses Taken", value: "\(medication.takenLog.count)")
-                        DetailRow(label: "Start Date", value: medication.startDate.formatted(date: .long, time: .omitted))
+                        MedicationDetailRow(label: "Frequency", value: medication.frequency.rawValue)
+                        MedicationDetailRow(label: "Times per day", value: "\(medication.reminderTimes.count)")
+                        MedicationDetailRow(label: "Total Doses Taken", value: "\(medication.takenLog.count)")
+                        MedicationDetailRow(label: "Start Date", value: medication.startDate.formatted(date: .long, time: .omitted))
                     }
                     .padding(AppTheme.Spacing.lg)
                     .background(Color.cardBackground)
@@ -640,7 +640,7 @@ struct StatDetailCard: View {
     }
 }
 
-struct DetailRow: View {
+private struct MedicationDetailRow: View {
     let label: String
     let value: String
     

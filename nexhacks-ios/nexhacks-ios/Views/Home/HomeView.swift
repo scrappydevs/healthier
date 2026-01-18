@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Foundation
 
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
@@ -18,33 +19,48 @@ struct HomeView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: AppTheme.Spacing.lg) {
-                    // Welcome Section
-                    welcomeSection
+            ZStack {
+                Color.appBackground.ignoresSafeArea()
 
-                    // Scan Room Button
-                    scanRoomButton
+                VStack(spacing: 0) {
+                    // Header
+                    HStack {
+                        Text("Welcome Back, \(greetingName)")
+                            .font(AppTheme.Typography.title)
+                            .foregroundColor(.textPrimary)
 
-                    // Daily Health Score
-                    dailyHealthScoreCard
+                        Spacer()
+                    }
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .padding(.bottom, AppTheme.Spacing.md)
 
-                    // Sync Status Card
-                    syncStatusCard
+                    ScrollView {
+                        VStack(spacing: AppTheme.Spacing.lg) {
+                            // Scan Room Button
+                            scanRoomButton
 
-                    // Health Breakdown
-                    healthBreakdownSection
+                            // Daily Health Score
+                            dailyHealthScoreCard
 
-                    // Quick Stats
-                    quickStatsSection
+                            // Sync Status Card
+                            syncStatusCard
 
-                    // Upcoming Reminders
-                    upcomingRemindersSection
+                            // Health Breakdown
+                            healthBreakdownSection
+
+                            // Quick Stats
+                            quickStatsSection
+
+                            // Upcoming Reminders
+                            upcomingRemindersSection
+                        }
+                        .padding(.horizontal, AppTheme.Spacing.lg)
+                        .padding(.vertical, AppTheme.Spacing.lg)
+                    }
                 }
-                .padding(AppTheme.Spacing.md)
             }
-            .background(Color.appBackground)
-            .navigationTitle("Home")
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showingRoomScanner) {
                 RoomPlanScannerView(viewModel: appState.roomViewModel)
             }
@@ -52,14 +68,18 @@ struct HomeView: View {
     }
 
     // MARK: - Welcome Section
-    private var welcomeSection: some View {
-        HStack {
-            Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
-                .font(AppTheme.Typography.title)
-                .foregroundColor(.textPrimary)
-
-            Spacer()
+    private var greetingName: String {
+        if let name = appState.currentUser?.name.trimmingCharacters(in: .whitespacesAndNewlines),
+           !name.isEmpty {
+            return firstName(fromFullName: name)
         }
+
+        if let email = appState.currentUser?.email,
+           let gmailName = firstNameFromGmail(email: email) {
+            return gmailName
+        }
+
+        return "User"
     }
     
     // MARK: - Scan Room Button
@@ -228,6 +248,22 @@ struct HomeView: View {
         if score >= 40 { return .warning }
         if score > 0 { return .error }
         return .textSecondary
+    }
+
+    private func firstName(fromFullName name: String) -> String {
+        let parts = name.split(whereSeparator: { $0.isWhitespace })
+        return parts.first.map { String($0) } ?? name
+    }
+
+    private func firstNameFromGmail(email: String) -> String? {
+        let parts = email.lowercased().split(separator: "@", maxSplits: 1)
+        guard parts.count == 2 else { return nil }
+        let domain = parts[1]
+        guard domain == "gmail.com" || domain == "googlemail.com" else { return nil }
+        let local = parts[0]
+        let nameParts = local.split(whereSeparator: { $0 == "." || $0 == "_" || $0 == "-" || $0 == "+" })
+        guard let first = nameParts.first, !first.isEmpty else { return nil }
+        return first.prefix(1).uppercased() + first.dropFirst()
     }
     
     // MARK: - Tracking Features Section

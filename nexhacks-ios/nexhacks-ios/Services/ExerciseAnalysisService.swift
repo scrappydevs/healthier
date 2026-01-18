@@ -74,7 +74,7 @@ class ExerciseAnalysisService: NSObject, ObservableObject {
     // MARK: - Session Management
     
     func startSession(exerciseType: String? = nil) async {
-        guard isConnected else {
+        if !isConnected {
             await connect()
         }
         
