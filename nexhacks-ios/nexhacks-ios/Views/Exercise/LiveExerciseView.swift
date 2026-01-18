@@ -14,6 +14,10 @@ struct LiveExerciseView: View {
     @StateObject private var analysisService = ExerciseAnalysisService()
     @StateObject private var cameraManager = CameraManager()
     
+    // Optional initial values from plan item
+    var initialExerciseType: ExerciseType?
+    var planItemName: String?
+    
     @State private var selectedType: ExerciseType = .other
     @State private var isRecording = false
     @State private var recordingStartTime: Date?
@@ -49,6 +53,9 @@ struct LiveExerciseView: View {
         }
         .onAppear {
             cameraManager.checkPermissions()
+            if let initialType = initialExerciseType {
+                selectedType = initialType
+            }
         }
         .onDisappear {
             Task {
@@ -76,6 +83,7 @@ struct LiveExerciseView: View {
                 duration: TimeInterval(elapsedSeconds),
                 repCount: analysisService.repCount,
                 videoURL: recordedVideoURL,
+                initialName: planItemName,
                 onSave: { dismiss() }
             )
         }
@@ -84,39 +92,52 @@ struct LiveExerciseView: View {
     // MARK: - Top Bar
     
     private var topBar: some View {
-        HStack {
-            Button {
-                Task {
-                    if isRecording {
-                        await stopRecording()
-                    }
-                    dismiss()
-                }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title)
+        VStack(spacing: 8) {
+            // Plan item name banner if from plan
+            if let planName = planItemName {
+                Text(planName)
+                    .font(.headline)
                     .foregroundColor(.white)
-                    .shadow(radius: 4)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(Color.appPrimary.opacity(0.9))
+                    .cornerRadius(20)
             }
             
-            Spacer()
-            
-            // Timer
-            Text(formatTime(elapsedSeconds))
-                .font(.system(size: 24, weight: .bold, design: .monospaced))
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(isRecording ? Color.red : Color.black.opacity(0.5))
-                .cornerRadius(8)
-            
-            Spacer()
-            
-            // Connection indicator
-            Circle()
-                .fill(analysisService.isConnected ? Color.green : Color.orange)
-                .frame(width: 12, height: 12)
-                .shadow(radius: 2)
+            HStack {
+                Button {
+                    Task {
+                        if isRecording {
+                            await stopRecording()
+                        }
+                        dismiss()
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title)
+                        .foregroundColor(.white)
+                        .shadow(radius: 4)
+                }
+                
+                Spacer()
+                
+                // Timer
+                Text(formatTime(elapsedSeconds))
+                    .font(.system(size: 24, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(isRecording ? Color.red : Color.black.opacity(0.5))
+                    .cornerRadius(8)
+                
+                Spacer()
+                
+                // Connection indicator
+                Circle()
+                    .fill(analysisService.isConnected ? Color.green : Color.orange)
+                    .frame(width: 12, height: 12)
+                    .shadow(radius: 2)
+            }
         }
         .padding(.top, 20)
     }
@@ -211,8 +232,8 @@ struct LiveExerciseView: View {
     
     private var bottomControls: some View {
         VStack(spacing: 20) {
-            // Exercise Type Picker (only before recording)
-            if !isRecording {
+            // Exercise Type Picker (only before recording, and not when from plan)
+            if !isRecording && planItemName == nil {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(ExerciseType.allCases, id: \.self) { type in
@@ -225,6 +246,15 @@ struct LiveExerciseView: View {
                     }
                     .padding(.horizontal)
                 }
+            } else if !isRecording && planItemName != nil {
+                // Show locked exercise type when from plan
+                Text(selectedType.rawValue)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(Color.appPrimary)
+                    .cornerRadius(20)
             }
             
             // Record Button
@@ -333,6 +363,7 @@ struct SaveExerciseSheet: View {
     let duration: TimeInterval
     let repCount: Int
     let videoURL: URL?
+    var initialName: String?
     let onSave: () -> Void
     
     @State private var name: String = ""
@@ -400,6 +431,11 @@ struct SaveExerciseSheet: View {
                         dismiss()
                     }
                     .foregroundColor(.appPrimary)
+                }
+            }
+            .onAppear {
+                if let initialName = initialName {
+                    name = initialName
                 }
             }
         }
