@@ -201,7 +201,7 @@ class AuthService: ObservableObject {
         do {
             try await supabase.auth.signInWithOAuth(
                 provider: .google,
-                redirectTo: URL(string: "com.nexhacks.healthier://auth/callback")
+                redirectTo: URL(string: "com.aarushagarwal.healthier://auth/callback")
             )
         } catch {
             throw AuthError.unknown(error)

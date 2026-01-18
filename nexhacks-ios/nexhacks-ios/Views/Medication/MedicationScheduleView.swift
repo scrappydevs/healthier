@@ -11,7 +11,7 @@ struct MedicationScheduleView: View {
     @ObservedObject var viewModel: MedicationViewModel
     @State private var selectedDate: Date = Date()
     @State private var medicationForVerification: Medication?
-    @State private var medicationForDetail: Medication?
+    @State private var medicationForDetail: MedicationDetailSelection?
 
     private var calendar: Calendar { Calendar.current }
 
@@ -76,8 +76,11 @@ struct MedicationScheduleView: View {
                                     onTakeMedication: { medication in
                                         medicationForVerification = medication
                                     },
-                                    onCardTap: { medication in
-                                        medicationForDetail = medication
+                                    onCardTap: { item in
+                                        medicationForDetail = MedicationDetailSelection(
+                                            medication: item.medication,
+                                            scheduledTime: item.scheduledTime
+                                        )
                                     }
                                 )
                             }
@@ -101,8 +104,12 @@ struct MedicationScheduleView: View {
         .sheet(isPresented: $viewModel.showingScanMedication) {
             MedicationScanView(viewModel: viewModel)
         }
-        .sheet(item: $medicationForDetail) { medication in
-            MedicationDetailView(viewModel: viewModel, medication: medication)
+        .sheet(item: $medicationForDetail) { selection in
+            MedicationDetailView(
+                viewModel: viewModel,
+                medication: selection.medication,
+                scheduledTime: selection.scheduledTime
+            )
         }
     }
     
@@ -302,19 +309,25 @@ struct ScheduleTimeSlot: Identifiable {
     let medications: [ScheduledMedicationItem]
 }
 
+struct MedicationDetailSelection: Identifiable {
+    let id = UUID()
+    let medication: Medication
+    let scheduledTime: Date
+}
+
 // MARK: - Liquid Glass Medication Slot View
 
 struct LiquidGlassMedicationSlotView: View {
     let slot: ScheduleTimeSlot
     let onTakeMedication: (Medication) -> Void
-    let onCardTap: (Medication) -> Void
+    let onCardTap: (ScheduledMedicationItem) -> Void
 
     var body: some View {
         ForEach(slot.medications) { item in
             LiquidGlassMedicationCard(
                 item: item,
                 onTake: { onTakeMedication(item.medication) },
-                onCardTap: { onCardTap(item.medication) }
+                onCardTap: { onCardTap(item) }
             )
         }
     }

@@ -12,11 +12,18 @@ struct MedicationDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: MedicationViewModel
     let medication: Medication
+    let scheduledTime: Date?
 
     @State private var showingVerification = false
     @State private var showingEditSheet = false
     @State private var showingTimingWarning = false
     @State private var timingWarningMessage = ""
+    
+    init(viewModel: MedicationViewModel, medication: Medication, scheduledTime: Date? = nil) {
+        self.viewModel = viewModel
+        self.medication = medication
+        self.scheduledTime = scheduledTime
+    }
     
     private var currentMedication: Medication {
         viewModel.medications.first { $0.id == medication.id } ?? medication
@@ -344,7 +351,7 @@ struct MedicationDetailView: View {
 
     private var takeNowButton: some View {
         Button {
-            if let warning = timingWarningMessage(for: currentMedication) {
+            if let warning = timingWarningMessage(for: currentMedication, scheduledTime: scheduledTime) {
                 timingWarningMessage = warning
                 showingTimingWarning = true
             } else {
@@ -515,32 +522,20 @@ struct MedicationDetailView: View {
         }
     }
 
-    private func timingWarningMessage(for medication: Medication) -> String? {
-        guard let scheduled = nearestScheduledDoseTime(for: medication) else {
+    private func timingWarningMessage(for medication: Medication, scheduledTime: Date?) -> String? {
+        guard let scheduled = scheduledTime ?? nearestScheduledDoseTime(for: medication) else {
             return nil
         }
 
         let now = Date()
         let diff = scheduled.timeIntervalSince(now)
-        let threshold: TimeInterval = 3 * 60 * 60
+        let threshold: TimeInterval = 2.5 * 60 * 60
 
         if abs(diff) <= threshold {
             return nil
         }
 
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateStyle = .none
-        timeFormatter.timeStyle = .short
-
-        let direction = diff > 0 ? "early" : "late"
-        let minutes = Int(abs(diff) / 60)
-        let hoursPart = minutes / 60
-        let minutesPart = minutes % 60
-        let offset = hoursPart > 0
-            ? "\(hoursPart)h \(minutesPart)m"
-            : "\(minutesPart)m"
-
-        return "You are \(offset) \(direction) compared to the scheduled time (\(timeFormatter.string(from: scheduled))). For safety, this dose cannot be taken right now."
+        return "Cannot take this pill right now. Please follow the scheduled time."
     }
 
     private func nearestScheduledDoseTime(for medication: Medication) -> Date? {
