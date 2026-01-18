@@ -101,6 +101,34 @@ struct PillVerificationResult: Codable {
         self.isCorrectDose = try container.decodeIfPresent(Bool.self, forKey: .isCorrectDose) ?? true
         self.dosageWarning = try container.decodeIfPresent(String.self, forKey: .dosageWarning)
     }
+
+    init(
+        isMatch: Bool,
+        confidence: Double,
+        matchedMedicationName: String?,
+        detectedDescription: String,
+        warnings: [String],
+        recommendation: String,
+        detectedPillCount: Int?,
+        expectedPillCount: Int?,
+        isCorrectDose: Bool,
+        dosageWarning: String?
+    ) {
+        self.isMatch = isMatch
+        self.confidence = confidence
+        self.matchedMedicationName = matchedMedicationName
+        self.detectedDescription = detectedDescription
+        self.warnings = warnings
+        self.recommendation = recommendation
+        self.detectedPillCount = detectedPillCount
+        self.expectedPillCount = expectedPillCount
+        self.isCorrectDose = isCorrectDose
+        self.dosageWarning = dosageWarning
+    }
+}
+
+struct PillVerificationWarningsResult: Codable {
+    let warnings: [String]
 }
 
 struct NutritionAnalysis: Codable {
@@ -198,42 +226,24 @@ class ClaudeAPIService: ObservableObject {
 
         let prompt = """
         You are helping verify that pills match an expected medication for an elderly patient.
-        This is CRITICAL for patient safety - you must count the pills accurately.
+        The goal is safety. You should NOT attempt to confirm identity; only return warnings.
 
         Expected medication:
         - Name: \(expectedMedication.name)
         - Dosage: \(expectedMedication.dosage)
         - Form: \(expectedMedication.form.rawValue)
         - Description: \(expectedMedication.pillDescription ?? "Not provided")
-        - EXPECTED PILL COUNT: \(expectedCount) pill(s) per dose
-
-        IMPORTANT TASKS:
-        1. Verify the pills match the expected medication (color, shape, markings)
-        2. COUNT THE EXACT NUMBER OF PILLS in the image
-        3. Compare detected count to expected count (\(expectedCount))
+        - Expected pill count: \(expectedCount) pill(s) per dose
 
         Respond ONLY with valid JSON in this exact format:
         {
-            "isMatch": true,
-            "confidence": 0.95,
-            "matchedMedicationName": "Medication Name",
-            "detectedDescription": "Description of what you see in the image",
-            "detectedPillCount": 2,
-            "expectedPillCount": \(expectedCount),
-            "isCorrectDose": true,
-            "dosageWarning": null,
-            "warnings": ["Any warnings or concerns"],
-            "recommendation": "Clear recommendation for the patient"
+            "warnings": [
+                "Short warning for the patient"
+            ]
         }
 
-        DOSE VALIDATION RULES:
-        - If detectedPillCount > expectedPillCount: Set isCorrectDose=false, dosageWarning="TOO MANY PILLS: You have [X] pills but should only take [Y]. Please remove [difference] pill(s)."
-        - If detectedPillCount < expectedPillCount: Set isCorrectDose=false, dosageWarning="NOT ENOUGH PILLS: You have [X] pills but need [Y]. Please add [difference] more pill(s)."
-        - If detectedPillCount == expectedPillCount: Set isCorrectDose=true, dosageWarning=null
-
-        The confidence should be between 0.0 and 1.0.
-        Be cautious - if uncertain about the medication type, recommend verification with a pharmacist.
-        Provide a clear, simple recommendation suitable for an elderly person.
+        If the pill cannot be confidently identified, include a warning telling the user to double-check.
+        Keep warnings short, clear, and suitable for an elderly person.
         """
 
         let response = try await sendImageRequest(base64Image: base64Image, prompt: prompt)
@@ -242,7 +252,23 @@ class ClaudeAPIService: ObservableObject {
             throw ClaudeAPIError.invalidResponse
         }
 
-        return try JSONDecoder().decode(PillVerificationResult.self, from: jsonData)
+        let warningsResult = try JSONDecoder().decode(PillVerificationWarningsResult.self, from: jsonData)
+        let warnings = warningsResult.warnings.isEmpty
+            ? ["Pill could not be confidently identified. Please double-check before taking."]
+            : warningsResult.warnings
+
+        return PillVerificationResult(
+            isMatch: false,
+            confidence: 0.0,
+            matchedMedicationName: nil,
+            detectedDescription: "Pill could not be confidently identified.",
+            warnings: warnings,
+            recommendation: "Double-check the pill before taking it.",
+            detectedPillCount: nil,
+            expectedPillCount: expectedCount,
+            isCorrectDose: false,
+            dosageWarning: nil
+        )
     }
     
     // MARK: - Food Analysis

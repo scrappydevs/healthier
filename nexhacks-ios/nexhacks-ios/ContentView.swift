@@ -12,12 +12,13 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        TabView {
+        TabView(selection: $appState.selectedTab) {
             // Home Tab
             HomeView(viewModel: appState.homeViewModel)
                 .tabItem {
                     Label("Home", systemImage: "house.fill")
                 }
+                .tag(AppState.AppTab.home)
                 .environmentObject(appState)
 
             // Medications Tab (Meds)
@@ -25,24 +26,28 @@ struct ContentView: View {
                 .tabItem {
                     Label("Meds", systemImage: "pills.fill")
                 }
+                .tag(AppState.AppTab.meds)
 
             // Meals Tab
             MealsView(viewModel: appState.mealViewModel)
                 .tabItem {
                     Label("Meals", systemImage: "fork.knife")
                 }
+                .tag(AppState.AppTab.meals)
 
             // Exercise Tab
             ExerciseView(viewModel: appState.exerciseViewModel)
                 .tabItem {
                     Label("Exercise", systemImage: "figure.run")
                 }
+                .tag(AppState.AppTab.exercise)
 
             // Journal Tab
             JournalListView(viewModel: appState.journalViewModel)
                 .tabItem {
                     Label("Journal", systemImage: "book.fill")
                 }
+                .tag(AppState.AppTab.journal)
         }
         .accentColor(.appPrimary)
         .onChange(of: scenePhase) { newPhase in

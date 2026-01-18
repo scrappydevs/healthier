@@ -26,6 +26,7 @@ enum StorageBucket: String {
     case mealImages = "meal-images"
     case exerciseVideos = "exercise-videos"
     case medicationImages = "medication-images"
+    case boundedPillImages = "bounded-pill-images"
 }
 
 // MARK: - Supabase Service

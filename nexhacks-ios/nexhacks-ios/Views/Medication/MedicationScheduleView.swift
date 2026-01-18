@@ -92,10 +92,8 @@ struct MedicationScheduleView: View {
             }
         }
         .sheet(item: $medicationForVerification) { medication in
-            PillVerificationView(medication: medication) { verified in
-                if verified {
-                    viewModel.logMedicationTaken(medication, wasOnTime: true, verificationStatus: .verified)
-                }
+            PillVerificationView(medication: medication) { status in
+                viewModel.logMedicationTaken(medication, wasOnTime: true, verificationStatus: status)
             }
         }
         .sheet(isPresented: $viewModel.showingAddMedication) {
