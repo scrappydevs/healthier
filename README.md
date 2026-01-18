@@ -14,6 +14,8 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 
 ![3D Map (1)](https://github.com/user-attachments/assets/35713d75-b1ec-49ec-943f-ae0e78066021)
 
+## Tech Stack
+<img width="912" height="671" alt="Healthier Tech Stack" src="https://github.com/user-attachments/assets/b07729c8-af32-4dd9-92cb-306c9d067a54" />
 
 ## Current Features (Planned / In Progress)
 
