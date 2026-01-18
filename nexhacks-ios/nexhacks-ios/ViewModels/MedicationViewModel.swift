@@ -46,6 +46,14 @@ class MedicationViewModel: ObservableObject {
         setupBindings()
         loadMedications()
     }
+    
+    /// Convenience initializer for previews/testing
+    convenience init(medicationRepository: MedicationRepository) {
+        self.init(
+            medicationRepository: medicationRepository,
+            notificationService: NotificationService()
+        )
+    }
 
     // MARK: - Computed Properties
 
@@ -196,6 +204,39 @@ class MedicationViewModel: ObservableObject {
         let allRates = activeMedications.map { getAdherenceRate(for: $0) }
         guard !allRates.isEmpty else { return 100 }
         return allRates.reduce(0, +) / Double(allRates.count)
+    }
+    
+    /// Get medication context string for voice assistant
+    func getMedicationContextString() -> String {
+        guard !activeMedications.isEmpty else {
+            return "No active medications on file."
+        }
+        
+        var context = "Active Medications:\n"
+        
+        for (index, med) in activeMedications.enumerated() {
+            context += "\n\(index + 1). \(med.name)"
+            context += "\n   - Dosage: \(med.dosage)"
+            context += "\n   - Form: \(med.form.rawValue)"
+            context += "\n   - Frequency: \(med.frequency.rawValue)"
+            
+            if let description = med.pillDescription, !description.isEmpty {
+                context += "\n   - Appearance: \(description)"
+            }
+            
+            if let instructions = med.instructions, !instructions.isEmpty {
+                context += "\n   - Instructions: \(instructions)"
+            }
+            
+            if !med.reminderTimes.isEmpty {
+                let timeFormatter = DateFormatter()
+                timeFormatter.dateFormat = "h:mm a"
+                let times = med.reminderTimes.map { timeFormatter.string(from: $0) }.joined(separator: ", ")
+                context += "\n   - Schedule: \(times)"
+            }
+        }
+        
+        return context
     }
 
     // MARK: - Private Methods

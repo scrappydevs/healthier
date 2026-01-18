@@ -872,56 +872,49 @@ PILLPAL_TOOLS = [
 # MOCK DATA (for demo without Supabase)
 # ============================================================================
 
+# Rooms matching the actual Smplrspace floor plan
 MOCK_ROOMS = [
-    {"id": "de9844aef33d", "name": "Cardiac Care 101", "type": "patient", "status": "normal", "patient_count": 1},
-    {"id": "cde60d0f9c4b", "name": "Cardiac Care 102", "type": "patient", "status": "attention", "patient_count": 1},
-    {"id": "e22831cdda28", "name": "Respiratory 201", "type": "patient", "status": "normal", "patient_count": 1},
-    {"id": "f7262ecc48b9", "name": "Respiratory 202", "type": "patient", "status": "vacant", "patient_count": 0},
-    {"id": "c94f3f0243a7", "name": "Neuro 301", "type": "patient", "status": "normal", "patient_count": 1},
-    {"id": "f3524c41d309", "name": "Neuro 302", "type": "patient", "status": "attention", "patient_count": 1},
-    {"id": "c5a4f171c1f8", "name": "Ortho 401", "type": "patient", "status": "normal", "patient_count": 1},
-    {"id": "cc51c86dfc78", "name": "Ortho 402", "type": "patient", "status": "vacant", "patient_count": 0},
-    {"id": "fdee6f5c3609", "name": "ICU Pod Alpha", "type": "icu", "status": "critical", "patient_count": 2},
-    {"id": "fa4ced683b3e", "name": "ICU Pod Beta", "type": "icu", "status": "attention", "patient_count": 1},
-    {"id": "fb1bd4c58976", "name": "General Ward A", "type": "ward", "status": "normal", "patient_count": 4},
-    {"id": "c3b82bf22edc", "name": "General Ward B", "type": "ward", "status": "normal", "patient_count": 3},
-    {"id": "cae274222f6c", "name": "Main Pharmacy", "type": "pharmacy", "status": "normal", "patient_count": 0},
-    {"id": "f34a076b36a3", "name": "Clinical Lab", "type": "lab", "status": "normal", "patient_count": 0},
-    {"id": "d7942311a750", "name": "Central Nurses Station", "type": "nurses_station", "status": "normal", "patient_count": 0},
-    {"id": "e5fb7587a358", "name": "Main Reception", "type": "reception", "status": "normal", "patient_count": 0},
-    {"id": "hall-main-north", "name": "North Corridor", "type": "hallway", "status": "normal", "patient_count": 0},
-    {"id": "hall-main-south", "name": "South Corridor", "type": "hallway", "status": "normal", "patient_count": 0},
-    {"id": "hall-east", "name": "East Wing Hallway", "type": "hallway", "status": "normal", "patient_count": 0},
-    {"id": "hall-west", "name": "West Wing Hallway", "type": "hallway", "status": "normal", "patient_count": 0},
-    {"id": "storage-medical", "name": "Medical Supplies", "type": "storage", "status": "normal", "patient_count": 0},
-    {"id": "storage-pharmacy", "name": "Pharmacy Storage", "type": "storage", "status": "normal", "patient_count": 0},
+    # Patient rooms (Room 1-6)
+    {"id": "room-1", "name": "Room 1", "type": "patient", "status": "normal", "patient_count": 1},
+    {"id": "room-2", "name": "Room 2", "type": "patient", "status": "normal", "patient_count": 1},
+    {"id": "room-3", "name": "Room 3", "type": "patient", "status": "attention", "patient_count": 1},
+    {"id": "room-4", "name": "Room 4", "type": "patient", "status": "normal", "patient_count": 1},
+    {"id": "room-5", "name": "Room 5", "type": "patient", "status": "vacant", "patient_count": 0},
+    {"id": "room-6", "name": "Room 6", "type": "patient", "status": "normal", "patient_count": 1},
+    
+    # Special areas
+    {"id": "critical-room", "name": "Critical Room", "type": "critical", "status": "critical", "patient_count": 1},
+    {"id": "waiting-space", "name": "Waiting Space", "type": "waiting", "status": "normal", "patient_count": 0},
+    {"id": "check-in-space", "name": "Check In Space", "type": "reception", "status": "normal", "patient_count": 0},
+    {"id": "entrance", "name": "Entrance", "type": "hallway", "status": "normal", "patient_count": 0},
+    
+    # Utility areas
+    {"id": "pantry", "name": "Pantry", "type": "pantry", "status": "normal", "patient_count": 0},
+    {"id": "storage", "name": "Storage", "type": "storage", "status": "normal", "patient_count": 0},
+    {"id": "wc-1", "name": "WC", "type": "restroom", "status": "normal", "patient_count": 0},
+    {"id": "wc-2", "name": "WC", "type": "restroom", "status": "normal", "patient_count": 0},
 ]
 
+# Patients matching the floor plan rooms
 MOCK_PATIENTS = [
-    {"id": "P-001", "name": "John Smith", "age": 72, "condition": "Post-cardiac surgery", "room": "Cardiac Care 101", "status": "stable"},
-    {"id": "P-002", "name": "Mary Johnson", "age": 68, "condition": "Arrhythmia monitoring", "room": "Cardiac Care 102", "status": "improving"},
-    {"id": "P-003", "name": "Robert Davis", "age": 81, "condition": "COPD exacerbation", "room": "Respiratory 201", "status": "stable"},
-    {"id": "P-004", "name": "Linda Wilson", "age": 65, "condition": "Post-stroke recovery", "room": "Neuro 301", "status": "improving"},
-    {"id": "P-005", "name": "James Brown", "age": 78, "condition": "Seizure disorder", "room": "Neuro 302", "status": "stable"},
-    {"id": "P-006", "name": "Patricia Miller", "age": 70, "condition": "Hip replacement", "room": "Ortho 401", "status": "stable"},
-    {"id": "P-007", "name": "Michael Garcia", "age": 85, "condition": "Multi-organ failure", "room": "ICU Pod Alpha", "status": "critical"},
-    {"id": "P-008", "name": "Elizabeth Martinez", "age": 62, "condition": "Sepsis", "room": "ICU Pod Alpha", "status": "critical"},
-    {"id": "P-009", "name": "William Anderson", "age": 74, "condition": "Post-surgery observation", "room": "ICU Pod Beta", "status": "improving"},
-    {"id": "P-010", "name": "Jennifer Taylor", "age": 67, "condition": "General observation", "room": "General Ward A", "status": "stable"},
-    {"id": "P-011", "name": "David Thomas", "age": 71, "condition": "Medication adjustment", "room": "General Ward A", "status": "stable"},
-    {"id": "P-012", "name": "Sarah Jackson", "age": 69, "condition": "Post-procedure", "room": "General Ward B", "status": "stable"},
+    {"id": "P-001", "name": "John Smith", "age": 72, "condition": "Post-cardiac surgery", "room": "Room 1", "status": "stable"},
+    {"id": "P-002", "name": "Mary Johnson", "age": 68, "condition": "Arrhythmia monitoring", "room": "Room 2", "status": "improving"},
+    {"id": "P-003", "name": "Robert Davis", "age": 81, "condition": "COPD exacerbation", "room": "Room 3", "status": "attention"},
+    {"id": "P-004", "name": "Linda Wilson", "age": 65, "condition": "Post-stroke recovery", "room": "Room 4", "status": "stable"},
+    {"id": "P-005", "name": "Patricia Miller", "age": 70, "condition": "Hip replacement", "room": "Room 6", "status": "stable"},
+    {"id": "P-006", "name": "Michael Garcia", "age": 85, "condition": "Multi-organ failure", "room": "Critical Room", "status": "critical"},
 ]
 
 MOCK_HAZARDS = [
-    {"id": "H-001", "type": "spill", "location": "North Corridor", "description": "Water spill near room 201", "severity": "medium", "status": "active", "reported_at": "10 min ago"},
-    {"id": "H-002", "type": "equipment_failure", "location": "ICU Pod Alpha", "description": "Monitor #3 showing intermittent readings", "severity": "high", "status": "responding", "reported_at": "25 min ago"},
-    {"id": "H-003", "type": "fall", "location": "General Ward A", "description": "Patient fall risk - bed 2", "severity": "medium", "status": "active", "reported_at": "5 min ago"},
+    {"id": "H-001", "type": "spill", "location": "Entrance", "description": "Water spill near main entrance", "severity": "medium", "status": "active", "reported_at": "10 min ago"},
+    {"id": "H-002", "type": "equipment_failure", "location": "Critical Room", "description": "Monitor showing intermittent readings", "severity": "high", "status": "responding", "reported_at": "25 min ago"},
+    {"id": "H-003", "type": "fall", "location": "Room 3", "description": "Patient fall risk assessment needed", "severity": "medium", "status": "active", "reported_at": "5 min ago"},
 ]
 
 MOCK_ALERTS = [
-    {"id": "A-001", "title": "Critical vitals - ICU Pod Alpha", "description": "Patient P-007 blood pressure dropping", "severity": "critical", "status": "active", "patient_id": "P-007", "room_id": "fdee6f5c3609"},
-    {"id": "A-002", "title": "Medication overdue", "description": "Patient P-002 missed 2PM medication", "severity": "high", "status": "active", "patient_id": "P-002", "room_id": "cde60d0f9c4b"},
-    {"id": "A-003", "title": "Lab results pending review", "description": "Patient P-005 neurological panel ready", "severity": "medium", "status": "active", "patient_id": "P-005", "room_id": "f3524c41d309"},
+    {"id": "A-001", "title": "Critical vitals - Critical Room", "description": "Patient P-006 blood pressure dropping", "severity": "critical", "status": "active", "patient_id": "P-006", "room_id": "critical-room"},
+    {"id": "A-002", "title": "Medication overdue", "description": "Patient P-002 missed 2PM medication", "severity": "high", "status": "active", "patient_id": "P-002", "room_id": "room-2"},
+    {"id": "A-003", "title": "Patient needs attention", "description": "Patient P-003 in Room 3 needs monitoring", "severity": "medium", "status": "active", "patient_id": "P-003", "room_id": "room-3"},
 ]
 
 MOCK_MEDICATIONS = [
@@ -929,7 +922,7 @@ MOCK_MEDICATIONS = [
     {"id": "M-002", "patient_id": "P-001", "name": "Metoprolol", "dosage": "25mg", "schedule": "8:00 AM, 8:00 PM", "status": "given"},
     {"id": "M-003", "patient_id": "P-002", "name": "Amiodarone", "dosage": "200mg", "schedule": "2:00 PM", "status": "overdue"},
     {"id": "M-004", "patient_id": "P-003", "name": "Albuterol", "dosage": "2 puffs", "schedule": "Every 4 hours", "status": "given"},
-    {"id": "M-005", "patient_id": "P-007", "name": "Norepinephrine", "dosage": "IV drip", "schedule": "Continuous", "status": "active"},
+    {"id": "M-005", "patient_id": "P-006", "name": "Norepinephrine", "dosage": "IV drip", "schedule": "Continuous", "status": "active"},
 ]
 
 
@@ -941,10 +934,28 @@ def fuzzy_match_room(query: str, rooms: List[Dict]) -> Optional[Dict]:
     """Fuzzy match room by ID or name"""
     query_lower = query.lower().strip()
     
+    # Exact match on ID or name
     for room in rooms:
         if query_lower == room["id"].lower() or query_lower == room["name"].lower():
             return room
+    
+    # Handle "Room X" format - match against room names like "Room 1", "Room 2"
+    if query_lower.startswith("room "):
+        room_num = query_lower.replace("room ", "").strip()
+        for room in rooms:
+            name_lower = room["name"].lower()
+            # Match "Room 1", "room-1", "room1" formats
+            if name_lower == f"room {room_num}" or name_lower == f"room-{room_num}" or name_lower == f"room{room_num}":
+                return room
+    
+    # Partial match on name
+    for room in rooms:
         if query_lower in room["name"].lower():
+            return room
+    
+    # Partial match on ID
+    for room in rooms:
+        if query_lower in room["id"].lower():
             return room
     
     return None

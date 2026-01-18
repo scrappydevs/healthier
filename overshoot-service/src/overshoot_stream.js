@@ -60,10 +60,12 @@ export class OvershootStreamSession {
       this.pc = new wrtc.RTCPeerConnection({ iceServers: DEFAULT_ICE_SERVERS });
       this.pc.onicegatheringstatechange = () => {
         // eslint-disable-next-line no-console
+        if (!this.pc) return;
         console.log("OvershootStreamSession ICE gathering:", this.pc.iceGatheringState);
       };
       this.pc.oniceconnectionstatechange = () => {
         // eslint-disable-next-line no-console
+        if (!this.pc) return;
         console.log("OvershootStreamSession ICE connection:", this.pc.iceConnectionState);
       };
       this.pc.addTrack(this.videoTrack);
@@ -111,6 +113,14 @@ export class OvershootStreamSession {
         },
       };
 
+      console.log("OvershootStreamSession creating stream with:", {
+        apiUrl: this.apiUrl,
+        hasApiKey: !!this.apiKey,
+        promptLength: this.prompt?.length || 0,
+        outputSchema: this.outputSchemaJson,
+        processing: this.processing
+      });
+
       const response = await fetch(`${this.apiUrl}/streams`, {
         method: "POST",
         headers: {
@@ -125,8 +135,15 @@ export class OvershootStreamSession {
         const msg = json?.message || json?.error || response.statusText;
         const requestId = json?.request_id ? ` request_id=${json.request_id}` : "";
         const details = json?.details ? ` details=${JSON.stringify(json.details)}` : "";
+        console.error("Overshoot /streams error:", response.status, msg, requestId, details);
         throw new Error(`Overshoot /streams error ${response.status}: ${msg}${requestId}${details}`);
       }
+
+      console.log("OvershootStreamSession stream created:", {
+        streamId: json.stream_id,
+        hasSdp: !!json.webrtc?.sdp,
+        lease: json.lease
+      });
 
       this.streamId = json.stream_id;
       if (!json.webrtc?.sdp) {
@@ -195,22 +212,26 @@ export class OvershootStreamSession {
     if (!this.streamId) return;
 
     const wsUrl = `${baseUrlToWsUrl(this.apiUrl)}/ws/streams/${this.streamId}`;
+    console.log("OvershootStreamSession connecting to results WS:", wsUrl);
     this.resultsWs = new WebSocket(wsUrl);
 
     this.resultsWs.on("open", () => {
       // eslint-disable-next-line no-console
       console.log("OvershootStreamSession results websocket connected");
-      this.resultsWs?.send(JSON.stringify({ api_key: this.apiKey }));
+      const authMsg = JSON.stringify({ api_key: this.apiKey });
+      console.log("OvershootStreamSession sending auth (key length):", this.apiKey?.length || 0);
+      this.resultsWs?.send(authMsg);
     });
 
     this.resultsWs.on("message", (data) => {
       try {
         const text = data.toString();
         // eslint-disable-next-line no-console
-        console.log("OvershootStreamSession result message:", text.slice(0, 200));
+        console.log("OvershootStreamSession result message:", text.slice(0, 500));
         const parsed = JSON.parse(text);
         this.onResult?.(parsed);
       } catch (err) {
+        console.error("OvershootStreamSession result parse error:", err, "raw:", data.toString().slice(0, 200));
         this.onError?.(err);
       }
     });
@@ -281,6 +302,12 @@ export class OvershootStreamSession {
       }
 
       if (this.pc) {
+        // Prevent late ICE events after teardown from touching a nulled pc
+        try {
+          this.pc.onicegatheringstatechange = null;
+          this.pc.oniceconnectionstatechange = null;
+          this.pc.onicecandidate = null;
+        } catch {}
         try {
           this.pc.close();
         } catch {}
