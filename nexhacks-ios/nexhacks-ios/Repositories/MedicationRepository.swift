@@ -287,7 +287,7 @@ class MedicationRepository: ObservableObject {
             takenLog: logs.sorted { $0.takenAt > $1.takenAt },
             planImageURL: medication.planImageUrl,
             pillDescription: medication.pillDescription,
-            bottleImageURL: nil,
+            bottleImageURL: medication.planImageUrl,
             pillImageURL: nil,
             expectedPillCount: 1,
             createdAt: medication.createdAt ?? Date(),
@@ -310,7 +310,7 @@ class MedicationRepository: ObservableObject {
             reminderTimes: formatReminderTimes(medication.reminderTimes),
             isActive: medication.isActive,
             sideEffects: medication.sideEffects,
-            planImageUrl: medication.planImageURL,
+            planImageUrl: medication.bottleImageURL ?? medication.planImageURL,
             pillDescription: medication.pillDescription,
             createdAt: medication.createdAt,
             updatedAt: medication.updatedAt

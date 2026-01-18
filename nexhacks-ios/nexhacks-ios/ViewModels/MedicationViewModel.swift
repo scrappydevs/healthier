@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import UIKit
 
 @MainActor
 class MedicationViewModel: ObservableObject {
@@ -22,26 +23,47 @@ class MedicationViewModel: ObservableObject {
     // Filter options
     @Published var filterOption: FilterOption = .all
     @Published var searchText: String = ""
+    
+    // Daily schedule
+    @Published private(set) var dailyDoses: [DailyMedicationDose] = []
+    @Published private(set) var dailyDoseDate: Date?
 
     enum FilterOption {
         case all
         case active
         case inactive
     }
+    
+    struct DailyMedicationDose: Identifiable, Equatable {
+        let id: UUID
+        let medication: Medication
+        let scheduledTime: Date
+    }
 
     // MARK: - Dependencies
     private let medicationRepository: MedicationRepository
     private let notificationService: NotificationService
+    private let supabaseService: SupabaseService
+    private let dailyDoseStorageKey = "medication.dailyDoses.lastGeneratedDate"
+    private let dayKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        return formatter
+    }()
 
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
     init(
         medicationRepository: MedicationRepository,
-        notificationService: NotificationService
+        notificationService: NotificationService,
+        supabaseService: SupabaseService
     ) {
         self.medicationRepository = medicationRepository
         self.notificationService = notificationService
+        self.supabaseService = supabaseService
 
         setupBindings()
         loadMedications()
@@ -86,7 +108,7 @@ class MedicationViewModel: ObservableObject {
     func loadMedications() {
         medications = medicationRepository.getAll()
         activeMedications = medicationRepository.getActive()
-        scheduleNotificationsForActiveMedications()
+        refreshDailyDosesIfGenerated()
     }
 
     func addMedication(_ medication: Medication) {
@@ -237,6 +259,50 @@ class MedicationViewModel: ObservableObject {
         return context
     }
 
+    func updateMedicationImage(_ medication: Medication, image: UIImage?) async {
+        do {
+            var updated = medication
+
+            if let image = image,
+               let data = image.jpegData(compressionQuality: 0.8) {
+                let url = try await supabaseService.uploadMedicationPlanImage(data: data)
+                updated.bottleImageURL = url
+                updated.planImageURL = url
+            } else {
+                updated.bottleImageURL = nil
+                updated.planImageURL = nil
+            }
+
+            updateMedication(updated)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+    
+    func generateDailyDosesIfNeeded(for date: Date = Date()) {
+        let dayKey = dayKey(for: date)
+        let lastGeneratedKey = UserDefaults.standard.string(forKey: dailyDoseStorageKey)
+        
+        if let dailyDoseDate = dailyDoseDate,
+           Calendar.current.isDate(dailyDoseDate, inSameDayAs: date),
+           lastGeneratedKey == dayKey {
+            return
+        }
+        
+        dailyDoseDate = Calendar.current.startOfDay(for: date)
+        dailyDoses = buildDailyDoses(for: date)
+        UserDefaults.standard.set(dayKey, forKey: dailyDoseStorageKey)
+    }
+    
+    func getDailyDoses(for date: Date) -> [DailyMedicationDose] {
+        if let dailyDoseDate = dailyDoseDate,
+           Calendar.current.isDate(dailyDoseDate, inSameDayAs: date) {
+            return dailyDoses
+        }
+        
+        return buildDailyDoses(for: date)
+    }
+
     // MARK: - Private Methods
 
     private func setupBindings() {
@@ -257,20 +323,50 @@ class MedicationViewModel: ObservableObject {
             }
         }
     }
-
-    private func scheduleNotificationsForActiveMedications() {
-        let medsToSchedule = activeMedications
-        guard !medsToSchedule.isEmpty else { return }
-
-        Task {
-            for medication in medsToSchedule {
-                do {
-                    try await notificationService.scheduleMedicationReminder(medication: medication)
-                } catch {
-                    // Keep the app usable even if notifications fail.
-                    print("Failed to schedule medication reminder: \(error)")
+    
+    private func buildDailyDoses(for date: Date) -> [DailyMedicationDose] {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: date)
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        
+        var doses: [DailyMedicationDose] = []
+        
+        for medication in activeMedications where medication.isActive {
+            if medication.startDate > dayEnd {
+                continue
+            }
+            
+            if let endDate = medication.endDate, endDate < dayStart {
+                continue
+            }
+            
+            for reminderTime in medication.reminderTimes {
+                let components = calendar.dateComponents([.hour, .minute], from: reminderTime)
+                if let scheduledTime = calendar.date(
+                    bySettingHour: components.hour ?? 0,
+                    minute: components.minute ?? 0,
+                    second: 0,
+                    of: dayStart
+                ) {
+                    doses.append(DailyMedicationDose(
+                        id: UUID(),
+                        medication: medication,
+                        scheduledTime: scheduledTime
+                    ))
                 }
             }
         }
+        
+        return doses.sorted { $0.scheduledTime < $1.scheduledTime }
+    }
+    
+    private func refreshDailyDosesIfGenerated() {
+        guard let dailyDoseDate = dailyDoseDate else { return }
+        dailyDoses = buildDailyDoses(for: dailyDoseDate)
+    }
+    
+    private func dayKey(for date: Date) -> String {
+        let dayStart = Calendar.current.startOfDay(for: date)
+        return dayKeyFormatter.string(from: dayStart)
     }
 }

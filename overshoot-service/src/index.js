@@ -508,4 +508,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Exercise WebSocket: ws://localhost:${PORT}/ws/exercise`);
   console.log(`Medication WebSocket: ws://localhost:${PORT}/ws/medication`);
   console.log(`HTTP endpoint: http://localhost:${PORT}/api/analyze-frame`);
+  console.log(`Overshoot API Key configured: ${process.env.OVERSHOOT_API_KEY ? 'YES (length: ' + process.env.OVERSHOOT_API_KEY.length + ')' : 'NO - RESULTS WILL NOT WORK!'}`);
+  console.log(`Overshoot API URL: ${process.env.OVERSHOOT_API_URL || 'https://cluster1.overshoot.ai/api/v0.2'}`);
 });

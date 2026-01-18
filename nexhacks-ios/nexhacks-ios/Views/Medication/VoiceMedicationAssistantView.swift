@@ -197,8 +197,8 @@ struct VoiceMedicationAssistantView: View {
                 .cornerRadius(AppTheme.CornerRadius.md)
             }
             
-            // User transcript
-            if !assistantService.userTranscript.isEmpty {
+            // User transcript (only show when connected and listening)
+            if assistantService.isVoiceConnected && !assistantService.userTranscript.isEmpty {
                 Text(assistantService.userTranscript)
                     .font(AppTheme.Typography.caption)
                     .foregroundColor(.white.opacity(0.7))

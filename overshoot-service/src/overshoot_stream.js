@@ -227,8 +227,12 @@ export class OvershootStreamSession {
       try {
         const text = data.toString();
         // eslint-disable-next-line no-console
-        console.log("OvershootStreamSession result message:", text.slice(0, 500));
+        console.log("OvershootStreamSession result message (full):", text);
         const parsed = JSON.parse(text);
+
+        // Log the structure to understand what Overshoot is sending
+        console.log("OvershootStreamSession parsed message type:", typeof parsed, "keys:", Object.keys(parsed || {}).join(", "));
+
         this.onResult?.(parsed);
       } catch (err) {
         console.error("OvershootStreamSession result parse error:", err, "raw:", data.toString().slice(0, 200));

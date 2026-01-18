@@ -67,7 +67,7 @@ class AppState: ObservableObject {
         self.userRepository = UserRepository(supabaseService: supabaseService)
         self.medicationRepository = MedicationRepository(supabaseService: supabaseService)
         self.mealRepository = MealRepository(supabaseService: supabaseService)
-        self.exerciseRepository = ExerciseRepository()
+        self.exerciseRepository = ExerciseRepository(supabaseService: supabaseService)
         self.roomRepository = RoomRepository()
         self.journalRepository = JournalRepository(supabaseService: supabaseService)
 
@@ -86,7 +86,8 @@ class AppState: ObservableObject {
 
         self.medicationViewModel = MedicationViewModel(
             medicationRepository: medicationRepository,
-            notificationService: notificationService
+            notificationService: notificationService,
+            supabaseService: supabaseService
         )
         
         self.mealViewModel = MealViewModel(
@@ -131,6 +132,7 @@ class AppState: ObservableObject {
             
             // Request necessary permissions
             await requestPermissions()
+            refreshDailyMedicationDosesIfNeeded()
         }
 
         // Mark as initialized
@@ -149,6 +151,11 @@ class AppState: ObservableObject {
 
         // Request location permissions
         locationService.requestPermissions()
+    }
+    
+    func refreshDailyMedicationDosesIfNeeded() {
+        guard authViewModel.authState == .ready else { return }
+        medicationViewModel.generateDailyDosesIfNeeded()
     }
 
     // MARK: - Convenience Methods

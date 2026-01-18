@@ -10,6 +10,7 @@ import SwiftUI
 struct MealsView: View {
     @StateObject var viewModel: MealViewModel
     @State private var showingFoodCapture = false
+    @State private var showingAnalytics = false
     
     init(viewModel: MealViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -53,21 +54,34 @@ struct MealsView: View {
                 VStack {
                     Spacer()
                     HStack {
-                        Spacer()
                         Button {
                             showingFoodCapture = true
                         } label: {
                             Image(systemName: "camera.fill")
                                 .font(.title2)
                                 .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
+                                .frame(width: 56, height: 56)
                                 .background(Color.appPrimary)
                                 .clipShape(Circle())
-                                .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                                .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 6)
                         }
-                        .padding(.trailing, AppTheme.Spacing.lg)
-                        .padding(.bottom, AppTheme.Spacing.lg)
+
+                        Spacer()
+
+                        Button {
+                            showingAnalytics = true
+                        } label: {
+                            Image(systemName: "chart.bar.fill")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .frame(width: 56, height: 56)
+                                .background(Color.appPrimary)
+                                .clipShape(Circle())
+                                .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 6)
+                        }
                     }
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.bottom, AppTheme.Spacing.xl)
                 }
             }
             .navigationTitle("")
@@ -78,6 +92,20 @@ struct MealsView: View {
             }
             .sheet(item: $viewModel.selectedMeal) { meal in
                 MealDetailView(viewModel: viewModel, meal: meal)
+            }
+            .sheet(isPresented: $showingAnalytics) {
+                NavigationView {
+                    MealsAnalyticsView(viewModel: viewModel)
+                        .navigationTitle("Analytics")
+                        .navigationBarTitleDisplayMode(.large)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Button("Done") {
+                                    showingAnalytics = false
+                                }
+                            }
+                        }
+                }
             }
         }
     }
