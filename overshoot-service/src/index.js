@@ -315,7 +315,7 @@ wssMedication.on('connection', (ws) => {
                 console.log("Medication vision: throttling frames (server-side)");
               }
             } else {
-              if (frameCount % 10 === 0 && !claudeInFlight) {
+              if (frameCount % 25 === 0 && !claudeInFlight) {
                 const now = Date.now();
                 if (now - lastClaudeSentAt < 800) {
                   break;
