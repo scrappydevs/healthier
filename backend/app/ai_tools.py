@@ -136,20 +136,60 @@ PILLPAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "assign_patient_to_room",
-            "description": "Assign a patient to a specific room. Use when admitting a patient.",
+            "description": "Assign an EXISTING patient to a specific room. If patient_id is not provided, returns a list of unassigned patients to choose from.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID to assign"
+                        "description": "Patient ID or name to assign (optional - will list available patients if not provided)"
                     },
                     "room_id": {
                         "type": "string",
                         "description": "Room ID or name to assign to"
                     }
                 },
-                "required": ["patient_id", "room_id"]
+                "required": ["room_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "admit_new_patient",
+            "description": "Create a NEW patient and immediately assign them to a room. Use this when admitting someone who is not yet in the system.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Full name of the new patient"
+                    },
+                    "room_id": {
+                        "type": "string",
+                        "description": "Room ID or name to assign the new patient to"
+                    },
+                    "age": {
+                        "type": "integer",
+                        "description": "Patient's age (optional)"
+                    },
+                    "gender": {
+                        "type": "string",
+                        "enum": ["male", "female", "other"],
+                        "description": "Patient's gender (optional)"
+                    },
+                    "conditions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of medical conditions (optional)"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["stable", "improving", "declining", "critical"],
+                        "description": "Initial patient status (default: stable)"
+                    }
+                },
+                "required": ["name", "room_id"]
             }
         }
     },
@@ -203,6 +243,18 @@ PILLPAL_TOOLS = [
                         "description": "Include discharged patients (default: false)"
                     }
                 },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_unassigned_patients",
+            "description": "Get patients who are NOT currently assigned to any room. Use this when you need to know which patients need room assignment, or when a user asks to assign a patient without specifying which one.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
                 "required": []
             }
         }
@@ -869,205 +921,127 @@ PILLPAL_TOOLS = [
 
 
 # ============================================================================
-# MOCK DATA (for demo without Supabase)
+# HELPER FUNCTIONS FOR DATABASE QUERIES
 # ============================================================================
 
-# Rooms matching the actual Smplrspace floor plan
-MOCK_ROOMS = [
-    # Patient rooms (Room 1-6)
-    {"id": "room-1", "name": "Room 1", "type": "patient", "status": "normal", "patient_count": 1},
-    {"id": "room-2", "name": "Room 2", "type": "patient", "status": "normal", "patient_count": 1},
-    {"id": "room-3", "name": "Room 3", "type": "patient", "status": "attention", "patient_count": 1},
-    {"id": "room-4", "name": "Room 4", "type": "patient", "status": "normal", "patient_count": 1},
-    {"id": "room-5", "name": "Room 5", "type": "patient", "status": "vacant", "patient_count": 0},
-    {"id": "room-6", "name": "Room 6", "type": "patient", "status": "normal", "patient_count": 1},
+def fuzzy_match_room_db(query: str, supabase) -> Optional[Dict]:
+    """Fuzzy match room by ID or name from database"""
+    if not supabase:
+        return None
     
-    # Special areas
-    {"id": "critical-room", "name": "Critical Room", "type": "critical", "status": "critical", "patient_count": 1},
-    {"id": "waiting-space", "name": "Waiting Space", "type": "waiting", "status": "normal", "patient_count": 0},
-    {"id": "check-in-space", "name": "Check In Space", "type": "reception", "status": "normal", "patient_count": 0},
-    {"id": "entrance", "name": "Entrance", "type": "hallway", "status": "normal", "patient_count": 0},
-    
-    # Utility areas
-    {"id": "pantry", "name": "Pantry", "type": "pantry", "status": "normal", "patient_count": 0},
-    {"id": "storage", "name": "Storage", "type": "storage", "status": "normal", "patient_count": 0},
-    {"id": "wc-1", "name": "WC", "type": "restroom", "status": "normal", "patient_count": 0},
-    {"id": "wc-2", "name": "WC", "type": "restroom", "status": "normal", "patient_count": 0},
-]
-
-# ============================================================================
-# HELPER FUNCTIONS FOR SUPABASE DATA FETCHING
-# All data should come from Supabase - no mock data
-# ============================================================================
-
-def _fetch_all_patients_sync(supabase) -> List[Dict]:
-    """Synchronously fetch all patients from Supabase with user info"""
-    if not supabase:
-        return []
-    try:
-        # Use the explicit relationship name to avoid ambiguity
-        response = supabase.table("patients").select(
-            "id, user_id, age, gender, medical_conditions, status, care_setting, users!patients_user_id_fkey(full_name, email)"
-        ).execute()
-        patients = response.data if response.data else []
-        
-        # Format for easier use
-        formatted = []
-        for p in patients:
-            user = p.get("users", {}) or {}
-            formatted.append({
-                "id": p["id"],
-                "name": user.get("full_name", "Unknown"),
-                "email": user.get("email"),
-                "age": p.get("age"),
-                "conditions": p.get("medical_conditions", []),
-                "status": p.get("status", "active"),
-                "care_setting": p.get("care_setting", "at_home"),
-            })
-        return formatted
-    except Exception as e:
-        print(f"Error fetching patients: {e}")
-        return []
-
-
-def _find_patient_by_id_or_name(patient_id: str, supabase) -> Optional[Dict]:
-    """Find a patient by ID or name from Supabase"""
-    patients = _fetch_all_patients_sync(supabase)
-    query_lower = patient_id.lower().strip()
-    
-    for patient in patients:
-        if query_lower == patient["id"].lower():
-            return patient
-        if patient.get("name") and query_lower == patient["name"].lower():
-            return patient
-        if patient.get("name") and query_lower in patient["name"].lower():
-            return patient
-    
-    return None
-
-
-def _fetch_patient_medications(patient_id: str, supabase) -> List[Dict]:
-    """Fetch medications for a specific patient from Supabase"""
-    if not supabase:
-        return []
-    try:
-        # Get assigned medications with pill details
-        response = supabase.table("patient_pills").select(
-            "id, patient_id, frequency, times_of_day, pills(id, name, strength, unit, dosage_form)"
-        ).eq("patient_id", patient_id).execute()
-        
-        meds = []
-        for m in response.data or []:
-            pill = m.get("pills", {}) or {}
-            meds.append({
-                "id": m["id"],
-                "patient_id": m["patient_id"],
-                "name": pill.get("name", "Unknown"),
-                "dosage": f"{pill.get('strength', '')}{pill.get('unit', '')}",
-                "schedule": ", ".join(m.get("times_of_day", [])) if m.get("times_of_day") else m.get("frequency", ""),
-                "status": "active"
-            })
-        return meds
-    except Exception as e:
-        print(f"Error fetching medications: {e}")
-        return []
-
-
-def _fetch_all_medications(supabase) -> List[Dict]:
-    """Fetch all patient medications from Supabase"""
-    if not supabase:
-        return []
-    try:
-        response = supabase.table("patient_pills").select(
-            "id, patient_id, frequency, times_of_day, pills(id, name, strength, unit, dosage_form)"
-        ).execute()
-        
-        meds = []
-        for m in response.data or []:
-            pill = m.get("pills", {}) or {}
-            meds.append({
-                "id": m["id"],
-                "patient_id": m["patient_id"],
-                "name": pill.get("name", "Unknown"),
-                "dosage": f"{pill.get('strength', '')}{pill.get('unit', '')}",
-                "schedule": ", ".join(m.get("times_of_day", [])) if m.get("times_of_day") else m.get("frequency", ""),
-                "status": "active"
-            })
-        return meds
-    except Exception as e:
-        print(f"Error fetching all medications: {e}")
-        return []
-
-
-def _fetch_alerts(supabase) -> List[Dict]:
-    """Fetch alerts from Supabase - for now returns empty as alerts table may not exist"""
-    if not supabase:
-        return []
-    try:
-        # Check if alerts table exists, otherwise return empty
-        response = supabase.table("alerts").select("*").execute()
-        return response.data or []
-    except Exception as e:
-        # Table may not exist yet
-        return []
-
-
-def _fetch_hazards(supabase) -> List[Dict]:
-    """Fetch hazards from Supabase - for now returns empty as hazards table may not exist"""
-    if not supabase:
-        return []
-    try:
-        response = supabase.table("hazards").select("*").execute()
-        return response.data or []
-    except Exception as e:
-        # Table may not exist yet
-        return []
-
-
-# ============================================================================
-# TOOL EXECUTION FUNCTIONS
-# ============================================================================
-
-def fuzzy_match_room(query: str, rooms: List[Dict]) -> Optional[Dict]:
-    """Fuzzy match room by ID or name"""
     query_lower = query.lower().strip()
     
-    # Exact match on ID or name
-    for room in rooms:
-        if query_lower == room["id"].lower() or query_lower == room["name"].lower():
-            return room
-    
-    # Handle "Room X" format - match against room names like "Room 1", "Room 2"
-    if query_lower.startswith("room "):
-        room_num = query_lower.replace("room ", "").strip()
+    try:
+        # Fetch all rooms from database
+        response = supabase.table("hospital_rooms").select("*").execute()
+        rooms = response.data or []
+        
+        # Exact match on ID or name
         for room in rooms:
-            name_lower = room["name"].lower()
-            # Match "Room 1", "room-1", "room1" formats
-            if name_lower == f"room {room_num}" or name_lower == f"room-{room_num}" or name_lower == f"room{room_num}":
+            if query_lower == room["id"].lower() or query_lower == room["name"].lower():
                 return room
-    
-    # Partial match on name
-    for room in rooms:
-        if query_lower in room["name"].lower():
-            return room
-    
-    # Partial match on ID
-    for room in rooms:
-        if query_lower in room["id"].lower():
-            return room
+        
+        # Handle "Room X" format
+        if query_lower.startswith("room "):
+            room_num = query_lower.replace("room ", "").strip()
+            for room in rooms:
+                name_lower = room["name"].lower()
+                if name_lower == f"room {room_num}" or name_lower == f"room-{room_num}":
+                    return room
+        
+        # Handle just number like "1", "2"
+        if query_lower.isdigit():
+            for room in rooms:
+                if room["name"].lower() == f"room {query_lower}":
+                    return room
+        
+        # Partial match on name
+        for room in rooms:
+            if query_lower in room["name"].lower():
+                return room
+        
+        # Partial match on ID
+        for room in rooms:
+            if query_lower in room["id"].lower():
+                return room
+        
+    except Exception as e:
+        print(f"Error matching room: {e}")
     
     return None
 
 
-def fuzzy_match_patient(query: str, patients: List[Dict]) -> Optional[Dict]:
-    """Fuzzy match patient by ID or name"""
+def fuzzy_match_patient_db(query: str, supabase) -> Optional[Dict]:
+    """Fuzzy match patient by ID or name from database"""
+    if not supabase:
+        return None
+    
     query_lower = query.lower().strip()
     
-    for patient in patients:
-        if query_lower == patient["id"].lower() or query_lower == patient["name"].lower():
-            return patient
-        if query_lower in patient["name"].lower():
-            return patient
+    try:
+        # Fetch all patients with user info
+        response = supabase.table("patients").select(
+            "id, user_id, age, gender, medical_conditions, status, users!patients_user_id_fkey(full_name, email)"
+        ).execute()
+        patients = response.data or []
+        
+        for patient in patients:
+            user = patient.get("users", {}) or {}
+            patient_name = user.get("full_name", "").lower()
+            patient_id = str(patient.get("id", "")).lower()
+            
+            # Exact match
+            if query_lower == patient_id or query_lower == patient_name:
+                return {
+                    "id": patient["id"],
+                    "name": user.get("full_name", "Unknown"),
+                    "age": patient.get("age"),
+                    "condition": ", ".join(patient.get("medical_conditions") or []),
+                    "status": patient.get("status", "stable")
+                }
+            
+            # Partial match on name
+            if query_lower in patient_name:
+                return {
+                    "id": patient["id"],
+                    "name": user.get("full_name", "Unknown"),
+                    "age": patient.get("age"),
+                    "condition": ", ".join(patient.get("medical_conditions") or []),
+                    "status": patient.get("status", "stable")
+                }
+        
+    except Exception as e:
+        print(f"Error matching patient: {e}")
+    
+    return None
+
+
+def get_patient_in_room_db(room_id: str, supabase) -> Optional[Dict]:
+    """Get the patient currently assigned to a room"""
+    if not supabase:
+        return None
+    
+    try:
+        # Get active room assignment (where discharged_at is null)
+        response = supabase.table("room_assignments").select(
+            "patient_id, assigned_at, patients(id, user_id, age, medical_conditions, status, users!patients_user_id_fkey(full_name))"
+        ).eq("room_id", room_id).is_("discharged_at", "null").execute()
+        
+        if response.data and len(response.data) > 0:
+            assignment = response.data[0]
+            patient = assignment.get("patients", {}) or {}
+            user = patient.get("users", {}) or {}
+            
+            return {
+                "id": patient.get("id"),
+                "name": user.get("full_name", "Unknown"),
+                "age": patient.get("age"),
+                "condition": ", ".join(patient.get("medical_conditions") or []),
+                "status": patient.get("status", "stable"),
+                "assigned_at": assignment.get("assigned_at")
+            }
+    except Exception as e:
+        print(f"Error getting patient in room: {e}")
     
     return None
 
@@ -1094,6 +1068,16 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
             return await get_room_patient(tool_input.get("room_id", ""), supabase)
         elif tool_name == "assign_patient_to_room":
             return await assign_patient_to_room(tool_input.get("patient_id", ""), tool_input.get("room_id", ""), supabase)
+        elif tool_name == "admit_new_patient":
+            return await admit_new_patient(
+                tool_input.get("name", ""),
+                tool_input.get("room_id", ""),
+                tool_input.get("age"),
+                tool_input.get("gender"),
+                tool_input.get("conditions"),
+                tool_input.get("status", "stable"),
+                supabase
+            )
         elif tool_name == "remove_patient_from_room":
             return await remove_patient_from_room(tool_input.get("room_id", ""), tool_input.get("reason"), supabase)
         elif tool_name == "get_hallways":
@@ -1102,6 +1086,8 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
         # Patient Operations
         elif tool_name == "list_all_patients":
             return await list_all_patients(tool_input.get("include_discharged", False), supabase)
+        elif tool_name == "list_unassigned_patients":
+            return await list_unassigned_patients(supabase)
         elif tool_name == "search_patients":
             return await search_patients(tool_input.get("query", ""), supabase)
         elif tool_name == "get_patient_details":
@@ -1188,88 +1174,234 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
 
 
 # ============================================================================
-# TOOL IMPLEMENTATIONS (using mock data for demo)
+# TOOL IMPLEMENTATIONS (using Supabase database)
 # ============================================================================
 
 # --- Room Management ---
 
 async def get_room_status(room_id: str, supabase) -> Dict[str, Any]:
-    room = fuzzy_match_room(room_id, MOCK_ROOMS)
+    """Get room status from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    room = fuzzy_match_room_db(room_id, supabase)
     if not room:
         return {"error": f"Room '{room_id}' not found"}
     
-    # Fetch patients from Supabase
-    all_patients = _fetch_all_patients_sync(supabase)
+    # Get patient assigned to this room
+    patient = get_patient_in_room_db(room["id"], supabase)
+    
+    # Get active tasks for this room
+    tasks = []
+    try:
+        tasks_res = supabase.table("room_tasks").select("*").eq(
+            "room_id", room["id"]
+        ).eq("status", "pending").execute()
+        tasks = tasks_res.data or []
+    except Exception as e:
+        print(f"Error fetching room tasks: {e}")
+    
+    # Get hazards for this room
+    hazards = []
+    try:
+        hazards_res = supabase.table("hospital_hazards").select("*").eq(
+            "room_id", room["id"]
+        ).in_("status", ["active", "responding"]).execute()
+        hazards = hazards_res.data or []
+    except Exception as e:
+        print(f"Error fetching room hazards: {e}")
     
     return {
-        "room": room,
-        "patients": all_patients,  # For now, return all patients since room assignment isn't tracked
-        "patient_count": len(all_patients)
+        "room_id": room["id"],
+        "room_name": room["name"],
+        "type": room["room_type"],
+        "status": room["status"],
+        "occupied": patient is not None,
+        "patient": patient,
+        "pending_tasks": len(tasks),
+        "active_hazards": len(hazards)
     }
 
 
 async def list_all_rooms(supabase) -> Dict[str, Any]:
-    return {
-        "rooms": MOCK_ROOMS,
-        "count": len(MOCK_ROOMS)
-    }
+    """List all rooms with their current occupancy status from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Fetch all rooms
+        rooms_res = supabase.table("hospital_rooms").select("*").execute()
+        rooms = rooms_res.data or []
+        
+        # Fetch all active room assignments with patient info
+        assignments_res = supabase.table("room_assignments").select(
+            "room_id, patient_id, patients(id, users!patients_user_id_fkey(full_name))"
+        ).is_("discharged_at", "null").execute()
+        
+        # Build assignment map
+        assignment_map = {}
+        for a in (assignments_res.data or []):
+            patient = a.get("patients", {}) or {}
+            user = patient.get("users", {}) or {}
+            assignment_map[a["room_id"]] = user.get("full_name", "Unknown")
+        
+        rooms_with_occupancy = []
+        for room in rooms:
+            patient_name = assignment_map.get(room["id"])
+            rooms_with_occupancy.append({
+                "id": room["id"],
+                "name": room["name"],
+                "type": room["room_type"],
+                "status": room["status"],
+                "occupied": patient_name is not None,
+                "patient_name": patient_name
+            })
+        
+        return {
+            "rooms": rooms_with_occupancy,
+            "total": len(rooms_with_occupancy)
+        }
+    except Exception as e:
+        print(f"Error listing rooms: {e}")
+        return {"error": str(e)}
 
 
 async def list_rooms_by_type(room_type: str, supabase) -> Dict[str, Any]:
-    filtered = [r for r in MOCK_ROOMS if r["type"] == room_type]
-    return {
-        "rooms": filtered,
-        "count": len(filtered),
-        "type": room_type
-    }
+    """List rooms filtered by type from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        response = supabase.table("hospital_rooms").select("*").eq(
+            "room_type", room_type
+        ).execute()
+        rooms = response.data or []
+        
+        return {
+            "rooms": [{"id": r["id"], "name": r["name"], "status": r["status"]} for r in rooms],
+            "count": len(rooms),
+            "type": room_type
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def list_available_rooms(supabase) -> Dict[str, Any]:
-    available = [r for r in MOCK_ROOMS if r["status"] == "vacant" or r.get("patient_count", 0) == 0]
-    # Filter to only patient-capable rooms
-    patient_rooms = [r for r in available if r["type"] in ["patient", "icu", "ward"]]
-    return {
-        "available_rooms": patient_rooms,
-        "count": len(patient_rooms)
-    }
+    """List rooms available for patient admission from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Get patient-capable rooms
+        rooms_res = supabase.table("hospital_rooms").select("*").in_(
+            "room_type", ["patient", "critical"]
+        ).neq("status", "maintenance").execute()
+        rooms = rooms_res.data or []
+        
+        # Get occupied room IDs
+        assignments_res = supabase.table("room_assignments").select(
+            "room_id"
+        ).is_("discharged_at", "null").execute()
+        occupied_ids = set(a["room_id"] for a in (assignments_res.data or []))
+        
+        # Filter to available rooms
+        available = [
+            {"id": r["id"], "name": r["name"], "type": r["room_type"], "status": r["status"]}
+            for r in rooms if r["id"] not in occupied_ids
+        ]
+        
+        return {
+            "available_rooms": available,
+            "count": len(available)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def list_occupied_rooms(supabase) -> Dict[str, Any]:
-    occupied = [r for r in MOCK_ROOMS if r["status"] != "vacant" and r.get("patient_count", 0) > 0]
-    return {
-        "occupied_rooms": occupied,
-        "count": len(occupied)
-    }
+    """List rooms with patients assigned from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Get active assignments with room and patient info
+        assignments_res = supabase.table("room_assignments").select(
+            "room_id, hospital_rooms(id, name, room_type, status), patients(id, medical_conditions, users!patients_user_id_fkey(full_name))"
+        ).is_("discharged_at", "null").execute()
+        
+        occupied = []
+        for a in (assignments_res.data or []):
+            room = a.get("hospital_rooms", {}) or {}
+            patient = a.get("patients", {}) or {}
+            user = patient.get("users", {}) or {}
+            
+            occupied.append({
+                "id": room.get("id"),
+                "name": room.get("name"),
+                "type": room.get("room_type"),
+                "status": room.get("status"),
+                "patient_name": user.get("full_name", "Unknown"),
+                "patient_condition": ", ".join(patient.get("medical_conditions") or [])
+            })
+        
+        return {
+            "occupied_rooms": occupied,
+            "count": len(occupied)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def update_room_status(room_id: str, status: str, reason: Optional[str], supabase) -> Dict[str, Any]:
-    room = fuzzy_match_room(room_id, MOCK_ROOMS)
+    """Update room status in database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    room = fuzzy_match_room_db(room_id, supabase)
     if not room:
         return {"error": f"Room '{room_id}' not found"}
     
     old_status = room["status"]
-    room["status"] = status
     
-    return {
-        "success": True,
-        "room_id": room["id"],
-        "room_name": room["name"],
-        "old_status": old_status,
-        "new_status": status,
-        "reason": reason
-    }
+    try:
+        # Update room status
+        supabase.table("hospital_rooms").update({
+            "status": status
+        }).eq("id", room["id"]).execute()
+        
+        # Record status change in history
+        supabase.table("room_status_history").insert({
+            "room_id": room["id"],
+            "old_status": old_status,
+            "new_status": status,
+            "reason": reason,
+            "changed_by": "ai_system"
+        }).execute()
+        
+        return {
+            "success": True,
+            "room_id": room["id"],
+            "room_name": room["name"],
+            "old_status": old_status,
+            "new_status": status,
+            "reason": reason
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def get_room_patient(room_id: str, supabase) -> Dict[str, Any]:
-    room = fuzzy_match_room(room_id, MOCK_ROOMS)
+    """Get patient currently in a room from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    room = fuzzy_match_room_db(room_id, supabase)
     if not room:
         return {"error": f"Room '{room_id}' not found"}
     
-    # Fetch patients from Supabase
-    all_patients = _fetch_all_patients_sync(supabase)
-    patients = all_patients  # Room assignment not tracked in current schema
+    patient = get_patient_in_room_db(room["id"], supabase)
     
-    if not patients:
+    if not patient:
         return {
             "room": room["name"],
             "occupied": False,
@@ -1279,50 +1411,231 @@ async def get_room_patient(room_id: str, supabase) -> Dict[str, Any]:
     return {
         "room": room["name"],
         "occupied": True,
-        "patients": patients
+        "patient": patient
     }
 
 
 async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dict[str, Any]:
-    room = fuzzy_match_room(room_id, MOCK_ROOMS)
+    """Assign a patient to a room in database.
+    
+    If patient_id is empty/missing, returns list of unassigned patients to choose from.
+    """
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    # If no patient_id provided, help by listing unassigned patients
+    if not patient_id or patient_id.strip() == "":
+        unassigned = await list_unassigned_patients(supabase)
+        if unassigned.get("count", 0) > 0:
+            patients = unassigned.get("unassigned_patients", [])
+            patient_list = "\n".join([f"- {p['name']} (ID: {p['id'][:8]}..., {p.get('status', 'stable')})" for p in patients[:10]])
+            return {
+                "error": "No patient specified. Please specify which patient to assign.",
+                "available_patients": patients[:10],
+                "suggestion": f"These patients need room assignment:\n{patient_list}\n\nPlease specify the patient name or ID."
+            }
+        else:
+            return {
+                "error": "No patient specified and no unassigned patients found.",
+                "suggestion": "All patients are currently assigned to rooms, or you may need to create a new patient first."
+            }
+    
+    room = fuzzy_match_room_db(room_id, supabase)
     if not room:
         return {"error": f"Room '{room_id}' not found"}
     
-    # Find patient from Supabase
-    patient = _find_patient_by_id_or_name(patient_id, supabase)
+    patient = fuzzy_match_patient_db(patient_id, supabase)
     if not patient:
+        # Patient not found - suggest available patients
+        unassigned = await list_unassigned_patients(supabase)
+        if unassigned.get("count", 0) > 0:
+            patients = unassigned.get("unassigned_patients", [])
+            return {
+                "error": f"Patient '{patient_id}' not found.",
+                "available_patients": patients[:5],
+                "suggestion": f"Did you mean one of these unassigned patients? {', '.join([p['name'] for p in patients[:5]])}"
+            }
         return {"error": f"Patient '{patient_id}' not found"}
     
-    # Note: Room assignment not persisted in current schema
-    return {
-        "success": True,
-        "patient_id": patient["id"],
-        "patient_name": patient["name"],
-        "room_name": room["name"],
-        "note": "Room assignment feature not fully implemented in database"
-    }
+    # Check if room is already occupied
+    existing_patient = get_patient_in_room_db(room["id"], supabase)
+    if existing_patient:
+        return {"error": f"Room '{room['name']}' is already occupied by {existing_patient['name']}. Discharge them first or choose another room."}
+    
+    try:
+        # Remove patient from any previous room
+        supabase.table("room_assignments").update({
+            "discharged_at": datetime.now().isoformat()
+        }).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
+        
+        # Create new assignment
+        supabase.table("room_assignments").insert({
+            "room_id": room["id"],
+            "patient_id": patient["id"],
+            "notes": "Assigned via AI assistant"
+        }).execute()
+        
+        # Update room status if vacant
+        if room["status"] == "vacant":
+            supabase.table("hospital_rooms").update({
+                "status": "normal"
+            }).eq("id", room["id"]).execute()
+        
+        return {
+            "success": True,
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "room_name": room["name"],
+            "room_id": room["id"]
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def admit_new_patient(
+    name: str, 
+    room_id: str, 
+    age: Optional[int],
+    gender: Optional[str],
+    conditions: Optional[List[str]],
+    status: str,
+    supabase
+) -> Dict[str, Any]:
+    """Create a new patient and immediately assign them to a room"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    if not name or not name.strip():
+        return {"error": "Patient name is required"}
+    
+    # Validate room
+    room = fuzzy_match_room_db(room_id, supabase)
+    if not room:
+        return {"error": f"Room '{room_id}' not found"}
+    
+    # Check if room is already occupied
+    existing_patient = get_patient_in_room_db(room["id"], supabase)
+    if existing_patient:
+        return {"error": f"Room '{room['name']}' is already occupied by {existing_patient['name']}. Choose another room or discharge the current patient first."}
+    
+    try:
+        # Generate a unique email for the user (required by schema)
+        import random
+        import string
+        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        email = f"{name.lower().replace(' ', '.')}_{random_suffix}@patient.hospital.local"
+        
+        # Create user first
+        user_res = supabase.table("users").insert({
+            "email": email,
+            "full_name": name,
+            "role": "patient"
+        }).execute()
+        
+        if not user_res.data:
+            return {"error": "Failed to create user account for patient"}
+        
+        user_id = user_res.data[0]["id"]
+        
+        # Create patient record
+        patient_data = {
+            "user_id": user_id,
+            "status": status or "stable"
+        }
+        if age:
+            patient_data["age"] = age
+        if gender:
+            patient_data["gender"] = gender
+        if conditions:
+            patient_data["medical_conditions"] = conditions
+        
+        patient_res = supabase.table("patients").insert(patient_data).execute()
+        
+        if not patient_res.data:
+            return {"error": "Failed to create patient record"}
+        
+        patient_id = patient_res.data[0]["id"]
+        
+        # Create room assignment
+        supabase.table("room_assignments").insert({
+            "room_id": room["id"],
+            "patient_id": patient_id,
+            "notes": f"New patient admitted via AI assistant"
+        }).execute()
+        
+        # Update room status to normal (occupied)
+        supabase.table("hospital_rooms").update({
+            "status": "normal"
+        }).eq("id", room["id"]).execute()
+        
+        return {
+            "success": True,
+            "patient_id": str(patient_id),
+            "patient_name": name,
+            "room_name": room["name"],
+            "room_id": room["id"],
+            "message": f"Successfully admitted {name} to {room['name']}"
+        }
+    except Exception as e:
+        print(f"Error admitting new patient: {e}")
+        return {"error": str(e)}
 
 
 async def remove_patient_from_room(room_id: str, reason: Optional[str], supabase) -> Dict[str, Any]:
-    room = fuzzy_match_room(room_id, MOCK_ROOMS)
+    """Remove/discharge patient from a room in database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    room = fuzzy_match_room_db(room_id, supabase)
     if not room:
         return {"error": f"Room '{room_id}' not found"}
     
-    # Note: Room assignment not tracked in current schema
-    return {
-        "success": True,
-        "room_name": room["name"],
-        "reason": reason,
-        "note": "Room assignment feature not fully implemented in database"
-    }
+    patient = get_patient_in_room_db(room["id"], supabase)
+    if not patient:
+        return {"error": f"{room['name']} is already empty"}
+    
+    try:
+        # Mark assignment as discharged
+        supabase.table("room_assignments").update({
+            "discharged_at": datetime.now().isoformat(),
+            "notes": reason or "Discharged via AI assistant"
+        }).eq("room_id", room["id"]).eq("patient_id", patient["id"]).is_(
+            "discharged_at", "null"
+        ).execute()
+        
+        # Set room status to vacant (for patient-type rooms)
+        if room["room_type"] in ["patient"]:
+            supabase.table("hospital_rooms").update({
+                "status": "vacant"
+            }).eq("id", room["id"]).execute()
+        
+        return {
+            "success": True,
+            "room_name": room["name"],
+            "discharged_patient": patient["name"],
+            "reason": reason or "Discharged"
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def get_hallways(supabase) -> Dict[str, Any]:
-    hallways = [r for r in MOCK_ROOMS if r["type"] == "hallway"]
-    return {
-        "hallways": hallways,
-        "count": len(hallways)
-    }
+    """Get all hallway areas from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        response = supabase.table("hospital_rooms").select("*").eq(
+            "room_type", "hallway"
+        ).execute()
+        hallways = response.data or []
+        
+        return {
+            "hallways": [{"id": h["id"], "name": h["name"], "status": h["status"]} for h in hallways],
+            "count": len(hallways)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # --- Patient Operations ---
@@ -1331,9 +1644,9 @@ async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any
     """Fetch real patients from Supabase database"""
     try:
         if supabase:
-            # Join patients with users to get full_name
+            # Join patients with users to get full_name (using explicit FK hint)
             response = supabase.table("patients").select(
-                "id, user_id, age, gender, medical_conditions, created_at, users!patients_user_id_fkey(full_name, email)"
+                "id, user_id, age, gender, medical_conditions, status, created_at, users!patients_user_id_fkey(full_name, email)"
             ).execute()
             patients = response.data if response.data else []
             
@@ -1347,6 +1660,7 @@ async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any
                     "email": user.get("email"),
                     "age": p.get("age"),
                     "gender": p.get("gender"),
+                    "status": p.get("status", "stable"),
                     "conditions": p.get("medical_conditions", []),
                     "created_at": p.get("created_at")
                 })
@@ -1364,6 +1678,54 @@ async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any
         "count": 0,
         "note": "No patients found or database query failed"
     }
+
+
+async def list_unassigned_patients(supabase) -> Dict[str, Any]:
+    """Get patients who are NOT currently assigned to any room"""
+    try:
+        if supabase:
+            # Get all patients
+            patients_res = supabase.table("patients").select(
+                "id, user_id, age, gender, medical_conditions, status, users!patients_user_id_fkey(full_name, email)"
+            ).execute()
+            all_patients = patients_res.data or []
+            
+            # Get currently assigned patient IDs
+            assignments_res = supabase.table("room_assignments").select(
+                "patient_id"
+            ).is_("discharged_at", "null").execute()
+            assigned_ids = {a["patient_id"] for a in (assignments_res.data or [])}
+            
+            # Filter to unassigned patients
+            unassigned = []
+            for p in all_patients:
+                if p["id"] not in assigned_ids:
+                    user = p.get("users", {}) or {}
+                    unassigned.append({
+                        "id": p["id"],
+                        "name": user.get("full_name", "Unknown"),
+                        "age": p.get("age"),
+                        "status": p.get("status", "stable"),
+                        "conditions": p.get("medical_conditions", [])
+                    })
+            
+            if unassigned:
+                return {
+                    "unassigned_patients": unassigned,
+                    "count": len(unassigned),
+                    "message": f"{len(unassigned)} patient(s) need room assignment"
+                }
+            else:
+                return {
+                    "unassigned_patients": [],
+                    "count": 0,
+                    "message": "All patients are currently assigned to rooms"
+                }
+    except Exception as e:
+        print(f"Error fetching unassigned patients: {e}")
+        return {"error": str(e)}
+    
+    return {"error": "Database not configured"}
 
 
 async def search_patients(query: str, supabase) -> Dict[str, Any]:
@@ -1544,357 +1906,750 @@ async def get_patient_medications(patient_id: str, supabase) -> Dict[str, Any]:
 
 
 async def get_patient_vitals(patient_id: str, supabase) -> Dict[str, Any]:
-    patient = _find_patient_by_id_or_name(patient_id, supabase)
+    """Get patient vitals from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
-    # Note: Vitals not currently tracked in database - returning placeholder
-    return {
-        "patient_id": patient["id"],
-        "patient_name": patient["name"],
-        "vitals": {
-            "heart_rate": None,
-            "blood_pressure": None,
-            "temperature": None,
-            "respiratory_rate": None,
-            "oxygen_saturation": None,
-            "recorded_at": datetime.now().isoformat()
-        },
-        "note": "Vitals tracking not implemented in current database schema"
-    }
+    try:
+        # Get most recent vitals
+        vitals_res = supabase.table("vitals").select("*").eq(
+            "patient_id", patient["id"]
+        ).order("measured_at", desc=True).limit(10).execute()
+        
+        vitals = {}
+        for v in (vitals_res.data or []):
+            vital_type = v.get("type")
+            if vital_type not in vitals:
+                vitals[vital_type] = {
+                    "value": v.get("value_primary"),
+                    "secondary": v.get("value_secondary"),
+                    "unit": v.get("unit"),
+                    "recorded_at": v.get("measured_at")
+                }
+        
+        return {
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "vitals": vitals
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def update_patient_status(patient_id: str, status: str, notes: Optional[str], supabase) -> Dict[str, Any]:
-    patient = _find_patient_by_id_or_name(patient_id, supabase)
+    """Update patient status in database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
-    old_status = patient.get("status")
+    old_status = patient.get("status", "unknown")
     
-    # Update status in Supabase
     try:
-        if supabase:
-            supabase.table("patients").update({"status": status}).eq("id", patient["id"]).execute()
+        # Update patient status
+        supabase.table("patients").update({
+            "status": status,
+            "notes": notes
+        }).eq("id", patient["id"]).execute()
+        
+        return {
+            "success": True,
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "old_status": old_status,
+            "new_status": status,
+            "notes": notes
+        }
     except Exception as e:
-        return {"error": f"Failed to update patient status: {e}"}
-    
-    return {
-        "success": True,
-        "patient_id": patient["id"],
-        "patient_name": patient["name"],
-        "old_status": old_status,
-        "new_status": status,
-        "notes": notes
-    }
+        return {"error": str(e)}
 
 
 async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], to_room: str, reason: Optional[str], supabase) -> Dict[str, Any]:
-    dest_room = fuzzy_match_room(to_room, MOCK_ROOMS)
+    """Transfer patient from one room to another in database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    dest_room = fuzzy_match_room_db(to_room, supabase)
     if not dest_room:
         return {"error": f"Destination room '{to_room}' not found"}
     
-    # Find patient from Supabase
+    # Check if destination room is already occupied
+    existing_patient = get_patient_in_room_db(dest_room["id"], supabase)
+    if existing_patient:
+        return {"error": f"Destination room '{dest_room['name']}' is already occupied by {existing_patient['name']}"}
+    
+    # Find patient to transfer
     patient = None
+    source_room = None
     if patient_id:
-        patient = _find_patient_by_id_or_name(patient_id, supabase)
+        patient = fuzzy_match_patient_db(patient_id, supabase)
+    elif from_room:
+        source_room = fuzzy_match_room_db(from_room, supabase)
+        if source_room:
+            patient = get_patient_in_room_db(source_room["id"], supabase)
     
     if not patient:
         return {"error": "Patient not found"}
     
-    # Note: Room assignment not persisted in current schema
-    return {
-        "success": True,
-        "patient_id": patient["id"],
-        "patient_name": patient["name"],
-        "to_room": dest_room["name"],
-        "reason": reason,
-        "note": "Room assignment feature not fully implemented in database"
-    }
+    try:
+        # Get current room assignment to find source room
+        if not source_room:
+            assignment_res = supabase.table("room_assignments").select(
+                "room_id, hospital_rooms(id, name, room_type)"
+            ).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
+            
+            if assignment_res.data:
+                source_room = assignment_res.data[0].get("hospital_rooms", {})
+        
+        old_room_name = source_room["name"] if source_room else None
+        
+        # Discharge from current room
+        supabase.table("room_assignments").update({
+            "discharged_at": datetime.now().isoformat(),
+            "notes": f"Transferred to {dest_room['name']}: {reason or 'No reason provided'}"
+        }).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
+        
+        # Update source room status to vacant if it's a patient room
+        if source_room and source_room.get("room_type") == "patient":
+            supabase.table("hospital_rooms").update({
+                "status": "vacant"
+            }).eq("id", source_room["id"]).execute()
+        
+        # Create new assignment
+        supabase.table("room_assignments").insert({
+            "room_id": dest_room["id"],
+            "patient_id": patient["id"],
+            "notes": f"Transferred from {old_room_name or 'unknown'}: {reason or 'No reason provided'}"
+        }).execute()
+        
+        # Update destination room status
+        if dest_room["status"] == "vacant":
+            supabase.table("hospital_rooms").update({
+                "status": "normal"
+            }).eq("id", dest_room["id"]).execute()
+        
+        return {
+            "success": True,
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "from_room": old_room_name,
+            "to_room": dest_room["name"],
+            "reason": reason or "Transfer completed"
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def add_patient_note(patient_id: str, note_type: str, content: str, supabase) -> Dict[str, Any]:
-    patient = _find_patient_by_id_or_name(patient_id, supabase)
+    """Add a note for a patient (stored as room task)"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
-    # Note: Patient notes not currently stored in database - would need a notes table
-    return {
-        "success": True,
-        "patient_id": patient["id"],
-        "patient_name": patient["name"],
-        "note_type": note_type,
-        "content": content,
-        "created_at": datetime.now().isoformat(),
-        "note": "Notes feature not fully implemented in database schema"
-    }
+    try:
+        # Get patient's current room
+        assignment_res = supabase.table("room_assignments").select(
+            "room_id"
+        ).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
+        
+        room_id = assignment_res.data[0]["room_id"] if assignment_res.data else None
+        
+        # Create a task for the note
+        supabase.table("room_tasks").insert({
+            "room_id": room_id,
+            "patient_id": patient["id"],
+            "task_type": "other",
+            "title": f"Note: {note_type}",
+            "description": content,
+            "priority": "normal",
+            "status": "completed",
+            "completed_at": datetime.now().isoformat()
+        }).execute()
+        
+        return {
+            "success": True,
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "note_type": note_type,
+            "content": content,
+            "created_at": datetime.now().isoformat()
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def add_food_instructions(patient_id: str, instructions: str, duration_days: Optional[int], supabase) -> Dict[str, Any]:
-    patient = _find_patient_by_id_or_name(patient_id, supabase)
+    """Add food instructions for a patient (stored as room task)"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
-    end_date = None
-    if duration_days:
-        from datetime import timedelta
-        end_date = (datetime.now() + timedelta(days=duration_days)).isoformat()
-    
-    # Store in patient_plans table if it exists
     try:
-        if supabase:
-            supabase.table("patient_plans").upsert({
-                "patient_id": patient["id"],
-                "plan_type": "diet",
-                "content": instructions,
-                "updated_at": datetime.now().isoformat()
-            }, on_conflict="patient_id,plan_type").execute()
+        from datetime import timedelta
+        
+        # Get patient's current room
+        assignment_res = supabase.table("room_assignments").select(
+            "room_id"
+        ).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
+        
+        room_id = assignment_res.data[0]["room_id"] if assignment_res.data else None
+        
+        # Calculate due date
+        due_at = None
+        if duration_days:
+            due_at = (datetime.now() + timedelta(days=duration_days)).isoformat()
+        
+        # Create a food task
+        supabase.table("room_tasks").insert({
+            "room_id": room_id,
+            "patient_id": patient["id"],
+            "task_type": "food",
+            "title": "Food Instructions",
+            "description": instructions,
+            "priority": "normal",
+            "status": "pending",
+            "due_at": due_at,
+            "metadata": {"duration_days": duration_days}
+        }).execute()
+        
+        return {
+            "success": True,
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "instructions": instructions,
+            "duration_days": duration_days,
+            "due_at": due_at,
+            "created_at": datetime.now().isoformat(),
+            "message": f"Food instructions added for {patient['name']}: {instructions}"
+        }
     except Exception as e:
-        print(f"Error saving food instructions: {e}")
-    
-    return {
-        "success": True,
-        "patient_id": patient["id"],
-        "patient_name": patient["name"],
-        "instructions": instructions,
-        "duration_days": duration_days,
-        "end_date": end_date,
-        "created_at": datetime.now().isoformat(),
-        "message": f"Food instructions added for {patient['name']}: {instructions}"
-    }
+        return {"error": str(e)}
 
 
 # --- Hazard Management ---
 # Note: Hazards table may not exist in current schema
 
 async def list_active_hazards(supabase) -> Dict[str, Any]:
-    hazards = _fetch_hazards(supabase)
-    active = [h for h in hazards if h.get("status") in ["active", "responding"]]
-    return {
-        "hazards": active,
-        "count": len(active),
-        "note": "Hazards feature requires hazards table in database" if not hazards else None
-    }
+    """List active hazards from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        response = supabase.table("hospital_hazards").select("*").in_(
+            "status", ["active", "responding"]
+        ).execute()
+        hazards = response.data or []
+        
+        # Format for response
+        formatted = [{
+            "id": str(h["id"]),
+            "type": h["hazard_type"],
+            "location": h["location"],
+            "description": h["description"],
+            "severity": h["severity"],
+            "status": h["status"],
+            "room_id": h.get("room_id"),
+            "reported_at": h.get("created_at")
+        } for h in hazards]
+        
+        return {
+            "hazards": formatted,
+            "count": len(formatted)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def report_hazard(hazard_type: str, location: str, description: str, severity: str, supabase) -> Dict[str, Any]:
-    new_hazard = {
-        "id": f"H-{str(uuid.uuid4())[:8]}",
-        "type": hazard_type,
-        "location": location,
-        "description": description,
-        "severity": severity,
-        "status": "active",
-        "reported_at": datetime.now().isoformat()
-    }
+    """Report a new hazard to database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    # Try to save to hazards table if it exists
     try:
-        if supabase:
-            supabase.table("hazards").insert(new_hazard).execute()
+        # Try to find matching room for the location
+        room = fuzzy_match_room_db(location, supabase)
+        room_id = room["id"] if room else None
+        
+        response = supabase.table("hospital_hazards").insert({
+            "hazard_type": hazard_type,
+            "location": location,
+            "room_id": room_id,
+            "description": description,
+            "severity": severity,
+            "status": "active",
+            "reported_by": "ai_system"
+        }).execute()
+        
+        hazard = response.data[0] if response.data else {}
+        
+        return {
+            "success": True,
+            "hazard": {
+                "id": str(hazard.get("id")),
+                "type": hazard_type,
+                "location": location,
+                "description": description,
+                "severity": severity,
+                "status": "active"
+            }
+        }
     except Exception as e:
-        print(f"Hazards table may not exist: {e}")
-    
-    return {
-        "success": True,
-        "hazard": new_hazard,
-        "note": "Hazards feature requires hazards table in database"
-    }
+        return {"error": str(e)}
 
 
 async def update_hazard_status(hazard_id: str, status: str, notes: Optional[str], supabase) -> Dict[str, Any]:
-    hazards = _fetch_hazards(supabase)
-    hazard = next((h for h in hazards if h.get("id") == hazard_id), None)
-    if not hazard:
-        return {"error": f"Hazard '{hazard_id}' not found"}
+    """Update hazard status in database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    old_status = hazard["status"]
-    hazard["status"] = status
-    
-    return {
-        "success": True,
-        "hazard_id": hazard_id,
-        "old_status": old_status,
-        "new_status": status,
-        "notes": notes
-    }
+    try:
+        # Get current hazard
+        current = supabase.table("hospital_hazards").select("*").eq(
+            "id", hazard_id
+        ).execute()
+        
+        if not current.data:
+            return {"error": f"Hazard '{hazard_id}' not found"}
+        
+        old_status = current.data[0]["status"]
+        
+        update_data = {"status": status, "notes": notes}
+        if status == "resolved":
+            update_data["resolved_at"] = datetime.now().isoformat()
+            update_data["resolved_by"] = "ai_system"
+        
+        supabase.table("hospital_hazards").update(update_data).eq(
+            "id", hazard_id
+        ).execute()
+        
+        return {
+            "success": True,
+            "hazard_id": hazard_id,
+            "old_status": old_status,
+            "new_status": status,
+            "notes": notes
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def get_hazard_details(hazard_id: str, supabase) -> Dict[str, Any]:
-    hazards = _fetch_hazards(supabase)
-    hazard = next((h for h in hazards if h.get("id") == hazard_id), None)
-    if not hazard:
-        return {"error": f"Hazard '{hazard_id}' not found"}
+    """Get hazard details from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    return {"hazard": hazard}
+    try:
+        response = supabase.table("hospital_hazards").select("*").eq(
+            "id", hazard_id
+        ).execute()
+        
+        if not response.data:
+            return {"error": f"Hazard '{hazard_id}' not found"}
+        
+        h = response.data[0]
+        return {
+            "hazard": {
+                "id": str(h["id"]),
+                "type": h["hazard_type"],
+                "location": h["location"],
+                "description": h["description"],
+                "severity": h["severity"],
+                "status": h["status"],
+                "room_id": h.get("room_id"),
+                "reported_at": h.get("created_at"),
+                "resolved_at": h.get("resolved_at")
+            }
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def get_hazards_by_room(room_id: str, supabase) -> Dict[str, Any]:
-    room = fuzzy_match_room(room_id, MOCK_ROOMS)
-    room_name = room["name"] if room else room_id
+    """Get hazards for a specific room from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    hazards = _fetch_hazards(supabase)
-    filtered = [h for h in hazards if room_name.lower() in h.get("location", "").lower()]
-    return {
-        "room": room_name,
-        "hazards": filtered,
-        "count": len(filtered)
-    }
+    room = fuzzy_match_room_db(room_id, supabase)
+    room_name = room["name"] if room else room_id
+    actual_room_id = room["id"] if room else None
+    
+    try:
+        query = supabase.table("hospital_hazards").select("*")
+        if actual_room_id:
+            query = query.eq("room_id", actual_room_id)
+        else:
+            query = query.ilike("location", f"%{room_id}%")
+        
+        response = query.in_("status", ["active", "responding"]).execute()
+        hazards = response.data or []
+        
+        formatted = [{
+            "id": str(h["id"]),
+            "type": h["hazard_type"],
+            "description": h["description"],
+            "severity": h["severity"],
+            "status": h["status"]
+        } for h in hazards]
+        
+        return {
+            "room": room_name,
+            "hazards": formatted,
+            "count": len(formatted)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def get_hazards_by_type(hazard_type: str, supabase) -> Dict[str, Any]:
-    hazards = _fetch_hazards(supabase)
-    filtered = [h for h in hazards if h.get("type") == hazard_type]
-    return {
-        "type": hazard_type,
-        "hazards": filtered,
-        "count": len(filtered)
-    }
+    """Get hazards filtered by type from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        response = supabase.table("hospital_hazards").select("*").eq(
+            "hazard_type", hazard_type
+        ).in_("status", ["active", "responding"]).execute()
+        hazards = response.data or []
+        
+        formatted = [{
+            "id": str(h["id"]),
+            "location": h["location"],
+            "description": h["description"],
+            "severity": h["severity"],
+            "status": h["status"]
+        } for h in hazards]
+        
+        return {
+            "type": hazard_type,
+            "hazards": formatted,
+            "count": len(formatted)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # --- Hospital Statistics ---
 
 async def get_hospital_stats(supabase) -> Dict[str, Any]:
-    patient_rooms = [r for r in MOCK_ROOMS if r["type"] in ["patient", "icu", "ward"]]
-    occupied = [r for r in patient_rooms if r["status"] != "vacant" and r.get("patient_count", 0) > 0]
-    critical = [r for r in patient_rooms if r["status"] == "critical"]
+    """Get hospital statistics from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    # Fetch real data from Supabase
-    patients = _fetch_all_patients_sync(supabase)
-    hazards = _fetch_hazards(supabase)
-    alerts = _fetch_alerts(supabase)
-    
-    return {
-        "total_rooms": len(patient_rooms),
-        "occupied_rooms": len(occupied),
-        "vacant_rooms": len(patient_rooms) - len(occupied),
-        "critical_rooms": len(critical),
-        "total_patients": len(patients),
-        "active_hazards": len([h for h in hazards if h.get("status") == "active"]),
-        "active_alerts": len([a for a in alerts if a.get("status") == "active"]),
-        "occupancy_rate": round(len(occupied) / len(patient_rooms) * 100, 1) if patient_rooms else 0
-    }
+    try:
+        # Count patient-capable rooms
+        rooms_res = supabase.table("hospital_rooms").select("id, status").in_(
+            "room_type", ["patient", "critical"]
+        ).execute()
+        rooms = rooms_res.data or []
+        total_rooms = len(rooms)
+        
+        # Count occupied rooms
+        assignments_res = supabase.table("room_assignments").select(
+            "room_id"
+        ).is_("discharged_at", "null").execute()
+        occupied_ids = set(a["room_id"] for a in (assignments_res.data or []))
+        occupied_count = len([r for r in rooms if r["id"] in occupied_ids])
+        
+        # Count critical rooms
+        critical_rooms = len([r for r in rooms if r["status"] == "critical"])
+        
+        # Count active hazards
+        hazards_res = supabase.table("hospital_hazards").select(
+            "id", count="exact"
+        ).eq("status", "active").execute()
+        active_hazards = hazards_res.count or 0
+        
+        # Count active alerts
+        alerts_res = supabase.table("alerts").select(
+            "id", count="exact"
+        ).eq("acknowledged", False).execute()
+        active_alerts = alerts_res.count or 0
+        
+        # Count total patients with room assignments
+        total_patients = len(occupied_ids)
+        
+        return {
+            "total_patient_rooms": total_rooms,
+            "occupied_rooms": occupied_count,
+            "vacant_rooms": total_rooms - occupied_count,
+            "critical_rooms": critical_rooms,
+            "total_patients": total_patients,
+            "active_hazards": active_hazards,
+            "active_alerts": active_alerts,
+            "occupancy_rate": round(occupied_count / total_rooms * 100, 1) if total_rooms else 0
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def get_occupancy_rate(supabase) -> Dict[str, Any]:
-    stats = await get_hospital_stats(supabase)
+    """Get room occupancy rate from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    by_type = {}
-    for room_type in ["patient", "icu", "ward"]:
-        rooms_of_type = [r for r in MOCK_ROOMS if r["type"] == room_type]
-        occupied_of_type = [r for r in rooms_of_type if r["status"] != "vacant"]
-        by_type[room_type] = {
-            "total": len(rooms_of_type),
-            "occupied": len(occupied_of_type),
-            "rate": round(len(occupied_of_type) / len(rooms_of_type) * 100, 1) if rooms_of_type else 0
+    try:
+        stats = await get_hospital_stats(supabase)
+        if "error" in stats:
+            return stats
+        
+        # Build occupancy summary by room type
+        by_type = {}
+        for room_type in ["patient", "critical"]:
+            rooms_res = supabase.table("hospital_rooms").select("id").eq(
+                "room_type", room_type
+            ).execute()
+            rooms = rooms_res.data or []
+            
+            assignments_res = supabase.table("room_assignments").select(
+                "room_id"
+            ).is_("discharged_at", "null").execute()
+            occupied_ids = set(a["room_id"] for a in (assignments_res.data or []))
+            
+            occupied = len([r for r in rooms if r["id"] in occupied_ids])
+            
+            if rooms:
+                by_type[room_type] = {
+                    "total": len(rooms),
+                    "occupied": occupied,
+                    "vacant": len(rooms) - occupied,
+                    "rate": round(occupied / len(rooms) * 100, 1)
+                }
+        
+        return {
+            "overall_rate": stats.get("occupancy_rate", 0),
+            "occupied": stats.get("occupied_rooms", 0),
+            "vacant": stats.get("vacant_rooms", 0),
+            "total": stats.get("total_patient_rooms", 0),
+            "by_type": by_type
         }
-    
-    return {
-        "overall_rate": stats["occupancy_rate"],
-        "by_type": by_type
-    }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def get_critical_summary(supabase) -> Dict[str, Any]:
-    critical_rooms = [r for r in MOCK_ROOMS if r["status"] == "critical"]
+    """Get summary of critical situations from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    # Fetch real data from Supabase
-    patients = _fetch_all_patients_sync(supabase)
-    alerts = _fetch_alerts(supabase)
-    
-    critical_patients = [p for p in patients if p.get("status") == "critical"]
-    critical_alerts = [a for a in alerts if a.get("severity") == "critical"]
-    
-    return {
-        "critical_rooms": critical_rooms,
-        "critical_patients": critical_patients,
-        "critical_alerts": critical_alerts,
-        "summary": {
-            "rooms": len(critical_rooms),
-            "patients": len(critical_patients),
-            "alerts": len(critical_alerts)
+    try:
+        # Get critical rooms
+        rooms_res = supabase.table("hospital_rooms").select("*").eq(
+            "status", "critical"
+        ).execute()
+        critical_rooms = [{
+            "id": r["id"],
+            "name": r["name"],
+            "type": r["room_type"]
+        } for r in (rooms_res.data or [])]
+        
+        # Get critical alerts
+        alerts_res = supabase.table("alerts").select("*").eq(
+            "severity", "critical"
+        ).eq("acknowledged", False).execute()
+        critical_alerts = [{
+            "id": str(a["id"]),
+            "title": a.get("title"),
+            "message": a.get("message"),
+            "patient_id": str(a.get("patient_id")) if a.get("patient_id") else None
+        } for a in (alerts_res.data or [])]
+        
+        # Get critical hazards
+        hazards_res = supabase.table("hospital_hazards").select("*").eq(
+            "severity", "critical"
+        ).eq("status", "active").execute()
+        critical_hazards = [{
+            "id": str(h["id"]),
+            "type": h["hazard_type"],
+            "location": h["location"],
+            "description": h["description"]
+        } for h in (hazards_res.data or [])]
+        
+        return {
+            "critical_rooms": critical_rooms,
+            "critical_alerts": critical_alerts,
+            "critical_hazards": critical_hazards,
+            "summary": {
+                "rooms": len(critical_rooms),
+                "alerts": len(critical_alerts),
+                "hazards": len(critical_hazards)
+            }
         }
-    }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def get_activity_summary(hours: int, supabase) -> Dict[str, Any]:
-    return {
-        "period_hours": hours,
-        "events": {
-            "admissions": 3,
-            "discharges": 2,
-            "transfers": 1,
-            "alerts_created": 5,
-            "alerts_resolved": 3,
-            "hazards_reported": 2,
-            "hazards_resolved": 1
-        },
-        "current_status": await get_hospital_stats(supabase)
-    }
+    """Get activity summary from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        from datetime import timedelta
+        cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
+        
+        # Count recent room assignments (admissions)
+        admissions_res = supabase.table("room_assignments").select(
+            "id", count="exact"
+        ).gte("assigned_at", cutoff).execute()
+        
+        # Count recent discharges
+        discharges_res = supabase.table("room_assignments").select(
+            "id", count="exact"
+        ).gte("discharged_at", cutoff).execute()
+        
+        # Count recent hazards
+        hazards_res = supabase.table("hospital_hazards").select(
+            "id", count="exact"
+        ).gte("created_at", cutoff).execute()
+        
+        # Count resolved hazards
+        resolved_res = supabase.table("hospital_hazards").select(
+            "id", count="exact"
+        ).gte("resolved_at", cutoff).execute()
+        
+        return {
+            "period_hours": hours,
+            "events": {
+                "admissions": admissions_res.count or 0,
+                "discharges": discharges_res.count or 0,
+                "hazards_reported": hazards_res.count or 0,
+                "hazards_resolved": resolved_res.count or 0
+            },
+            "current_status": await get_hospital_stats(supabase)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # --- Medication Adherence ---
 
 async def get_medication_schedule(patient_id: Optional[str], supabase) -> Dict[str, Any]:
-    if patient_id:
-        patient = _find_patient_by_id_or_name(patient_id, supabase)
-        if patient:
-            meds = _fetch_patient_medications(patient["id"], supabase)
-            # Add patient names to medications
-            for med in meds:
-                med["patient_name"] = patient["name"]
-        else:
-            meds = []
-    else:
-        meds = _fetch_all_medications(supabase)
-        # Add patient names to all medications
-        patients = _fetch_all_patients_sync(supabase)
-        for med in meds:
-            patient = next((p for p in patients if p["id"] == med.get("patient_id")), None)
-            if patient:
-                med["patient_name"] = patient["name"]
+    """Get medication schedule from database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    return {
-        "medications": meds,
-        "count": len(meds),
-        "patient_id": patient_id
-    }
+    try:
+        if patient_id:
+            patient = fuzzy_match_patient_db(patient_id, supabase)
+            if not patient:
+                return {"error": f"Patient '{patient_id}' not found"}
+            
+            # Get medications for specific patient
+            meds_res = supabase.table("patient_pills").select(
+                "id, dosage_amount, frequency, times_of_day, is_active, pills(name, strength, unit, instructions)"
+            ).eq("patient_id", patient["id"]).eq("is_active", True).execute()
+            
+            medications = []
+            for m in (meds_res.data or []):
+                pill = m.get("pills", {}) or {}
+                medications.append({
+                    "id": str(m["id"]),
+                    "name": pill.get("name", "Unknown"),
+                    "dosage": f"{m.get('dosage_amount', '')} {pill.get('strength', '')} {pill.get('unit', '')}".strip(),
+                    "schedule": ", ".join(m.get("times_of_day") or []),
+                    "frequency": m.get("frequency"),
+                    "instructions": pill.get("instructions"),
+                    "patient_name": patient["name"],
+                    "patient_id": str(patient["id"])
+                })
+            
+            return {
+                "medications": medications,
+                "count": len(medications),
+                "patient_id": str(patient["id"]),
+                "patient_name": patient["name"]
+            }
+        else:
+            # Get all pending medications
+            meds_res = supabase.table("pill_logs").select(
+                "id, scheduled_time, status, patient_pills(pills(name, strength), patients(id, users!patients_user_id_fkey(full_name)))"
+            ).eq("status", "pending").execute()
+            
+            medications = []
+            for m in (meds_res.data or []):
+                pp = m.get("patient_pills", {}) or {}
+                pill = pp.get("pills", {}) or {}
+                patient = pp.get("patients", {}) or {}
+                user = patient.get("users", {}) or {}
+                
+                medications.append({
+                    "id": str(m["id"]),
+                    "name": pill.get("name", "Unknown"),
+                    "dosage": pill.get("strength", ""),
+                    "scheduled_time": m.get("scheduled_time"),
+                    "status": m.get("status"),
+                    "patient_name": user.get("full_name", "Unknown"),
+                    "patient_id": str(patient.get("id")) if patient.get("id") else None
+                })
+            
+            return {
+                "medications": medications,
+                "count": len(medications),
+                "note": "Showing pending medications for all patients"
+            }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def mark_medication_given(patient_id: str, medication_id: str, administered_by: Optional[str], notes: Optional[str], supabase) -> Dict[str, Any]:
-    patient = _find_patient_by_id_or_name(patient_id, supabase)
+    """Mark a medication as given in database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
     if not patient:
         return {"error": f"Patient '{patient_id}' not found"}
     
-    actual_patient_id = patient["id"]
-    meds = _fetch_patient_medications(actual_patient_id, supabase)
-    med = next((m for m in meds if m.get("id") == medication_id), None)
-    
-    if not med:
-        return {"error": f"Medication '{medication_id}' not found for patient '{patient_id}'"}
-    
-    # Log the medication as given in pill_logs if the table exists
     try:
-        if supabase:
-            supabase.table("pill_logs").insert({
-                "patient_id": actual_patient_id,
-                "patient_pill_id": medication_id,
-                "scheduled_time": datetime.now().isoformat(),
-                "taken_time": datetime.now().isoformat(),
-                "status": "taken",
-                "notes": notes
-            }).execute()
+        # Update pill_log status
+        supabase.table("pill_logs").update({
+            "status": "taken",
+            "taken_time": datetime.now().isoformat(),
+            "confirmed_by": administered_by or "ai_system",
+            "notes": notes
+        }).eq("id", medication_id).execute()
+        
+        # Also create a completed task for this
+        assignment_res = supabase.table("room_assignments").select(
+            "room_id"
+        ).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
+        
+        room_id = assignment_res.data[0]["room_id"] if assignment_res.data else None
+        
+        supabase.table("room_tasks").insert({
+            "room_id": room_id,
+            "patient_id": patient["id"],
+            "task_type": "medication",
+            "title": "Medication Administered",
+            "description": notes or "Medication marked as given",
+            "priority": "normal",
+            "status": "completed",
+            "completed_at": datetime.now().isoformat(),
+            "completed_by": administered_by or "ai_system"
+        }).execute()
+        
+        return {
+            "success": True,
+            "medication_id": medication_id,
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "administered_by": administered_by or "ai_system",
+            "administered_at": datetime.now().isoformat()
+        }
     except Exception as e:
-        print(f"Error logging medication: {e}")
-    
-    return {
-        "success": True,
-        "medication_id": medication_id,
-        "medication_name": med.get("name", "Unknown"),
-        "patient_id": actual_patient_id,
-        "patient_name": patient["name"],
-        "administered_by": administered_by,
-        "administered_at": datetime.now().isoformat()
-    }
+        return {"error": str(e)}
 
 
 async def get_missed_medications(supabase) -> Dict[str, Any]:
@@ -2069,370 +2824,112 @@ async def get_active_alerts(severity: Optional[str], supabase) -> Dict[str, Any]
 
 
 async def create_alert(title: str, description: str, severity: str, patient_id: Optional[str], room_id: Optional[str], supabase) -> Dict[str, Any]:
+    """Create a new alert in database"""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
     actual_patient_id = None
     patient_name = None
     if patient_id:
-        patient = _find_patient_by_id_or_name(patient_id, supabase)
+        patient = fuzzy_match_patient_db(patient_id, supabase)
         if patient:
             actual_patient_id = patient["id"]
             patient_name = patient["name"]
-        else:
-            actual_patient_id = patient_id
     
-    new_alert = {
-        "id": str(uuid.uuid4()),
-        "title": title,
-        "message": description,
-        "severity": severity,
-        "resolved": False,
-        "patient_id": actual_patient_id,
-        "created_at": datetime.now().isoformat()
-    }
+    # Resolve room_id if provided
+    actual_room_id = None
+    if room_id:
+        room = fuzzy_match_room_db(room_id, supabase)
+        if room:
+            actual_room_id = room["id"]
     
-    # Try to save to alerts table if it exists
     try:
-        if supabase:
-            supabase.table("alerts").insert(new_alert).execute()
+        response = supabase.table("alerts").insert({
+            "title": title,
+            "message": description,
+            "severity": severity,
+            "type": "custom",
+            "patient_id": actual_patient_id,
+            "acknowledged": False
+        }).execute()
+        
+        alert = response.data[0] if response.data else {}
+        
+        # Also create a room task if room is associated
+        if actual_room_id:
+            supabase.table("room_tasks").insert({
+                "room_id": actual_room_id,
+                "patient_id": actual_patient_id,
+                "task_type": "alert",
+                "title": title,
+                "description": description,
+                "priority": "urgent" if severity in ["critical", "high"] else "normal",
+                "status": "pending"
+            }).execute()
+        
+        return {
+            "success": True,
+            "alert": {
+                "id": str(alert.get("id")),
+                "title": title,
+                "description": description,
+                "severity": severity,
+                "patient_id": str(actual_patient_id) if actual_patient_id else None,
+                "patient_name": patient_name,
+                "room_id": actual_room_id,
+                "created_at": alert.get("created_at")
+            }
+        }
     except Exception as e:
-        print(f"Alerts table may not exist or error saving: {e}")
-    
-    return {
-        "success": True,
-        "alert": {**new_alert, "patient_name": patient_name, "room_id": room_id}
-    }
+        return {"error": str(e)}
 
 
 async def acknowledge_alert(alert_id: str, acknowledged_by: Optional[str], supabase) -> Dict[str, Any]:
-    alerts = _fetch_alerts(supabase)
-    alert = next((a for a in alerts if a.get("id") == alert_id), None)
-    if not alert:
-        return {"error": f"Alert '{alert_id}' not found"}
+    """Acknowledge an alert in database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    # Try to update in database
     try:
-        if supabase:
-            supabase.table("alerts").update({
-                "acknowledged_by": acknowledged_by,
-                "acknowledged_at": datetime.now().isoformat()
-            }).eq("id", alert_id).execute()
+        # Check if alert exists
+        check = supabase.table("alerts").select("id").eq("id", alert_id).execute()
+        if not check.data:
+            return {"error": f"Alert '{alert_id}' not found"}
+        
+        supabase.table("alerts").update({
+            "acknowledged": True,
+            "acknowledged_at": datetime.now().isoformat(),
+            "acknowledged_by": acknowledged_by or "ai_system"
+        }).eq("id", alert_id).execute()
+        
+        return {
+            "success": True,
+            "alert_id": alert_id,
+            "acknowledged_by": acknowledged_by or "ai_system"
+        }
     except Exception as e:
-        print(f"Error updating alert: {e}")
-    
-    return {
-        "success": True,
-        "alert_id": alert_id,
-        "acknowledged_by": acknowledged_by
-    }
+        return {"error": str(e)}
 
 
 async def resolve_alert(alert_id: str, resolution_notes: Optional[str], supabase) -> Dict[str, Any]:
-    alerts = _fetch_alerts(supabase)
-    alert = next((a for a in alerts if a.get("id") == alert_id), None)
-    if not alert:
-        return {"error": f"Alert '{alert_id}' not found"}
+    """Resolve an alert in database"""
+    if not supabase:
+        return {"error": "Database not configured"}
     
-    # Try to update in database
     try:
-        if supabase:
-            supabase.table("alerts").update({
-                "resolved": True,
-                "resolution_notes": resolution_notes,
-                "resolved_at": datetime.now().isoformat()
-            }).eq("id", alert_id).execute()
-    except Exception as e:
-        print(f"Error resolving alert: {e}")
-    
-    return {
-        "success": True,
-        "alert_id": alert_id,
-        "resolution_notes": resolution_notes
-    }
-
-
-# --- Dashboard / Patient Daily Data ---
-
-async def get_patient_daily_summary(patient_identifier: str, date: Optional[str], supabase) -> Dict[str, Any]:
-    """Get the AI-generated daily summary for a patient"""
-    try:
-        if not supabase:
-            return {"error": "Database not available"}
+        # Check if alert exists
+        check = supabase.table("alerts").select("id").eq("id", alert_id).execute()
+        if not check.data:
+            return {"error": f"Alert '{alert_id}' not found"}
         
-        # Find patient by name or ID using Supabase
-        patient = _find_patient_by_id_or_name(patient_identifier, supabase)
-        if patient:
-            patient_id = patient.get("id")
-        else:
-            return {"error": f"Patient '{patient_identifier}' not found"}
-        
-        target_date = date or datetime.now().strftime("%Y-%m-%d")
-        
-        # Get the cached summary
-        summary_res = supabase.table("daily_summaries").select("*").eq(
-            "patient_id", patient_id
-        ).eq("date", target_date).single().execute()
-        
-        if summary_res.data:
-            return {
-                "patient_id": patient_id,
-                "date": target_date,
-                "summary": summary_res.data.get("ai_summary"),
-                "alerts": summary_res.data.get("ai_alerts", []),
-                "journal_summary": summary_res.data.get("journal_summary"),
-                "meals_summary": summary_res.data.get("meals_summary"),
-                "activity_summary": summary_res.data.get("activity_summary"),
-                "medications_taken": summary_res.data.get("medications_taken", 0),
-                "medications_scheduled": summary_res.data.get("medications_scheduled", 0),
-                "total_calories": summary_res.data.get("total_calories_consumed", 0),
-                "exercise_minutes": summary_res.data.get("total_exercise_minutes", 0)
-            }
-        else:
-            return {
-                "patient_id": patient_id,
-                "date": target_date,
-                "message": "No summary available for this date. Use refresh_patient_summary to generate one."
-            }
-    except Exception as e:
-        return {"error": f"Failed to get daily summary: {str(e)}"}
-
-
-async def refresh_patient_summary(patient_identifier: str, date: Optional[str], supabase) -> Dict[str, Any]:
-    """Force regenerate the daily summary for a patient"""
-    # This would need to trigger the actual summary generation endpoint
-    # For now, we return a message indicating this should be done via the API
-    return {
-        "message": f"To refresh the summary for patient '{patient_identifier}', use the 'Refresh' button on the dashboard or call the daily-summary API endpoint with force_refresh=true.",
-        "action_required": "manual_refresh"
-    }
-
-
-async def mark_pill_taken(patient_identifier: str, medication_name: str, date: Optional[str], supabase) -> Dict[str, Any]:
-    """Mark a scheduled medication as taken"""
-    try:
-        if not supabase:
-            return {"error": "Database not available"}
-        
-        # Find patient
-        patients_res = supabase.table("patients").select(
-            "id, user_id, users!patients_user_id_fkey(full_name)"
-        ).execute()
-        
-        patient_id = None
-        patient_name = None
-        for p in (patients_res.data or []):
-            user = p.get("users", {}) or {}
-            if patient_identifier.lower() in user.get("full_name", "").lower() or patient_identifier == p.get("id"):
-                patient_id = p.get("id")
-                patient_name = user.get("full_name", "Unknown")
-                break
-        
-        if not patient_id:
-            return {"error": f"Patient '{patient_identifier}' not found"}
-        
-        target_date = date or datetime.now().strftime("%Y-%m-%d")
-        
-        # Find the pill log entry for this medication
-        pill_logs_res = supabase.table("pill_logs").select(
-            "id, patient_pills(pill_id, pills(name))"
-        ).eq("patient_id", patient_id).gte(
-            "scheduled_time", f"{target_date}T00:00:00"
-        ).lte("scheduled_time", f"{target_date}T23:59:59").execute()
-        
-        for log in (pill_logs_res.data or []):
-            patient_pills = log.get("patient_pills", {}) or {}
-            pill = patient_pills.get("pills", {}) or {}
-            if medication_name.lower() in pill.get("name", "").lower():
-                # Update this log to 'taken'
-                supabase.table("pill_logs").update({
-                    "status": "taken",
-                    "taken_at": datetime.now().isoformat()
-                }).eq("id", log.get("id")).execute()
-                
-                return {
-                    "success": True,
-                    "patient_name": patient_name,
-                    "medication": pill.get("name"),
-                    "status": "taken",
-                    "message": f"Marked {pill.get('name')} as taken for {patient_name}"
-                }
-        
-        return {"error": f"No scheduled dose of '{medication_name}' found for {patient_name} on {target_date}"}
-    except Exception as e:
-        return {"error": f"Failed to mark medication as taken: {str(e)}"}
-
-
-async def get_patient_care_plans_tool(patient_identifier: str, supabase) -> Dict[str, Any]:
-    """Get care plans (diet and exercise) for a patient"""
-    try:
-        if not supabase:
-            return {"error": "Database not available"}
-        
-        # Find patient
-        patients_res = supabase.table("patients").select(
-            "id, user_id, users!patients_user_id_fkey(full_name)"
-        ).execute()
-        
-        patient_id = None
-        patient_name = None
-        for p in (patients_res.data or []):
-            user = p.get("users", {}) or {}
-            if patient_identifier.lower() in user.get("full_name", "").lower() or patient_identifier == p.get("id"):
-                patient_id = p.get("id")
-                patient_name = user.get("full_name", "Unknown")
-                break
-        
-        if not patient_id:
-            return {"error": f"Patient '{patient_identifier}' not found"}
-        
-        # Get care plans
-        plans_res = supabase.table("patient_plans").select("*").eq(
-            "patient_id", patient_id
-        ).eq("is_active", True).execute()
-        
-        plans = plans_res.data or []
-        diet_plan = next((p for p in plans if p.get("plan_type") == "diet"), None)
-        exercise_plan = next((p for p in plans if p.get("plan_type") == "exercise"), None)
+        supabase.table("alerts").update({
+            "resolved": True,
+            "resolved_at": datetime.now().isoformat()
+        }).eq("id", alert_id).execute()
         
         return {
-            "patient_name": patient_name,
-            "diet_plan": {
-                "title": diet_plan.get("title") if diet_plan else None,
-                "notes": diet_plan.get("notes") if diet_plan else None,
-                "calorie_target": diet_plan.get("calorie_target") if diet_plan else None,
-                "protein_target": diet_plan.get("protein_target") if diet_plan else None,
-                "carb_target": diet_plan.get("carb_target") if diet_plan else None,
-                "fat_target": diet_plan.get("fat_target") if diet_plan else None
-            } if diet_plan else None,
-            "exercise_plan": {
-                "title": exercise_plan.get("title") if exercise_plan else None,
-                "notes": exercise_plan.get("notes") if exercise_plan else None,
-                "exercise_minutes_target": exercise_plan.get("exercise_minutes_target") if exercise_plan else None,
-                "exercise_days_per_week": exercise_plan.get("exercise_days_per_week") if exercise_plan else None
-            } if exercise_plan else None
+            "success": True,
+            "alert_id": alert_id,
+            "resolution_notes": resolution_notes
         }
     except Exception as e:
-        return {"error": f"Failed to get care plans: {str(e)}"}
-
-
-async def get_patient_pill_logs_tool(patient_identifier: str, date: Optional[str], supabase) -> Dict[str, Any]:
-    """Get medication logs for a patient"""
-    try:
-        if not supabase:
-            return {"error": "Database not available"}
-        
-        # Find patient
-        patients_res = supabase.table("patients").select(
-            "id, user_id, users!patients_user_id_fkey(full_name)"
-        ).execute()
-        
-        patient_id = None
-        patient_name = None
-        for p in (patients_res.data or []):
-            user = p.get("users", {}) or {}
-            if patient_identifier.lower() in user.get("full_name", "").lower() or patient_identifier == p.get("id"):
-                patient_id = p.get("id")
-                patient_name = user.get("full_name", "Unknown")
-                break
-        
-        if not patient_id:
-            return {"error": f"Patient '{patient_identifier}' not found"}
-        
-        target_date = date or datetime.now().strftime("%Y-%m-%d")
-        
-        # Get pill logs
-        logs_res = supabase.table("pill_logs").select(
-            "id, status, scheduled_time, taken_at, patient_pills(pill_id, pills(name, strength, unit))"
-        ).eq("patient_id", patient_id).gte(
-            "scheduled_time", f"{target_date}T00:00:00"
-        ).lte("scheduled_time", f"{target_date}T23:59:59").execute()
-        
-        logs = []
-        for log in (logs_res.data or []):
-            patient_pills = log.get("patient_pills", {}) or {}
-            pill = patient_pills.get("pills", {}) or {}
-            logs.append({
-                "medication": pill.get("name", "Unknown"),
-                "dosage": pill.get("dosage"),
-                "status": log.get("status"),
-                "scheduled_time": log.get("scheduled_time"),
-                "taken_at": log.get("taken_at")
-            })
-        
-        taken = sum(1 for l in logs if l["status"] == "taken")
-        missed = sum(1 for l in logs if l["status"] == "missed")
-        pending = sum(1 for l in logs if l["status"] in ["pending", "upcoming"])
-        
-        return {
-            "patient_name": patient_name,
-            "date": target_date,
-            "medications": logs,
-            "summary": {
-                "taken": taken,
-                "missed": missed,
-                "pending": pending,
-                "total": len(logs)
-            }
-        }
-    except Exception as e:
-        return {"error": f"Failed to get pill logs: {str(e)}"}
-
-
-async def get_patient_exercises_tool(patient_identifier: str, date: Optional[str], supabase) -> Dict[str, Any]:
-    """Get logged exercises for a patient"""
-    try:
-        if not supabase:
-            return {"error": "Database not available"}
-        
-        # Find patient
-        patients_res = supabase.table("patients").select(
-            "id, user_id, users!patients_user_id_fkey(full_name)"
-        ).execute()
-        
-        patient_id = None
-        patient_name = None
-        user_id = None
-        for p in (patients_res.data or []):
-            user = p.get("users", {}) or {}
-            if patient_identifier.lower() in user.get("full_name", "").lower() or patient_identifier == p.get("id"):
-                patient_id = p.get("id")
-                patient_name = user.get("full_name", "Unknown")
-                user_id = p.get("user_id")
-                break
-        
-        if not patient_id or not user_id:
-            return {"error": f"Patient '{patient_identifier}' not found"}
-        
-        # Get exercises (via user_id)
-        query = supabase.table("exercises").select("*").eq("user_id", user_id)
-        
-        if date:
-            query = query.gte("logged_at", f"{date}T00:00:00").lte("logged_at", f"{date}T23:59:59")
-        
-        exercises_res = query.order("logged_at", desc=True).limit(20).execute()
-        
-        exercises = []
-        total_minutes = 0
-        total_calories = 0
-        
-        for ex in (exercises_res.data or []):
-            exercises.append({
-                "type": ex.get("exercise_type", "Exercise"),
-                "duration_minutes": ex.get("duration_minutes", 0),
-                "calories_burned": ex.get("calories_burned", 0),
-                "intensity": ex.get("intensity"),
-                "logged_at": ex.get("logged_at")
-            })
-            total_minutes += ex.get("duration_minutes", 0) or 0
-            total_calories += ex.get("calories_burned", 0) or 0
-        
-        return {
-            "patient_name": patient_name,
-            "date": date or "all",
-            "exercises": exercises,
-            "summary": {
-                "count": len(exercises),
-                "total_minutes": total_minutes,
-                "total_calories_burned": total_calories
-            }
-        }
-    except Exception as e:
-        return {"error": f"Failed to get exercises: {str(e)}"}
+        return {"error": str(e)}

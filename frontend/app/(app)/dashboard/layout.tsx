@@ -142,10 +142,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           sidebarOpen ? "w-56" : "w-14"
         )}
       >
-        {/* Header */}
+        {/* Header - Logo centered */}
         <div className={cn(
-          "flex items-center h-14",
-          sidebarOpen ? "justify-between px-4" : "justify-center px-2"
+          "flex items-center justify-center h-12 border-b shrink-0",
+          sidebarOpen ? "px-4" : "px-2"
         )}>
           {sidebarOpen ? (
             <>
@@ -176,7 +176,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Navigation */}
-        <nav className={cn("flex flex-1 flex-col", sidebarOpen ? "px-3 pt-0 pb-2" : "px-2 py-2")}>
+        <nav className={cn("flex flex-1 flex-col", sidebarOpen ? "px-3 pt-4 pb-2" : "px-2 pt-4 pb-2")}>
           <div className="flex flex-col gap-0.5">
             {navigation.map((item) => {
               const isActive = pathname === item.href || 

@@ -17,6 +17,7 @@ from app.api.v1 import router as v1_router
 from app.api.medications import router as medications_router
 from app.core.config import get_settings
 from app.ai_tools import PILLPAL_TOOLS, execute_tool
+from app.core.database import get_supabase
 from app.chat_context import (
     create_session,
     read_context,
@@ -159,6 +160,7 @@ class ChatResponse(BaseModel):
     tool_rounds: int = 0
     invalidate_cache: bool = False
     cache_keys: list = []
+    flash_room_id: Optional[str] = None  # Room to flash when task is assigned
     error: Optional[str] = None
 
 
@@ -332,6 +334,96 @@ async def chat_with_cerebras(client: OpenAI, api_messages: list, tools: list) ->
     return assistant_response, all_tool_results, round_num
 
 
+async def fetch_hospital_state() -> dict:
+    """Fetch current hospital state for AI context injection"""
+    supabase = get_supabase()
+    if not supabase:
+        return {}
+    
+    hospital_state = {}
+    
+    try:
+        # Fetch rooms with patient assignments
+        rooms_res = supabase.table("hospital_rooms").select("*").execute()
+        rooms = rooms_res.data or []
+        
+        # Fetch active room assignments with patient info
+        assignments_res = supabase.table("room_assignments").select(
+            "room_id, patient_id, patients(id, age, medical_conditions, status, users!patients_user_id_fkey(full_name))"
+        ).is_("discharged_at", "null").execute()
+        
+        assignment_map = {}
+        for a in (assignments_res.data or []):
+            patient = a.get("patients", {}) or {}
+            user = patient.get("users", {}) or {}
+            assignment_map[a["room_id"]] = {
+                "id": str(patient.get("id")) if patient.get("id") else None,
+                "name": user.get("full_name", "Unknown"),
+                "age": patient.get("age"),
+                "condition": ", ".join(patient.get("medical_conditions") or []),
+                "status": patient.get("status", "stable")
+            }
+        
+        # Combine rooms with patient data
+        hospital_state["rooms"] = []
+        for room in rooms:
+            patient = assignment_map.get(room["id"])
+            hospital_state["rooms"].append({
+                "id": room["id"],
+                "name": room["name"],
+                "type": room["room_type"],
+                "status": room["status"],
+                "patient": patient
+            })
+        
+        # Fetch active alerts
+        alerts_res = supabase.table("alerts").select(
+            "id, title, message, severity, type, patient_id"
+        ).eq("acknowledged", False).execute()
+        hospital_state["alerts"] = alerts_res.data or []
+        
+        # Fetch active hazards
+        try:
+            hazards_res = supabase.table("hospital_hazards").select("*").in_(
+                "status", ["active", "responding"]
+            ).execute()
+            hospital_state["hazards"] = [
+                {
+                    "id": str(h["id"]),
+                    "type": h.get("hazard_type", "unknown"),
+                    "location": h.get("location", "Unknown"),
+                    "description": h.get("description", ""),
+                    "severity": h.get("severity", "low")
+                }
+                for h in (hazards_res.data or [])
+            ]
+        except Exception as hazard_err:
+            print(f"⚠️ Error fetching hazards for state: {hazard_err}")
+            hospital_state["hazards"] = []
+        
+        # Calculate stats
+        patient_rooms = [r for r in hospital_state["rooms"] if r["type"] in ["patient", "critical"]]
+        occupied = len([r for r in patient_rooms if r.get("patient")])
+        total = len(patient_rooms)
+        
+        hospital_state["stats"] = {
+            "total_patient_rooms": total,
+            "occupied_rooms": occupied,
+            "vacant_rooms": total - occupied,
+            "occupancy_rate": round(occupied / total * 100, 1) if total > 0 else 0,
+            "critical_rooms": len([r for r in patient_rooms if r["status"] == "critical"]),
+            "active_alerts": len(hospital_state["alerts"]),
+            "active_hazards": len(hospital_state["hazards"])
+        }
+        
+        print(f"📊 Hospital state fetched: {occupied}/{total} rooms occupied, {len(hospital_state['alerts'])} alerts, {len(hospital_state['hazards'])} hazards")
+        
+    except Exception as e:
+        print(f"⚠️ Error fetching hospital state: {e}")
+    
+    return hospital_state
+
+
 @app.post("/ai/chat", response_model=ChatResponse)
 async def ai_chat(request: ChatRequest):
     """
@@ -377,7 +469,10 @@ async def ai_chat(request: ChatRequest):
             "content": request.message
         })
         
-        system_prompt = build_system_prompt(context)
+        # Fetch current hospital state for context injection
+        hospital_state = await fetch_hospital_state()
+        
+        system_prompt = build_system_prompt(context, hospital_state)
         print(f"\n💬 User message: {request.message}")
         
         # Prefer Claude, fallback to Cerebras
@@ -414,15 +509,26 @@ async def ai_chat(request: ChatRequest):
         # Save updated context
         await write_context(session_id, context)
         
-        # Check if cache should be invalidated
+        # Check if cache should be invalidated and detect flash room
         invalidate_cache = False
         cache_keys = []
+        flash_room_id = None
         
         for tool_result in all_tool_results:
             if isinstance(tool_result, dict) and tool_result.get("success"):
                 invalidate_cache = True
-                cache_keys = ["rooms", "patients", "hazards", "alerts"]
-                break
+                cache_keys = ["rooms", "patients", "hazards", "alerts", "tasks"]
+                
+                # Detect tasks assigned to rooms for flash effect
+                if tool_result.get("room_name"):
+                    # Convert room name to ID
+                    room_name = tool_result["room_name"]
+                    room_id = room_name.lower().replace(" ", "-")
+                    flash_room_id = room_id
+                    cache_keys.append("tasks")
+                elif tool_result.get("room_id"):
+                    flash_room_id = tool_result["room_id"]
+                    cache_keys.append("tasks")
         
         return ChatResponse(
             response=assistant_response,
@@ -431,7 +537,8 @@ async def ai_chat(request: ChatRequest):
             tool_calls=len(all_tool_results),
             tool_rounds=round_num,
             invalidate_cache=invalidate_cache,
-            cache_keys=cache_keys
+            cache_keys=cache_keys,
+            flash_room_id=flash_room_id
         )
     
     except Exception as e:
@@ -486,6 +593,238 @@ async def get_smplrspace_config():
         "clientToken": os.getenv("SMPLR_CLIENT_TOKEN") or os.getenv("SMPLR_TOKEN") or os.getenv("SMPR_CLIENT_TOKEN"),
         "spaceId": os.getenv("SMPLR_SPACE_ID"),
     }
+
+
+# ============================================================================
+# FLOOR PLAN DATA ENDPOINTS (DATABASE-BACKED)
+# ============================================================================
+
+@app.get("/api/v1/hospital/rooms")
+async def get_hospital_rooms():
+    """Get all hospital rooms with patient assignments from database"""
+    supabase = get_supabase()
+    if not supabase:
+        return {"error": "Database not configured", "rooms": []}
+    
+    try:
+        # Fetch all rooms
+        rooms_res = supabase.table("hospital_rooms").select("*").execute()
+        rooms = rooms_res.data or []
+        
+        # Fetch all active room assignments with patient info
+        # Use explicit FK hint to disambiguate patients->users relationship
+        assignments_res = supabase.table("room_assignments").select(
+            "room_id, patient_id, patients(id, age, medical_conditions, status, users!patients_user_id_fkey(full_name))"
+        ).is_("discharged_at", "null").execute()
+        
+        # Build assignment map
+        assignment_map = {}
+        for a in (assignments_res.data or []):
+            patient = a.get("patients", {}) or {}
+            user = patient.get("users", {}) or {}
+            assignment_map[a["room_id"]] = {
+                "id": str(patient.get("id")) if patient.get("id") else None,
+                "name": user.get("full_name", "Unknown"),
+                "age": patient.get("age"),
+                "condition": ", ".join(patient.get("medical_conditions") or []),
+                "status": patient.get("status", "stable")
+            }
+        
+        rooms_with_patients = []
+        for room in rooms:
+            patient = assignment_map.get(room["id"])
+            rooms_with_patients.append({
+                "id": room["id"],
+                "name": room["name"],
+                "type": room["room_type"],
+                "status": room["status"],
+                "patient": patient
+            })
+        
+        return {"rooms": rooms_with_patients}
+    except Exception as e:
+        print(f"Error fetching rooms: {e}")
+        return {"error": str(e), "rooms": []}
+
+
+@app.get("/api/v1/hospital/hazards")
+async def get_hospital_hazards():
+    """Get all active hazards from database"""
+    supabase = get_supabase()
+    if not supabase:
+        return {"error": "Database not configured", "hazards": []}
+    
+    try:
+        response = supabase.table("hospital_hazards").select("*").in_(
+            "status", ["active", "responding"]
+        ).execute()
+        hazards = response.data or []
+        
+        formatted = [{
+            "id": str(h["id"]),
+            "type": h["hazard_type"],
+            "location": h.get("location_name", h.get("location", "Unknown")),
+            "room_id": h.get("room_id"),
+            "description": h["description"],
+            "severity": h["severity"],
+            "status": h["status"],
+            "reported_at": h.get("created_at")
+        } for h in hazards]
+        
+        return {"hazards": formatted}
+    except Exception as e:
+        print(f"Error fetching hazards: {e}")
+        return {"error": str(e), "hazards": []}
+
+
+@app.get("/api/v1/hospital/alerts")
+async def get_hospital_alerts():
+    """Get all active alerts from database"""
+    supabase = get_supabase()
+    if not supabase:
+        return {"error": "Database not configured", "alerts": []}
+    
+    try:
+        response = supabase.table("alerts").select(
+            "id, title, message, severity, type, patient_id, created_at"
+        ).eq("acknowledged", False).execute()
+        alerts = response.data or []
+        
+        # Get room assignments for alert patients
+        patient_ids = [a.get("patient_id") for a in alerts if a.get("patient_id")]
+        room_map = {}
+        
+        if patient_ids:
+            assignments_res = supabase.table("room_assignments").select(
+                "patient_id, room_id"
+            ).in_("patient_id", patient_ids).is_("discharged_at", "null").execute()
+            
+            for a in (assignments_res.data or []):
+                room_map[str(a["patient_id"])] = a["room_id"]
+        
+        formatted = [{
+            "id": str(a["id"]),
+            "title": a.get("title"),
+            "description": a.get("message"),
+            "severity": a.get("severity"),
+            "type": a.get("type"),
+            "patient_id": str(a.get("patient_id")) if a.get("patient_id") else None,
+            "room_id": room_map.get(str(a.get("patient_id"))),
+            "created_at": a.get("created_at")
+        } for a in alerts]
+        
+        return {"alerts": formatted}
+    except Exception as e:
+        print(f"Error fetching alerts: {e}")
+        return {"error": str(e), "alerts": []}
+
+
+@app.get("/api/v1/hospital/rooms/{room_id}/details")
+async def get_room_details(room_id: str):
+    """Get full details for a specific room including patient, tasks, hazards"""
+    supabase = get_supabase()
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    try:
+        # Get room
+        room_res = supabase.table("hospital_rooms").select("*").eq("id", room_id).execute()
+        if not room_res.data:
+            return {"error": f"Room '{room_id}' not found"}
+        
+        room = room_res.data[0]
+        
+        # Get patient in room
+        assignment_res = supabase.table("room_assignments").select(
+            "patient_id, assigned_at, patients(id, age, medical_conditions, status, users!patients_user_id_fkey(full_name, email))"
+        ).eq("room_id", room_id).is_("discharged_at", "null").execute()
+        
+        patient = None
+        if assignment_res.data:
+            p = assignment_res.data[0].get("patients", {}) or {}
+            user = p.get("users", {}) or {}
+            patient = {
+                "id": str(p.get("id")) if p.get("id") else None,
+                "name": user.get("full_name", "Unknown"),
+                "email": user.get("email"),
+                "age": p.get("age"),
+                "conditions": p.get("medical_conditions", []),
+                "status": p.get("status", "stable"),
+                "assigned_at": assignment_res.data[0].get("assigned_at")
+            }
+        
+        # Get pending tasks for room
+        tasks_res = supabase.table("room_tasks").select("*").eq(
+            "room_id", room_id
+        ).eq("status", "pending").execute()
+        tasks = [{
+            "id": str(t["id"]),
+            "type": t["task_type"],
+            "title": t["title"],
+            "description": t.get("description"),
+            "priority": t["priority"],
+            "due_at": t.get("due_at")
+        } for t in (tasks_res.data or [])]
+        
+        # Get hazards for room
+        hazards_res = supabase.table("hospital_hazards").select("*").eq(
+            "room_id", room_id
+        ).in_("status", ["active", "responding"]).execute()
+        hazards = [{
+            "id": str(h["id"]),
+            "type": h["hazard_type"],
+            "description": h["description"],
+            "severity": h["severity"],
+            "status": h["status"]
+        } for h in (hazards_res.data or [])]
+        
+        # Get alerts for patient in room
+        alerts = []
+        if patient and patient.get("id"):
+            alerts_res = supabase.table("alerts").select("*").eq(
+                "patient_id", patient["id"]
+            ).eq("acknowledged", False).execute()
+            alerts = [{
+                "id": str(a["id"]),
+                "title": a.get("title"),
+                "message": a.get("message"),
+                "severity": a.get("severity")
+            } for a in (alerts_res.data or [])]
+        
+        # Get pending medications for patient
+        medications = []
+        if patient and patient.get("id"):
+            meds_res = supabase.table("pill_logs").select(
+                "id, scheduled_time, status, patient_pills(pills(name, strength, unit))"
+            ).eq("patient_id", patient["id"]).eq("status", "pending").execute()
+            
+            for m in (meds_res.data or []):
+                pp = m.get("patient_pills", {}) or {}
+                pill = pp.get("pills", {}) or {}
+                medications.append({
+                    "id": str(m["id"]),
+                    "name": pill.get("name", "Unknown"),
+                    "dosage": f"{pill.get('strength', '')} {pill.get('unit', '')}".strip(),
+                    "scheduled_time": m.get("scheduled_time"),
+                    "status": m.get("status")
+                })
+        
+        return {
+            "room": {
+                "id": room["id"],
+                "name": room["name"],
+                "type": room["room_type"],
+                "status": room["status"]
+            },
+            "patient": patient,
+            "tasks": tasks,
+            "hazards": hazards,
+            "alerts": alerts,
+            "medications": medications
+        }
+    except Exception as e:
+        print(f"Error fetching room details: {e}")
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":

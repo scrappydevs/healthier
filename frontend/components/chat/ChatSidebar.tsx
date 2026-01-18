@@ -471,16 +471,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     URL.revokeObjectURL(url);
   }, [messages, sessionTitle]);
 
-  // Get page label for context indicator
-  const pageLabel = useMemo(() => {
-    if (pathname?.includes("hospital")) return "Hospital View";
-    if (pathname?.includes("patients")) return "Patients";
-    if (pathname?.includes("alerts")) return "Alerts";
-    if (pathname?.includes("analytics")) return "Analytics";
-    if (pathname?.includes("settings")) return "Settings";
-    return "Dashboard";
-  }, [pathname]);
-
   return (
     <div
       className={cn(
@@ -577,7 +567,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
           <EmptyState
             suggestions={smartSuggestions}
             onSuggestionClick={handleSuggestionClick}
-            pageLabel={pageLabel}
           />
         ) : (
           <>
@@ -644,7 +633,7 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
           </div>
         )}
 
-        <div className="relative">
+        <div className="flex gap-2 items-end">
           <textarea
             ref={inputRef}
             value={inputValue}
@@ -655,32 +644,28 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
                 ? "Thinking..."
                 : isStreaming
                 ? "Responding..."
-                : "Ask anything..."
+                : "Ask a question..."
             }
             disabled={isLoading || isStreaming}
             rows={1}
             className={cn(
-              "w-full min-h-[40px] max-h-32 px-3 py-2.5 pr-10 text-sm",
-              "bg-muted/40 border rounded-md resize-none",
-              "placeholder:text-muted-foreground",
-              "focus:outline-none focus:ring-1 focus:ring-primary",
+              "flex-1 min-h-[38px] max-h-32 px-3 py-2 text-sm",
+              "bg-muted/30 border border-border rounded-lg resize-none",
+              "placeholder:text-muted-foreground/60",
+              "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
               "disabled:opacity-50 disabled:cursor-not-allowed"
             )}
           />
           <Button
             size="icon"
-            className="absolute right-1.5 bottom-1.5 h-7 w-7"
+            className="h-[38px] w-[38px] rounded-lg shrink-0"
             onClick={handleSend}
             disabled={!inputValue.trim() || isLoading || isStreaming}
           >
-            <Send className="h-3.5 w-3.5" />
+            <Send className="h-4 w-4" />
           </Button>
         </div>
 
-        {/* Location indicator */}
-        <div className="flex items-center gap-1.5 mt-2 text-muted-foreground">
-          <span className="text-xs">{pageLabel}</span>
-        </div>
       </div>
     </div>
   );
@@ -693,7 +678,6 @@ function EmptyState({
 }: {
   suggestions: string[];
   onSuggestionClick: (prompt: string) => void;
-  pageLabel: string;
 }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8">

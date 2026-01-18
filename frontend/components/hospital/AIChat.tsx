@@ -48,19 +48,10 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
   const [showToolIndicator, setShowToolIndicator] = useState(false);
   const [toolCallCount, setToolCallCount] = useState(0);
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
-  const [currentTime, setCurrentTime] = useState(new Date());
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
-
-  // Update time every minute
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -294,10 +285,17 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
       if (data.invalidate_cache || data.tool_calls > 0) {
         console.log('🔄 AI made changes - invalidating cache');
         console.log('   Tool calls:', data.tool_calls);
+        if (data.flash_room_id) {
+          console.log('   Flash room:', data.flash_room_id);
+        }
         
         // Dispatch custom event to notify SpaceViewer to refresh
         window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
-          detail: { keys: data.cache_keys || ['rooms', 'alerts'], timestamp: Date.now() }
+          detail: { 
+            keys: data.cache_keys || ['rooms', 'alerts'], 
+            flash_room_id: data.flash_room_id,
+            timestamp: Date.now() 
+          }
         }));
         
         // Also call the prop callback if provided
@@ -372,13 +370,18 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
         // Invalidate cache if AI made changes
         if (data.invalidate_cache || data.tool_calls > 0) {
           console.log('🔄 AI made changes (suggestion) - invalidating cache');
-          
-          // Dispatch multiple times to ensure it's caught
-          for (let i = 0; i < 3; i++) {
-            window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
-              detail: { keys: data.cache_keys || ['rooms', 'patients'], timestamp: Date.now() }
-            }));
+          if (data.flash_room_id) {
+            console.log('   Flash room:', data.flash_room_id);
           }
+          
+          // Dispatch custom event to notify SpaceViewer to refresh
+          window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
+            detail: { 
+              keys: data.cache_keys || ['rooms', 'patients'], 
+              flash_room_id: data.flash_room_id,
+              timestamp: Date.now() 
+            }
+          }));
           
           console.log('   ✅ Cache invalidation events dispatched');
           
@@ -738,8 +741,8 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
             </div>
 
             {/* Input Area */}
-            <div className="border-t border-neutral-200 p-4">
-              <div className="flex gap-2">
+            <div className="border-t border-neutral-200 p-3">
+              <div className="flex gap-2 items-center">
                 <input
                   type="text"
                   value={input}
@@ -750,15 +753,15 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                       ? 'Thinking...'
                       : isStreaming
                       ? 'Responding...'
-                      : 'Ask me anything...'
+                      : 'Ask a question...'
                   }
                   disabled={isLoading || isStreaming}
-                  className="flex-1 px-3 py-2 text-sm font-light text-neutral-900 placeholder:text-neutral-500 border border-neutral-200 rounded-lg focus:outline-none focus:border-emerald-600 transition-colors disabled:opacity-50 disabled:bg-neutral-50"
+                  className="flex-1 px-3 py-2 text-sm font-light text-neutral-900 placeholder:text-neutral-400 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all disabled:opacity-50 disabled:bg-neutral-100"
                 />
                 <button
                   onClick={handleSendMessage}
                   disabled={isLoading || isStreaming || input.trim() === ''}
-                  className="px-4 py-2 bg-emerald-600 text-white text-sm font-light rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-[38px] w-[38px] flex items-center justify-center bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <svg
                     className="w-4 h-4"
@@ -770,40 +773,13 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                      d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
                     />
                   </svg>
                 </button>
               </div>
             </div>
 
-            {/* Footer */}
-            <div
-              className="px-4 py-2 border-t border-neutral-200 bg-neutral-50"
-              style={{ borderRadius: '0 0 12px 12px' }}
-            >
-              <div className="flex items-center justify-between text-xs font-light text-neutral-500">
-                <span className="uppercase tracking-wider flex items-center gap-2">
-                  {pathname?.includes('hospital') ? (
-                    <>
-                      <span>🏥</span>
-                      <span>Hospital View</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>💊</span>
-                      <span>PillPal</span>
-                    </>
-                  )}
-                </span>
-                <span className="font-mono text-[10px]">
-                  {currentTime.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              </div>
-            </div>
           </motion.div>
         ) : (
           <div className="fixed bottom-6 right-6 z-50 group">

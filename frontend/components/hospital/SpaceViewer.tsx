@@ -10,6 +10,16 @@ declare global {
   }
 }
 
+// Patient interface
+interface Patient {
+  id: string;
+  name: string;
+  age?: number;
+  condition?: string;
+  room?: string;
+  status?: string;
+}
+
 // Room interface matching backend response
 interface Room {
   id: string;
@@ -25,12 +35,14 @@ interface Room {
     | 'restroom'
     | 'storage'
     | 'other';
+  status?: 'normal' | 'critical' | 'vacant' | 'maintenance';
   position: {
     levelIndex: number;
     x: number;
     z: number;
     polygon?: Array<{ x: number; z: number }>;
   };
+  patient?: Patient | null;
 }
 
 // Alert interface from backend
@@ -43,6 +55,17 @@ interface Alert {
   room_id?: string;
   patient_id?: string;
   created_at: string;
+}
+
+// Hazard interface
+interface Hazard {
+  id: string;
+  type: string;
+  location: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: string;
+  reported_at?: string;
 }
 
 // Smplrspace config from backend
@@ -58,6 +81,18 @@ export interface SpaceViewerProps {
   viewMode?: ViewMode;
   showHeatmap?: boolean;
   onRoomClick?: (room: Room) => void;
+  onStateChange?: (state: { 
+    viewerMode: '2d' | '3d'; 
+    roomCount: number; 
+    alertCount: number;
+    criticalAlertCount: number;
+  }) => void;
+  onModeToggle?: (mode: '2d' | '3d') => void;
+  initialViewerMode?: '2d' | '3d';
+}
+
+export interface SpaceViewerRef {
+  setMode: (mode: '2d' | '3d') => void;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -66,6 +101,9 @@ export function SpaceViewer({
   viewMode = 'map',
   showHeatmap = false,
   onRoomClick,
+  onStateChange,
+  onModeToggle,
+  initialViewerMode = '3d',
 }: SpaceViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const spaceRef = useRef<any>(null);
@@ -74,11 +112,21 @@ export function SpaceViewer({
   const [smplrConfig, setSmplrConfig] = useState<SmplrConfig | null>(null);
   const [isViewerReady, setIsViewerReady] = useState(false);
   const [viewerError, setViewerError] = useState<string | null>(null);
-  const [viewerMode, setViewerMode] = useState<'2d' | '3d'>('3d');
+  const [viewerMode, setViewerMode] = useState<'2d' | '3d'>(initialViewerMode);
+
+  // Sync external mode changes
+  useEffect(() => {
+    if (initialViewerMode !== viewerMode && spaceRef.current && isViewerReady) {
+      spaceRef.current.setMode(initialViewerMode);
+      setViewerMode(initialViewerMode);
+    }
+  }, [initialViewerMode, isViewerReady]);
   
-  // Room and alert data from backend
+  // Room, alert, and hazard data from backend
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomAlerts, setRoomAlerts] = useState<Record<string, string>>({}); // room_id -> severity
+  const [hazards, setHazards] = useState<Hazard[]>([]);
+  const [flashingRooms, setFlashingRooms] = useState<Set<string>>(new Set()); // rooms with new tasks
 
   // Fetch Smplrspace config from backend
   useEffect(() => {
@@ -96,78 +144,61 @@ export function SpaceViewer({
     fetchSmplrConfig();
   }, []);
 
-  // Fetch rooms from backend
+  // Fetch rooms from backend (database-backed)
+  // IMPORTANT: Merges DB data with existing room polygons to preserve visualization
   const fetchRooms = useCallback(async () => {
     try {
-      console.log('🔄 Fetching rooms from backend...');
+      console.log('🔄 Fetching rooms from database...');
       
-      // Try database rooms first
-      let roomsFound = false;
-      try {
-        const res = await fetch(`${API_URL}/api/v1/rooms`);
-        const data = await res.json();
+      const res = await fetch(`${API_URL}/api/v1/hospital/rooms`);
+      const data = await res.json();
+      const dbRooms = data.rooms || [];
+      
+      if (dbRooms.length > 0) {
+        console.log(`✅ Loaded ${dbRooms.length} rooms from database`);
         
-        if (Array.isArray(data) && data.length > 0) {
-          console.log(`✅ Loaded ${data.length} rooms from database`);
-          
-          const frontendRooms: Room[] = data.map((room: any) => {
-            const metadata = room.metadata || {};
-            const smplrData = metadata.smplrspace_data || {};
-            
-            return {
-              id: room.room_id || room.id,
-              name: room.room_name || room.name,
-              type: room.room_type || 'patient',
-        position: {
-          levelIndex: 0,
-                x: smplrData.position?.x || 0,
-                z: smplrData.position?.z || 0,
-                polygon: metadata.polygon || [],
-              },
-            };
-          });
-          
-          setRooms(frontendRooms);
-          roomsFound = true;
-        }
-      } catch (e) {
-        console.log('⚠️ Could not fetch rooms from database');
-      }
-      
-      // Fallback to mock rooms if no database rooms
-      if (!roomsFound) {
-        try {
-          const mockRes = await fetch(`${API_URL}/mock/rooms`);
-          const mockData = await mockRes.json();
-          const mockRooms = mockData.rooms || [];
-          
-          if (mockRooms.length > 0) {
-            console.log(`✅ Loaded ${mockRooms.length} mock rooms`);
-            
-            const frontendRooms: Room[] = mockRooms.map((room: any) => ({
-              id: room.id,
-              name: room.name,
-              type: room.type || 'patient',
-              position: {
-                levelIndex: 0,
-                x: 0,
-                z: 0,
-                polygon: [],
-              },
-            }));
-            
-            setRooms(frontendRooms);
+        // Merge DB data with existing rooms to preserve polygon/position data
+        setRooms(prevRooms => {
+          // If we have existing rooms with polygons, merge DB data into them
+          if (prevRooms.length > 0 && prevRooms.some(r => r.position.polygon && r.position.polygon.length > 0)) {
+            console.log('   Merging with existing polygon data...');
+            return prevRooms.map(existingRoom => {
+              const dbRoom = dbRooms.find((r: any) => r.id === existingRoom.id);
+              if (dbRoom) {
+                return {
+                  ...existingRoom,
+                  status: dbRoom.status || existingRoom.status,
+                  patient: dbRoom.patient || null, // Use null explicitly if no patient
+                };
+              }
+              return existingRoom;
+            });
           }
-        } catch (e) {
-          console.log('⚠️ Could not fetch mock rooms');
-        }
+          
+          // First load - no polygons yet, create basic room objects
+          // Polygons will be added by syncRoomsFromSmplrspace
+          console.log('   Initial load - creating room placeholders...');
+          return dbRooms.map((room: any) => ({
+            id: room.id,
+            name: room.name,
+            type: room.type || 'patient',
+            status: room.status || 'normal',
+            position: {
+              levelIndex: 0,
+              x: 0,
+              z: 0,
+              polygon: [],
+            },
+            patient: room.patient || null,
+          }));
+        });
       }
     } catch (error) {
       console.error('❌ Error fetching rooms:', error);
     }
   }, []);
 
-  // Fetch alerts from backend (both database and mock)
+  // Fetch alerts from backend (database-backed)
   const fetchAlerts = useCallback(async () => {
     try {
       const alertMap: Record<string, string> = {};
@@ -175,48 +206,37 @@ export function SpaceViewer({
         'critical': 5, 'high': 4, 'medium': 3, 'low': 2, 'info': 1 
       };
       
-      // Fetch from database alerts
-      try {
-        const dbRes = await fetch(`${API_URL}/api/v1/alerts?status=active`);
-        const dbData = await dbRes.json();
-        const dbAlerts: Alert[] = Array.isArray(dbData) ? dbData : (dbData.alerts || []);
-        
-        for (const alert of dbAlerts) {
-          if (alert.room_id) {
-            const currentPriority = severityPriority[alertMap[alert.room_id]] || 0;
-            const newPriority = severityPriority[alert.severity] || 0;
-            if (newPriority > currentPriority) {
-              alertMap[alert.room_id] = alert.severity;
-            }
-          }
-        }
-      } catch (e) {
-        console.log('⚠️ Could not fetch database alerts');
-      }
+      const res = await fetch(`${API_URL}/api/v1/hospital/alerts`);
+      const data = await res.json();
+      const alerts: Alert[] = data.alerts || [];
       
-      // Fetch mock alerts (from AI tool actions)
-      try {
-        const mockRes = await fetch(`${API_URL}/mock/alerts`);
-        const mockData = await mockRes.json();
-        const mockAlerts: Alert[] = mockData.alerts || [];
-        
-        for (const alert of mockAlerts) {
-          if (alert.room_id && alert.status === 'active') {
-            const currentPriority = severityPriority[alertMap[alert.room_id]] || 0;
-            const newPriority = severityPriority[alert.severity] || 0;
-        if (newPriority > currentPriority) {
-              alertMap[alert.room_id] = alert.severity;
-            }
+      for (const alert of alerts) {
+        if (alert.room_id) {
+          const currentPriority = severityPriority[alertMap[alert.room_id]] || 0;
+          const newPriority = severityPriority[alert.severity] || 0;
+          if (newPriority > currentPriority) {
+            alertMap[alert.room_id] = alert.severity;
           }
         }
-      } catch (e) {
-        console.log('⚠️ Could not fetch mock alerts');
       }
       
       setRoomAlerts(alertMap);
       console.log(`🚨 Mapped alerts to ${Object.keys(alertMap).length} rooms:`, alertMap);
     } catch (error) {
       console.error('Error fetching alerts:', error);
+    }
+  }, []);
+
+  // Fetch hazards from backend (database-backed)
+  const fetchHazards = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/hospital/hazards`);
+      const data = await res.json();
+      const activeHazards: Hazard[] = data.hazards || [];
+      setHazards(activeHazards);
+      console.log(`⚠️ Loaded ${activeHazards.length} active hazards`);
+    } catch (e) {
+      console.log('⚠️ Could not fetch hazards');
     }
   }, []);
 
@@ -663,21 +683,40 @@ export function SpaceViewer({
       if (syncedRooms.length > 0) {
         console.log(`✅ Prepared ${syncedRooms.length} rooms for visualization`);
         
-        // Convert to frontend Room format and set state directly
-        const frontendRooms: Room[] = syncedRooms.map((room: any) => ({
-          id: room.id,
-          name: room.name,
-          type: room.room_type || 'patient',
-      position: {
-            levelIndex: room.levelIndex || 0,
-            x: room.position.x,
-            z: room.position.z,
-            polygon: room.polygon || [],
-          },
-        }));
+        // Fetch database data to merge with polygon data (patient assignments, status)
+        let dbRoomData: Record<string, any> = {};
+        try {
+          const dbRes = await fetch(`${API_URL}/api/v1/hospital/rooms`);
+          const dbData = await dbRes.json();
+          const dbRooms = dbData.rooms || [];
+          dbRooms.forEach((r: any) => {
+            dbRoomData[r.id] = r;
+          });
+          console.log(`📊 Fetched ${Object.keys(dbRoomData).length} rooms from database`);
+        } catch (e) {
+          console.warn('⚠️ Could not fetch database room data');
+        }
+        
+        // Convert to frontend Room format, merging Smplrspace polygons with DB data
+        const frontendRooms: Room[] = syncedRooms.map((room: any) => {
+          const dbRoom = dbRoomData[room.id] || {};
+          return {
+            id: room.id,
+            name: room.name,
+            type: room.room_type || dbRoom.type || 'patient',
+            status: dbRoom.status || 'normal',
+            position: {
+              levelIndex: room.levelIndex || 0,
+              x: room.position.x,
+              z: room.position.z,
+              polygon: room.polygon || [],
+            },
+            patient: dbRoom.patient || null,
+          };
+        });
         
         setRooms(frontendRooms);
-        console.log(`✅ Set ${frontendRooms.length} rooms in state with polygon data`);
+        console.log(`✅ Set ${frontendRooms.length} rooms in state with polygon + database data`);
         
         // Also try to sync to backend (optional, for persistence)
         try {
@@ -740,16 +779,18 @@ export function SpaceViewer({
             // Sync rooms from walls (this sets rooms state directly)
             await syncRoomsFromSmplrspace(spaceId);
             
-            // Fetch alerts
+            // Fetch alerts and hazards
             await fetchAlerts();
+            await fetchHazards();
           },
           onError: (error: string) => {
             console.error('❌ Viewer error:', error);
             setViewerError(error);
           },
           renderOptions: {
-            backgroundColor: '#f8fafc',
+            backgroundColor: '#fcfefc', // Extremely light green - barely perceptible
             walls: { alpha: 0.95 },
+            compass: false,
           },
           hideNavigationButtons: true,
           hideLevelPicker: true,
@@ -763,6 +804,7 @@ export function SpaceViewer({
     initViewer();
 
     return () => {
+      setIsViewerReady(false); // Mark as not ready before cleanup
       if (spaceRef.current) {
         try {
           spaceRef.current.remove();
@@ -773,6 +815,26 @@ export function SpaceViewer({
       }
     };
   }, [smplrLoaded, smplrConfig, viewerMode, syncRoomsFromSmplrspace, fetchRooms, fetchAlerts]);
+
+  // Helper to safely execute space operations
+  const safeSpaceOperation = useCallback((operation: () => void, operationName: string) => {
+    if (!spaceRef.current || !isViewerReady) {
+      console.log(`⏸️ Skipping ${operationName} - viewer not ready`);
+      return false;
+    }
+    try {
+      operation();
+      return true;
+    } catch (e: any) {
+      // Check if it's a "viewer not ready" error - these are expected during transitions
+      if (e?.message?.includes('viewer is not ready') || e?.message?.includes('not ready yet')) {
+        console.log(`⏸️ ${operationName} skipped - viewer transitioning`);
+        return false;
+      }
+      console.error(`Error in ${operationName}:`, e);
+      return false;
+    }
+  }, [isViewerReady]);
 
   // Update room visualization layers when rooms or alerts change
   useEffect(() => {
@@ -792,20 +854,24 @@ export function SpaceViewer({
       console.log(`   - ${r.name}: pos=(${r.position.x?.toFixed(2)}, ${r.position.z?.toFixed(2)}), polygon=${r.position.polygon?.length || 0} points`);
     });
 
-    // Remove old layers
-    try {
-      spaceRef.current.removeDataLayer('room-polygons');
-      spaceRef.current.removeDataLayer('room-icons');
-      spaceRef.current.removeDataLayer('patient-room-polygons');
-      spaceRef.current.removeDataLayer('critical-room-polygons');
-      spaceRef.current.removeDataLayer('storage-room-polygons');
-      spaceRef.current.removeDataLayer('restroom-polygons');
-      spaceRef.current.removeDataLayer('pantry-polygons');
-      spaceRef.current.removeDataLayer('waiting-polygons');
-      spaceRef.current.removeDataLayer('reception-polygons');
-      spaceRef.current.removeDataLayer('hallway-polygons');
-    } catch (e) {
-      // Layers might not exist
+    // Remove old layers - wrap in try/catch since viewer might be transitioning
+    const removeLayers = () => {
+      const layerIds = [
+        'room-polygons', 'room-icons', 'patient-room-polygons', 'critical-room-polygons',
+        'storage-room-polygons', 'restroom-polygons', 'pantry-polygons', 'waiting-polygons',
+        'reception-polygons', 'hallway-polygons'
+      ];
+      for (const id of layerIds) {
+        try {
+          spaceRef.current?.removeDataLayer(id);
+        } catch (e) {
+          // Layer might not exist - ignore
+        }
+      }
+    };
+    
+    if (!safeSpaceOperation(removeLayers, 'remove old layers')) {
+      return; // Viewer not ready, skip the entire update
     }
 
     // Filter rooms with valid positions (must have non-zero x OR z, OR polygon data)
@@ -822,18 +888,36 @@ export function SpaceViewer({
       }
     });
 
+    // Wrap all layer additions in try-catch to handle viewer state transitions
+    try {
+      // Verify viewer is still ready before adding layers
+      if (!spaceRef.current || !isViewerReady) {
+        console.log('⏸️ Viewer became unavailable during update');
+        return;
+      }
+
     // Add polygon layers for EACH room type (like Haven does)
     
-    // 1. Patient rooms
+    // 1. Patient rooms (only render if occupied or have special status)
     const patientPolygonData = validRooms
-      .filter(r => r.type === 'patient' && r.position.polygon && r.position.polygon.length > 0)
+      .filter(r => {
+        // Only render patient room polygons if:
+        // - Room has a patient (occupied), OR
+        // - Room has maintenance/critical status
+        const isOccupied = r.patient !== null && r.patient !== undefined;
+        const hasSpecialStatus = r.status === 'maintenance' || r.status === 'critical';
+        return r.type === 'patient' && 
+               r.position.polygon && 
+               r.position.polygon.length > 0 &&
+               (isOccupied || hasSpecialStatus);
+      })
       .map(room => ({
         id: room.id + '-polygon',
         coordinates: room.position.polygon,
-          levelIndex: room.position.levelIndex,
+        levelIndex: room.position.levelIndex,
         room,
       }));
-    console.log(`   Patient rooms with polygons: ${patientPolygonData.length}`);
+    console.log(`   Patient rooms with polygons (filtered): ${patientPolygonData.length}`);
 
     if (patientPolygonData.length > 0) {
       spaceRef.current.addDataLayer({
@@ -843,13 +927,27 @@ export function SpaceViewer({
         alpha: 0.4,
         color: (data: any) => {
           const room = data.room as Room;
+          
+          // Priority 1: Check for alerts (highest priority)
           const alertSeverity = roomAlerts[room.id];
-          if (alertSeverity === 'critical') return '#ef4444';
-          if (alertSeverity === 'high') return '#f97316';
-          if (alertSeverity === 'medium') return '#eab308';
-          if (alertSeverity === 'low') return '#10b981';
-          if (alertSeverity === 'info') return '#3b82f6';
-          return '#67e8f9'; // Cyan for patient rooms
+          if (alertSeverity === 'critical') return '#ef4444'; // Red
+          if (alertSeverity === 'high') return '#f97316';     // Orange
+          if (alertSeverity === 'medium') return '#eab308';   // Yellow
+          
+          // Priority 2: Room status overrides
+          if (room.status === 'critical') return '#ef4444';   // Red - critical status
+          if (room.status === 'maintenance') return '#f59e0b';// Amber - under maintenance
+          
+          // Priority 3: Check patient status (if occupied)
+          if (room.patient) {
+            // Occupied room - check patient status for color
+            if (room.patient.status === 'critical') return '#ef4444'; // Red - critical patient
+            if (room.patient.status === 'declining') return '#eab308'; // Yellow - needs attention
+            return '#22c55e'; // Green - occupied and stable
+          }
+          
+          // Fallback (shouldn't reach here due to filter)
+          return '#e5e7eb';
         },
         onClick: (data: any) => {
           const room = data.room as Room;
@@ -858,43 +956,51 @@ export function SpaceViewer({
         tooltip: (data: any) => {
           const room = data.room as Room;
           const alertSeverity = roomAlerts[room.id];
-          return alertSeverity
-            ? `${room.name} - ${alertSeverity.toUpperCase()} ALERT`
-            : room.name;
+          const patientInfo = room.patient ? ` - ${room.patient.name}` : ' (Empty)';
+          if (alertSeverity) {
+            return `${room.name}${patientInfo} - ${alertSeverity.toUpperCase()} ALERT`;
+          }
+          if (room.patient) {
+            return `${room.name} - ${room.patient.name} (${room.patient.status || 'stable'})`;
+          }
+          return `${room.name} (Vacant)`;
         },
       });
     }
 
-    // 2. Critical rooms
+    // 2. Critical rooms (only render if occupied - same logic as patient rooms)
     const criticalPolygonData = validRooms
-      .filter(r => r.type === 'critical' && r.position.polygon && r.position.polygon.length > 0)
+      .filter(r => {
+        // Only render critical room if it has a patient
+        const isOccupied = r.patient !== null && r.patient !== undefined;
+        return r.type === 'critical' && 
+               r.position.polygon && 
+               r.position.polygon.length > 0 &&
+               isOccupied;
+      })
       .map(room => ({
         id: room.id + '-polygon',
         coordinates: room.position.polygon,
         levelIndex: room.position.levelIndex,
         room,
       }));
-    console.log(`   Critical rooms with polygons: ${criticalPolygonData.length}`);
+    console.log(`   Critical rooms with polygons (occupied only): ${criticalPolygonData.length}`);
 
     if (criticalPolygonData.length > 0) {
       spaceRef.current.addDataLayer({
         id: 'critical-room-polygons',
         type: 'polygon',
         data: criticalPolygonData,
-        alpha: 0.4,
-        color: (data: any) => {
-          const room = data.room as Room;
-          const alertSeverity = roomAlerts[room.id];
-          if (alertSeverity === 'critical') return '#ef4444';
-          if (alertSeverity === 'high') return '#f97316';
-          if (alertSeverity === 'medium') return '#eab308';
-          return '#fca5a5'; // Light red for critical rooms
-        },
+        alpha: 0.5,
+        color: '#ef4444', // Red - critical room with patient is ALWAYS red
         onClick: (data: any) => {
           const room = data.room as Room;
           if (onRoomClick) onRoomClick(room);
         },
-        tooltip: (data: any) => data.room.name,
+        tooltip: (data: any) => {
+          const room = data.room as Room;
+          return `${room.name} - ${room.patient?.name || 'Unknown'} (CRITICAL CARE)`;
+        },
       });
     }
 
@@ -914,8 +1020,8 @@ export function SpaceViewer({
         id: 'storage-room-polygons',
         type: 'polygon',
         data: storagePolygonData,
-        alpha: 0.4,
-        color: '#fde68a', // Light amber for storage
+        alpha: 0.3,
+        color: '#86efac', // Green for storage (utility area)
         onClick: (data: any) => {
           const room = data.room as Room;
           if (onRoomClick) onRoomClick(room);
@@ -940,8 +1046,8 @@ export function SpaceViewer({
         id: 'restroom-polygons',
         type: 'polygon',
         data: restroomPolygonData,
-        alpha: 0.4,
-        color: '#e0e7ff', // Light indigo for restrooms
+        alpha: 0.3,
+        color: '#86efac', // Green for restrooms (utility area)
         onClick: (data: any) => {
           const room = data.room as Room;
           if (onRoomClick) onRoomClick(room);
@@ -1054,41 +1160,321 @@ export function SpaceViewer({
       });
     }
 
-    console.log('✅ Room visualization updated');
-  }, [isViewerReady, rooms, roomAlerts, onRoomClick]);
+    // =========================================================================
+    // 9. PATIENT INITIALS - Show patient initials using point layer with labels
+    // =========================================================================
+    try {
+      spaceRef.current.removeDataLayer('patient-markers');
+    } catch (e) {
+      // Layer might not exist
+    }
 
-  // Refresh alerts periodically
+    // Helper to get initials from a name
+    const getInitials = (name: string): string => {
+      const parts = name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      return name.substring(0, 2).toUpperCase();
+    };
+
+    // Get rooms with patients that have polygon data (for position calculation)
+    const roomsWithPatients = validRooms.filter(r => 
+      r.patient && r.position.polygon && r.position.polygon.length > 0
+    );
+
+    if (roomsWithPatients.length > 0) {
+      // Calculate centroid of polygon for marker placement
+      const calculateCentroid = (polygon: Array<{ x: number; z: number }>) => {
+        let sumX = 0, sumZ = 0;
+        for (const point of polygon) {
+          sumX += point.x;
+          sumZ += point.z;
+        }
+        return { x: sumX / polygon.length, z: sumZ / polygon.length };
+      };
+
+      const patientMarkerData = roomsWithPatients.map(room => {
+        const centroid = calculateCentroid(room.position.polygon!);
+        const initials = getInitials(room.patient!.name);
+        const status = room.patient!.status || 'stable';
+        return {
+          id: `patient-marker-${room.id}`,
+          position: { 
+            x: centroid.x, 
+            z: centroid.z, 
+            levelIndex: 0 
+          },
+          room,
+          initials,
+          patientName: room.patient!.name,
+          patientStatus: status,
+        };
+      });
+
+      console.log(`   Patient markers: ${patientMarkerData.length}`);
+
+      // Use point layer with colored dots for patients
+      spaceRef.current.addDataLayer({
+        id: 'patient-markers',
+        type: 'point',
+        data: patientMarkerData,
+        diameter: 1.2,
+        anchor: 'center',
+        color: (d: any) => {
+          const status = d.patientStatus;
+          if (status === 'critical') return '#dc2626';
+          if (status === 'improving') return '#16a34a';
+          if (status === 'declining') return '#ea580c';
+          return '#3b82f6'; // stable = blue
+        },
+        tooltip: (d: any) => `${d.initials} - ${d.patientName} (${d.patientStatus})`,
+        onClick: (d: any) => {
+          if (onRoomClick) onRoomClick(d.room);
+        },
+      });
+    }
+
+    // =========================================================================
+    // 10. HAZARD MARKERS - Show warning markers at hazard locations
+    // =========================================================================
+    try {
+      spaceRef.current.removeDataLayer('hazard-markers');
+    } catch (e) {
+      // Layer might not exist
+    }
+
+    // Map hazard locations to room positions
+    const hazardsWithPositions = hazards.map(hazard => {
+      // Find matching room by location name
+      const matchingRoom = validRooms.find(r => 
+        r.name.toLowerCase().includes(hazard.location.toLowerCase()) ||
+        hazard.location.toLowerCase().includes(r.name.toLowerCase())
+      );
+
+      if (matchingRoom && matchingRoom.position.polygon && matchingRoom.position.polygon.length > 0) {
+        const polygon = matchingRoom.position.polygon;
+        let sumX = 0, sumZ = 0;
+        for (const point of polygon) {
+          sumX += point.x;
+          sumZ += point.z;
+        }
+        // Offset slightly from center so it doesn't overlap with patient marker
+        return {
+          id: `hazard-${hazard.id}`,
+          position: { 
+            x: sumX / polygon.length + 1.0, // Offset right
+            z: sumZ / polygon.length - 1.0, // Offset up
+            levelIndex: 0 
+          },
+          hazard,
+          roomName: matchingRoom.name,
+        };
+      }
+      return null;
+    }).filter(h => h !== null);
+
+    if (hazardsWithPositions.length > 0) {
+      console.log(`   Hazard markers: ${hazardsWithPositions.length}`);
+
+      // Use small point markers for hazards - simple and works in both 2D/3D
+      spaceRef.current.addDataLayer({
+        id: 'hazard-markers',
+        type: 'point',
+        data: hazardsWithPositions,
+        diameter: 0.6, // Small marker
+        anchor: 'top',
+        color: (d: any) => {
+          const severity = d.hazard.severity;
+          if (severity === 'critical') return '#dc2626';
+          if (severity === 'high') return '#ea580c';
+          if (severity === 'medium') return '#eab308';
+          return '#f97316';
+        },
+        tooltip: (d: any) => `⚠️ ${d.hazard.type.toUpperCase()}: ${d.hazard.description} (${d.hazard.severity})`,
+        onClick: (d: any) => {
+          console.log('Hazard clicked:', d.hazard);
+        },
+      });
+    }
+
+    console.log('✅ Room visualization updated');
+    
+    } catch (e: any) {
+      // Handle viewer not ready errors gracefully - these happen during view transitions
+      if (e?.message?.includes('viewer is not ready') || e?.message?.includes('not ready yet')) {
+        console.log('⏸️ Visualization skipped - viewer transitioning between modes');
+      } else {
+        console.error('Error updating room visualization:', e);
+      }
+    }
+  }, [isViewerReady, rooms, roomAlerts, hazards, onRoomClick, safeSpaceOperation]);
+
+  // =========================================================================
+  // Flashing animation for rooms with new tasks
+  // =========================================================================
+  useEffect(() => {
+    if (!isViewerReady || !spaceRef.current) return;
+    
+    // Remove previous flash layer
+    try {
+      spaceRef.current.removeDataLayer('flash-overlay');
+    } catch (e) {
+      // Layer might not exist
+    }
+    
+    if (flashingRooms.size === 0) return;
+    
+    // Find rooms that need to flash
+    const flashingRoomData = rooms
+      .filter(r => flashingRooms.has(r.id) && r.position.polygon && r.position.polygon.length > 0)
+      .map(room => ({
+        id: `flash-${room.id}`,
+        coordinates: room.position.polygon,
+        levelIndex: room.position.levelIndex,
+        room,
+      }));
+    
+    if (flashingRoomData.length === 0) return;
+    
+    console.log(`✨ Rendering flash overlay for ${flashingRoomData.length} rooms`);
+    
+    // Create pulsing effect by toggling layer visibility
+    let flashCount = 0;
+    const maxFlashes = 10;
+    
+    const flashInterval = setInterval(() => {
+      flashCount++;
+      
+      if (flashCount > maxFlashes) {
+        clearInterval(flashInterval);
+        try {
+          spaceRef.current?.removeDataLayer('flash-overlay');
+        } catch (e) {}
+        return;
+      }
+      
+      const isVisible = flashCount % 2 === 1;
+      
+      try {
+        spaceRef.current?.removeDataLayer('flash-overlay');
+      } catch (e) {}
+      
+      if (isVisible && spaceRef.current && isViewerReady) {
+        try {
+          spaceRef.current.addDataLayer({
+            id: 'flash-overlay',
+            type: 'polygon',
+            data: flashingRoomData,
+            alpha: 0.6,
+            color: '#fbbf24', // Amber flash
+          });
+        } catch (e: any) {
+          // Viewer may have become unavailable - stop flashing
+          if (e?.message?.includes('viewer is not ready')) {
+            clearInterval(flashInterval);
+          }
+        }
+      }
+    }, 250);
+    
+    return () => {
+      clearInterval(flashInterval);
+      try {
+        spaceRef.current?.removeDataLayer('flash-overlay');
+      } catch (e) {}
+    };
+  }, [isViewerReady, flashingRooms, rooms]);
+
+  // Refresh all data periodically (every 10s) to ensure UI is always current
   useEffect(() => {
     if (!isViewerReady) return;
 
-    const interval = setInterval(fetchAlerts, 10000);
+    // Also do an immediate refresh when viewer becomes ready
+    const refreshAll = async () => {
+      console.log('🔄 Periodic refresh - fetching latest data...');
+      await Promise.all([
+        fetchAlerts(),
+        fetchHazards(),
+        // Re-fetch room data to get latest patient assignments and statuses
+        (async () => {
+          try {
+            const res = await fetch(`${API_URL}/api/v1/hospital/rooms`);
+            const data = await res.json();
+            const dbRooms = data.rooms || [];
+            
+            // Update existing rooms with fresh database data
+            setRooms(prev => prev.map(room => {
+              const dbRoom = dbRooms.find((r: any) => r.id === room.id);
+              if (dbRoom) {
+                return {
+                  ...room,
+                  status: dbRoom.status || room.status,
+                  patient: dbRoom.patient || room.patient,
+                };
+              }
+              return room;
+            }));
+          } catch (e) {
+            console.warn('⚠️ Could not refresh room data');
+          }
+        })()
+      ]);
+    };
+
+    // Initial refresh
+    refreshAll();
+
+    const interval = setInterval(refreshAll, 10000);
     return () => clearInterval(interval);
-  }, [isViewerReady, fetchAlerts]);
+  }, [isViewerReady, fetchAlerts, fetchHazards]);
 
   // Listen for cache invalidation events from chat
   useEffect(() => {
     const handleCacheInvalidate = async (event: Event) => {
       const customEvent = event as CustomEvent;
       const keys = customEvent.detail?.keys || [];
+      const flashRoomId = customEvent.detail?.flash_room_id;
       console.log('🔄 Cache invalidation received:', customEvent.detail);
       console.log('   Keys to refresh:', keys);
       
+      // Handle flash room (when task is assigned)
+      if (flashRoomId) {
+        console.log(`✨ Flashing room: ${flashRoomId}`);
+        setFlashingRooms(prev => new Set(prev).add(flashRoomId));
+        
+        // Remove flash after 5 seconds
+        setTimeout(() => {
+          setFlashingRooms(prev => {
+            const next = new Set(prev);
+            next.delete(flashRoomId);
+            return next;
+          });
+        }, 5000);
+      }
+      
       // Refresh both rooms and alerts when AI makes changes
       // Room status changes, patient transfers, etc. need both to update
-      if (keys.includes('rooms') || keys.includes('patients')) {
+      if (keys.includes('rooms') || keys.includes('patients') || keys.includes('tasks')) {
         console.log('♻️ Refreshing rooms...');
         await fetchRooms();
       }
       
-      if (keys.includes('alerts') || keys.includes('hazards')) {
+      if (keys.includes('alerts')) {
         console.log('♻️ Refreshing alerts...');
         await fetchAlerts();
+      }
+      
+      if (keys.includes('hazards')) {
+        console.log('♻️ Refreshing hazards...');
+        await fetchHazards();
       }
       
       // If no specific keys, refresh everything
       if (keys.length === 0) {
         await fetchRooms();
         await fetchAlerts();
+        await fetchHazards();
       }
       
       console.log('✅ Refresh complete');
@@ -1098,15 +1484,29 @@ export function SpaceViewer({
     return () => {
       window.removeEventListener('pillpal-invalidate-cache', handleCacheInvalidate);
     };
-  }, [fetchAlerts, fetchRooms]);
+  }, [fetchAlerts, fetchRooms, fetchHazards]);
 
   // Handle 2D/3D mode toggle
   const handleModeToggle = useCallback((mode: '2d' | '3d') => {
     if (spaceRef.current && isViewerReady) {
       spaceRef.current.setMode(mode);
       setViewerMode(mode);
+      onModeToggle?.(mode);
     }
-  }, [isViewerReady]);
+  }, [isViewerReady, onModeToggle]);
+
+  // Notify parent of state changes
+  useEffect(() => {
+    if (onStateChange) {
+      const criticalCount = Object.values(roomAlerts).filter(s => s === 'critical').length;
+      onStateChange({
+        viewerMode,
+        roomCount: rooms.length,
+        alertCount: Object.keys(roomAlerts).length,
+        criticalAlertCount: criticalCount,
+      });
+    }
+  }, [viewerMode, rooms.length, roomAlerts, onStateChange]);
 
   if (viewerError) {
     return (
@@ -1130,7 +1530,7 @@ export function SpaceViewer({
   }
 
   return (
-    <div className="relative w-full h-full bg-slate-50">
+    <div className="relative w-full h-full flex flex-col" style={{ backgroundColor: '#fdfefe' }}>
       {/* Load Smplrspace library */}
       <Script
         src="https://app.smplrspace.com/lib/smplr.js"
@@ -1160,61 +1560,9 @@ export function SpaceViewer({
       <div
         id="smplr-container"
         ref={containerRef}
-        className="w-full h-full"
-        style={{ minHeight: '600px' }}
+        className="w-full flex-1"
       />
 
-      {/* 2D/3D Toggle */}
-      {isViewerReady && (
-        <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-1 z-20 flex gap-1">
-          <button
-            onClick={() => handleModeToggle('2d')}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-              viewerMode === '2d'
-                ? 'bg-neutral-900 text-white'
-                : 'text-neutral-600 hover:bg-neutral-100'
-            }`}
-          >
-            2D
-          </button>
-          <button
-            onClick={() => handleModeToggle('3d')}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-              viewerMode === '3d'
-                ? 'bg-neutral-900 text-white'
-                : 'text-neutral-600 hover:bg-neutral-100'
-            }`}
-          >
-            3D
-          </button>
-        </div>
-      )}
-
-      {/* Room count indicator */}
-      {isViewerReady && rooms.length > 0 && (
-        <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-3 z-20">
-          <p className="text-xs font-medium text-neutral-700 uppercase tracking-wider">Rooms</p>
-          <p className="text-2xl font-light text-neutral-900">{rooms.length}</p>
-        </div>
-      )}
-
-      {/* Alert indicator */}
-      {Object.keys(roomAlerts).length > 0 && isViewerReady && (
-        <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-3 z-20 border-l-4 border-red-500">
-          <p className="text-xs font-medium text-neutral-700 uppercase tracking-wider">Active Alerts</p>
-          <div className="flex items-center gap-3 mt-1">
-            <p className="text-2xl font-light text-red-600">{Object.keys(roomAlerts).length}</p>
-            <div className="text-xs text-neutral-500">
-              {Object.values(roomAlerts).filter(s => s === 'critical').length > 0 && (
-                <div className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  <span>{Object.values(roomAlerts).filter(s => s === 'critical').length} critical</span>
-                </div>
-              )}
-                </div>
-            </div>
-        </div>
-      )}
     </div>
   );
 }
