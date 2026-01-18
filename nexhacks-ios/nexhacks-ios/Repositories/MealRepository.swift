@@ -132,7 +132,22 @@ class MealRepository: ObservableObject {
     // MARK: - Private Methods
 
     private func updatePublished() {
+        storage = dedupeMeals(storage)
         meals = storage.sorted { $0.consumedAt > $1.consumedAt }
+    }
+    
+    private func dedupeMeals(_ meals: [Meal]) -> [Meal] {
+        var byId: [UUID: Meal] = [:]
+        for meal in meals {
+            if let existing = byId[meal.id] {
+                if meal.updatedAt > existing.updatedAt {
+                    byId[meal.id] = meal
+                }
+            } else {
+                byId[meal.id] = meal
+            }
+        }
+        return Array(byId.values)
     }
     
     private func loadLocalMeals() {
