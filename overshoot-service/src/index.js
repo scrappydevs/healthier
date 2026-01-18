@@ -209,11 +209,6 @@ wssMedication.on('connection', (ws) => {
                 }
               },
               onResult: (result) => {
-                try {
-                  console.log("Medication vision Overshoot response:", JSON.stringify(result));
-                } catch (e) {
-                  console.log("Medication vision Overshoot response (stringify failed):", result);
-                }
                 firstResultReceived = true;
                 if (resultTimeout) {
                   clearTimeout(resultTimeout);
@@ -445,11 +440,6 @@ wss.on('connection', (ws) => {
                 delay_seconds: 0.2
               },
               onResult: (result) => {
-                try {
-                  console.log("Exercise Overshoot response:", JSON.stringify(result));
-                } catch (e) {
-                  console.log("Exercise Overshoot response (stringify failed):", result);
-                }
                 // Result payload is whatever Overshoot returns; try to pull the model output safely
                 const payload = result?.result ?? result;
                 if (!payload) return;

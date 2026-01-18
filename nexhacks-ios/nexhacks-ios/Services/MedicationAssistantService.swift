@@ -184,23 +184,6 @@ class MedicationAssistantService: NSObject, ObservableObject {
         }
     }
 
-    private func agentSeemsToNeedVision(_ text: String) -> Bool {
-        let t = text.lowercased()
-        if t.contains("don't have an image") { return true }
-        if t.contains("do not have an image") { return true }
-        if t.contains("no image") { return true }
-        if t.contains("no photo") { return true }
-        if t.contains("no picture") { return true }
-        if t.contains("can't see") { return true }
-        if t.contains("cannot see") { return true }
-        if t.contains("don't see") { return true }
-        if t.contains("do not see") { return true }
-        if t.contains("no description") { return true }
-        if t.contains("don't have a description") { return true }
-        if t.contains("do not have a description") { return true }
-        return false
-    }
-
     private func currentVisionDescriptionForAgent() -> String? {
         let vision = visionDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !vision.isEmpty else { return nil }
@@ -261,43 +244,39 @@ class MedicationAssistantService: NSObject, ObservableObject {
         guard !trimmed.isEmpty else { return }
 
         let now = Date()
-        let vision = visionDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !vision.isEmpty else { return }
+        let vision = currentVisionDescriptionForAgent()
+        let rawVision = visionDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("MedicationAssistant: User utterance final \(trimmed.prefix(120))")
+        print("MedicationAssistant: Vision for agent \(vision?.prefix(120) ?? "nil")")
+        print("MedicationAssistant: Vision raw \(rawVision.prefix(120))")
 
-        // Allow sending same question if vision changed since last time
-        let visionChanged = vision != lastVisionSent
-
-        // Skip cooldown if vision changed significantly, otherwise respect cooldown
-        if !visionChanged && now.timeIntervalSince(lastUserFinalUtteranceSentAt) < userUtteranceCooldown {
+        if now.timeIntervalSince(lastUserFinalUtteranceSentAt) < userUtteranceCooldown {
             return
         }
 
         lastUserFinalUtteranceSentAt = now
         lastUserFinalUtteranceSent = trimmed
-        lastVisionSent = vision
-        lastVisionSentAt = now
+        if let vision {
+            lastVisionSent = vision
+            lastVisionSentAt = now
+        }
 
         let meds = medicationContext.trimmingCharacters(in: .whitespacesAndNewlines)
         let medsText = meds.isEmpty ? "No active medications on file." : meds
 
-        let contextMessage = """
-        [VISION UPDATE]
-        Camera view:
-        \(vision)
+        var message = trimmed
+        if let vision {
+            message += "\n\nCamera view:\n\(vision)"
+        }
+        message += "\n\nUser's medication plan:\n\(medsText)"
 
-        User just asked (transcribed on-device):
-        "\(trimmed)"
-
-        User's medication plan:
-        \(medsText)
-        """
-
-        await sendContextMessageSafely(contextMessage)
+        print("MedicationAssistant: Context message built length=\(message.count)")
+        await sendContextMessageSafely(message)
     }
 
     private func sendContextMessageSafely(_ message: String) async {
         do {
-            print("MedicationAssistant: Sending context to agent \(message.prefix(120))")
+            print("MedicationAssistant: Sending context to agent \(message.prefix(300))")
             try await sendMessage(message)
         } catch {
             print("MedicationAssistant: Failed to send context message - \(error)")
@@ -413,15 +392,7 @@ class MedicationAssistantService: NSObject, ObservableObject {
             if let description = json["description"] as? String {
                 visionDescription = description
                 visionStatus = "Receiving"
-
-                // Push every new vision description to the agent.
-                if isVoiceConnected {
-                    if !isAgentResponding {
-                        Task { @MainActor in
-                            await self.sendVisionContextNow(trigger: "vision_update")
-                        }
-                    }
-                }
+                print("MedicationAssistant: Vision updated \(description.prefix(120))")
             }
             
         case "started":
@@ -869,10 +840,6 @@ extension MedicationAssistantService: RoomDelegate {
                 if let message = String(data: data, encoding: .utf8) {
                     self.agentResponse = message
                     self.markAgentActivity()
-
-                    if self.agentSeemsToNeedVision(message) {
-                        await self.sendVisionContextNow(trigger: "agent_requested_vision")
-                    }
                 }
             }
         }
@@ -896,10 +863,6 @@ extension MedicationAssistantService: RoomDelegate {
                 if segment.isFinal && !segment.text.isEmpty, participant.isAgent {
                     self.agentResponse = segment.text
                     self.markAgentActivity()
-
-                    if self.agentSeemsToNeedVision(segment.text) {
-                        await self.sendVisionContextNow(trigger: "agent_requested_vision_transcription")
-                    }
                 }
             }
         }
