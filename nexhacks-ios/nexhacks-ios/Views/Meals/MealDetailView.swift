@@ -186,18 +186,14 @@ struct MealDetailView: View {
                     .foregroundColor(.appPrimary)
                 }
             }
-            .actionSheet(isPresented: $showingDeleteConfirmation) {
-                ActionSheet(
-                    title: Text("Delete Meal?"),
-                    message: Text("This action cannot be undone."),
-                    buttons: [
-                        .destructive(Text("Delete")) {
-                            viewModel.deleteMeal(meal)
-                            dismiss()
-                        },
-                        .cancel()
-                    ]
-                )
+            .alert("Delete Meal?", isPresented: $showingDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    viewModel.deleteMeal(meal)
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This action cannot be undone.")
             }
         }
     }
