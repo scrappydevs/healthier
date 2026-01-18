@@ -148,30 +148,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           sidebarOpen ? "px-4" : "px-2"
         )}>
           {sidebarOpen ? (
-            <>
-              <Link href="/" className="text-xl font-semibold text-slate-900 tracking-tight">
-                healthier
-              </Link>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                onClick={toggleSidebar}
-                title="Collapse sidebar (⌘B)"
-              >
-                <PanelLeftClose className="h-4 w-4" />
-              </Button>
-            </>
+            <Link href="/" className="text-xl font-semibold text-slate-900 tracking-tight">
+              healthier
+            </Link>
           ) : (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              onClick={toggleSidebar}
-              title="Expand sidebar (⌘B)"
-            >
-              <PanelLeft className="h-4 w-4" />
-            </Button>
+            <Link href="/" className="h-7 w-7 flex items-center justify-center text-lg font-semibold text-slate-900">
+              H
+            </Link>
           )}
         </div>
 
@@ -230,10 +213,25 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         >
           {/* Header */}
           <header className="flex h-12 items-center justify-between bg-white px-4 shrink-0 border-b">
-            <h1 className="text-sm font-semibold text-slate-900 tracking-tight">
-              {navigation.find(n => pathname === n.href || 
-                (n.href !== "/dashboard" && pathname.startsWith(n.href)))?.name || "Dashboard"}
-            </h1>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                onClick={toggleSidebar}
+                title={sidebarOpen ? "Collapse sidebar (⌘B)" : "Expand sidebar (⌘B)"}
+              >
+                {sidebarOpen ? (
+                  <PanelLeftClose className="h-4 w-4" />
+                ) : (
+                  <PanelLeft className="h-4 w-4" />
+                )}
+              </Button>
+              <h1 className="text-sm font-semibold text-slate-900 tracking-tight">
+                {navigation.find(n => pathname === n.href || 
+                  (n.href !== "/dashboard" && pathname.startsWith(n.href)))?.name || "Dashboard"}
+              </h1>
+            </div>
 
             <div className="flex items-center gap-1">
               <div className="relative mr-2">
