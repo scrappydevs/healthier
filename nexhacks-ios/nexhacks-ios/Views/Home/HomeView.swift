@@ -39,17 +39,14 @@ struct HomeView: View {
                         // Health Breakdown
                         healthBreakdownSection
 
-                        // Scan Room Button
-                        scanRoomButton
-
-                        // Sync Status Card
-                        syncStatusCard
-
                         // Quick Stats
                         quickStatsSection
 
                         // Upcoming Reminders
                         upcomingRemindersSection
+
+                        // Scan Room Button
+                        scanRoomButton
                     }
                     .padding(.horizontal, AppTheme.Spacing.lg)
                     .padding(.vertical, AppTheme.Spacing.lg)
@@ -123,36 +120,6 @@ struct HomeView: View {
             )
             .cornerRadius(AppTheme.CornerRadius.md)
             .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-
-    // MARK: - Sync Status Card
-    private var syncStatusCard: some View {
-        Button {
-            viewModel.triggerSync()
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                    Text("Dashboard Sync")
-                        .font(AppTheme.Typography.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Text(viewModel.syncStatus)
-                        .font(AppTheme.Typography.subheadline)
-                        .foregroundColor(.textSecondary)
-                }
-
-                Spacer()
-
-                Image(systemName: "arrow.clockwise")
-                    .font(.title2)
-                    .foregroundColor(.appPrimary)
-            }
-            .padding(AppTheme.Spacing.md)
-            .background(Color.cardBackground)
-            .cornerRadius(AppTheme.CornerRadius.md)
-            .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(PlainButtonStyle())
     }
