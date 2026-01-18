@@ -2,69 +2,68 @@
 //  ExerciseRepository.swift
 //  nexhacks-ios
 //
-//  Repository for Exercise data access
+//  Repository for Exercise data access with Supabase sync
 //
 
 import Foundation
 import Combine
+import Supabase
 
 @MainActor
 class ExerciseRepository: ObservableObject {
     @Published var exercises: [Exercise] = []
 
-    // In-memory storage (will be replaced with Core Data/SwiftData)
-    private var storage: [Exercise] = []
+    private let supabaseService: SupabaseService
+    private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
-    init() {
-        loadSampleData()
+    init(supabaseService: SupabaseService? = nil) {
+        self.supabaseService = supabaseService ?? SupabaseService()
     }
 
     // MARK: - Public Methods
 
-    /// Create a new exercise
-    func create(_ exercise: Exercise) throws {
-        storage.append(exercise)
-        updatePublished()
+    /// Create a new exercise and sync to Supabase
+    func create(_ exercise: Exercise) async throws {
+        try await supabaseService.saveExercise(exercise)
+        try await loadExercises()
     }
 
     /// Get exercise by ID
     func getById(_ id: UUID) -> Exercise? {
-        return storage.first { $0.id == id }
+        return exercises.first { $0.id == id }
     }
 
-    /// Update exercise
-    func update(_ exercise: Exercise) throws {
-        guard let index = storage.firstIndex(where: { $0.id == exercise.id }) else {
-            throw RepositoryError.notFound
-        }
-
-        var updatedExercise = exercise
-        updatedExercise.updatedAt = Date()
-        storage[index] = updatedExercise
-        updatePublished()
+    /// Update exercise in Supabase
+    func update(_ exercise: Exercise) async throws {
+        try await supabaseService.updateExercise(exercise)
+        try await loadExercises()
     }
 
-    /// Delete exercise
-    func delete(_ exercise: Exercise) throws {
-        storage.removeAll { $0.id == exercise.id }
-        updatePublished()
+    /// Delete exercise from Supabase
+    func delete(_ exercise: Exercise) async throws {
+        try await supabase.from("exercises")
+            .delete()
+            .eq("id", value: exercise.id.uuidString)
+            .execute()
+
+        try await loadExercises()
     }
 
     /// Get all exercises
     func getAll() -> [Exercise] {
-        return storage
+        return exercises
     }
 
     /// Get exercises for a specific date
     func getExercises(for date: Date) -> [Exercise] {
         let calendar = Calendar.current
-        return storage.filter { calendar.isDate($0.startTime, inSameDayAs: date) }
+        return exercises.filter { calendar.isDate($0.startTime, inSameDayAs: date) }
     }
 
     /// Get exercises by type
     func getExercises(ofType type: ExerciseType) -> [Exercise] {
-        return storage.filter { $0.type == type }
+        return exercises.filter { $0.type == type }
     }
 
     /// Get total calories burned for a date
@@ -77,26 +76,14 @@ class ExerciseRepository: ObservableObject {
         return getExercises(for: date).reduce(0) { $0 + $1.duration }
     }
 
+    /// Reload exercises from Supabase
+    func loadExercises() async throws {
+        exercises = try await supabaseService.fetchExercises()
+    }
+
     // MARK: - Private Methods
 
     private func updatePublished() {
-        exercises = storage.sorted { $0.startTime > $1.startTime }
-    }
-
-    private func loadSampleData() {
-        let running = Exercise(
-            name: "Morning Run",
-            type: .running,
-            duration: 1800, // 30 minutes
-            caloriesBurned: 300,
-            distance: 5000, // 5 km
-            startTime: Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date())!,
-            endTime: Calendar.current.date(bySettingHour: 7, minute: 30, second: 0, of: Date())!,
-            heartRateAvg: 145,
-            heartRateMax: 165
-        )
-
-        storage = [running]
-        updatePublished()
+        exercises = exercises.sorted { $0.startTime > $1.startTime }
     }
 }

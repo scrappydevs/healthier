@@ -74,40 +74,63 @@ class ExerciseViewModel: ObservableObject {
     // MARK: - Public Methods
     
     func loadExercises() {
-        exercises = exerciseRepository.getAll()
-        todaysExercises = exerciseRepository.getExercises(for: Date())
-        updateExerciseSummary()
-    }
-    
-    func addExercise(_ exercise: Exercise) {
-        do {
-            try exerciseRepository.create(exercise)
-            loadExercises()
-            
-            // Sync to Supabase in background
-            Task {
-                await syncExerciseToSupabase(exercise)
+        Task {
+            do {
+                try await exerciseRepository.loadExercises()
+                exercises = exerciseRepository.getAll()
+                todaysExercises = exerciseRepository.getExercises(for: Date())
+                updateExerciseSummary()
+            } catch {
+                errorMessage = error.localizedDescription
             }
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
-    
+
+    func addExercise(_ exercise: Exercise) {
+        Task {
+            do {
+                isLoading = true
+                defer { isLoading = false }
+
+                try await exerciseRepository.create(exercise)
+                exercises = exerciseRepository.getAll()
+                todaysExercises = exerciseRepository.getExercises(for: Date())
+                updateExerciseSummary()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     func updateExercise(_ exercise: Exercise) {
-        do {
-            try exerciseRepository.update(exercise)
-            loadExercises()
-        } catch {
-            errorMessage = error.localizedDescription
+        Task {
+            do {
+                isLoading = true
+                defer { isLoading = false }
+
+                try await exerciseRepository.update(exercise)
+                exercises = exerciseRepository.getAll()
+                todaysExercises = exerciseRepository.getExercises(for: Date())
+                updateExerciseSummary()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
-    
+
     func deleteExercise(_ exercise: Exercise) {
-        do {
-            try exerciseRepository.delete(exercise)
-            loadExercises()
-        } catch {
-            errorMessage = error.localizedDescription
+        Task {
+            do {
+                isLoading = true
+                defer { isLoading = false }
+
+                try await exerciseRepository.delete(exercise)
+                exercises = exerciseRepository.getAll()
+                todaysExercises = exerciseRepository.getExercises(for: Date())
+                updateExerciseSummary()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
     
@@ -302,14 +325,4 @@ class ExerciseViewModel: ObservableObject {
         return metValue * weightKg * timeHours
     }
     
-    private func syncExerciseToSupabase(_ exercise: Exercise) async {
-        do {
-            try await supabaseService.saveExercise(exercise)
-        } catch {
-            print("Failed to sync exercise to Supabase: \(error)")
-            await MainActor.run {
-                errorMessage = "Failed to sync exercise: \(error.localizedDescription)"
-            }
-        }
-    }
 }
