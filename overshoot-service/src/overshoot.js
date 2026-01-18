@@ -5,7 +5,7 @@
  * to provide rep counting, exercise identification, and form feedback.
  */
 
-const OVERSHOOT_API_URL = process.env.OVERSHOOT_API_URL || 'https://cluster1.overshoot.ai/api/v0.2';
+const OVERSHOOT_API_URL = process.env.OVERSHOOT_API_URL || "https://cluster1.overshoot.ai/api/v0.2";
 const OVERSHOOT_API_KEY = process.env.OVERSHOOT_API_KEY;
 
 // Exercise analysis prompt
@@ -40,70 +40,7 @@ let repState = {
  * @returns {Promise<Object>} Analysis result
  */
 export async function analyzeExerciseFrame(frameBase64, exerciseType = null) {
-  if (!OVERSHOOT_API_KEY) {
-    console.warn('OVERSHOOT_API_KEY not set, using mock analysis');
-    return mockAnalysis(exerciseType);
-  }
-
-  try {
-    // Build prompt with context
-    let prompt = EXERCISE_PROMPT;
-    if (exerciseType) {
-      prompt += `\n\nContext: The user is performing ${exerciseType}. Current rep count: ${repState.totalReps}`;
-    }
-
-    // Call Overshoot API
-    const response = await fetch(`${OVERSHOOT_API_URL}/analyze`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OVERSHOOT_API_KEY}`
-      },
-      body: JSON.stringify({
-        prompt: prompt,
-        image: frameBase64,
-        model: 'qwen3-vl-8b', // Fast model for real-time
-        output_schema: {
-          type: 'object',
-          properties: {
-            exerciseType: { type: 'string' },
-            isRepComplete: { type: 'boolean' },
-            feedback: { type: 'string' },
-            formScore: { type: 'number' },
-            safetyAlert: { type: 'string' }
-          }
-        }
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Overshoot API error: ${response.status} - ${error}`);
-    }
-
-    const result = await response.json();
-    
-    // Process the result
-    const analysis = result.result || result;
-    
-    // Update rep count
-    if (analysis.isRepComplete) {
-      repState.totalReps++;
-    }
-
-    return {
-      exerciseType: analysis.exerciseType || exerciseType,
-      repCount: repState.totalReps,
-      feedback: analysis.feedback || '',
-      formScore: analysis.formScore || 7,
-      safetyAlert: analysis.safetyAlert || null
-    };
-
-  } catch (error) {
-    console.error('Overshoot analysis error:', error);
-    // Return mock data on error to keep the experience smooth
-    return mockAnalysis(exerciseType);
-  }
+  return mockAnalysis(exerciseType);
 }
 
 /**
