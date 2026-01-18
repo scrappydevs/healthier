@@ -42,6 +42,9 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 - Check form + provide feedback
 - Summarize health/exercise insights on dashboard
 
+![squat](https://github.com/user-attachments/assets/824bdd4b-e6ad-4966-b34b-ef3ff98f430c)
+
+
 ### Apple Watch
 - Voice agent on watch
 - Track metrics (especially during exercise)
