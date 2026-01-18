@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Activity, AlertCircle, Clock, Flame, Footprints } from "lucide-react";
+import { Activity, AlertCircle, Clock, Flame, Footprints, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { getPatientExercises, analyzeExercisePose, getExercisePoseAnalysis, type Exercise } from "@/lib/api";
 
@@ -115,10 +115,11 @@ export function ExerciseSection({ patientId }: ExerciseSectionProps) {
   }
 
   const exercisesByDate = groupExercisesByDate(exercises);
+  const dateEntries = Array.from(exercisesByDate.entries());
 
   return (
-    <div className="max-h-[700px] overflow-y-auto space-y-6">
-      {Array.from(exercisesByDate.entries()).map(([dateKey, dateExercises]) => {
+    <div className="max-h-[700px] overflow-y-auto">
+      {dateEntries.map(([dateKey, dateExercises], idx) => {
         const dayTotals = dateExercises.reduce(
           (acc, ex) => ({
             minutes: acc.minutes + (ex.duration_minutes || 0),
@@ -128,13 +129,38 @@ export function ExerciseSection({ patientId }: ExerciseSectionProps) {
           { minutes: 0, calories: 0, count: 0 }
         );
 
+        const label = formatDateLabel(dateKey);
+        const isToday = label === "Today";
+
+        // Today is always expanded, past days are collapsible
+        if (!isToday) {
+          return (
+            <details key={dateKey} className="group border-b last:border-b-0" open={idx === 0}>
+              <summary className="flex items-center justify-between py-3 cursor-pointer hover:bg-slate-50/50 -mx-1 px-1">
+                <div className="flex items-center gap-2">
+                  <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-90" />
+                  <span className="text-sm font-semibold text-foreground">{label}</span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {dayTotals.count} {dayTotals.count === 1 ? "workout" : "workouts"}
+                  {dayTotals.minutes > 0 && ` · ${dayTotals.minutes} min`}
+                  {dayTotals.calories > 0 && ` · ${dayTotals.calories} cal`}
+                </span>
+              </summary>
+              <div className="pb-4 divide-y divide-slate-100">
+                {dateExercises.map((exercise) => (
+                  <ExerciseEntry key={exercise.id} exercise={exercise} />
+                ))}
+              </div>
+            </details>
+          );
+        }
+
         return (
-          <div key={dateKey}>
+          <div key={dateKey} className="border-b last:border-b-0 pb-4">
             {/* Day Header */}
-            <div className="flex items-center gap-3 mb-3">
-              <h3 className="text-sm font-semibold text-foreground">
-                {formatDateLabel(dateKey)}
-              </h3>
+            <div className="flex items-center justify-between py-3">
+              <h3 className="text-sm font-semibold text-foreground">{label}</h3>
               <span className="text-xs text-muted-foreground">
                 {dayTotals.count} {dayTotals.count === 1 ? "workout" : "workouts"}
                 {dayTotals.minutes > 0 && ` · ${dayTotals.minutes} min`}
@@ -142,8 +168,8 @@ export function ExerciseSection({ patientId }: ExerciseSectionProps) {
               </span>
             </div>
 
-            {/* Exercise List - All expanded */}
-            <div className="space-y-4">
+            {/* Exercise List */}
+            <div className="divide-y divide-slate-100">
               {dateExercises.map((exercise) => (
                 <ExerciseEntry key={exercise.id} exercise={exercise} />
               ))}
@@ -220,84 +246,62 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
   };
 
   return (
-    <div className="space-y-3 pb-4 border-b border-muted/50 last:border-b-0 last:pb-0">
-      {/* Exercise Header */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm font-semibold text-foreground">{exerciseLabel}</span>
-        {exercise.intensity && (
-          <span
-            className={cn(
-              "px-1.5 py-0.5 text-[10px] font-medium rounded capitalize",
-              intensityColors[exercise.intensity] || "bg-muted text-foreground"
-            )}
-          >
-            {exercise.intensity}
-          </span>
-        )}
+    <div className="py-3">
+      {/* Exercise Header - inline */}
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <span className="text-sm font-medium text-foreground">{exerciseLabel}</span>
         <span className="text-xs text-muted-foreground">{time}</span>
         {exercise.duration_minutes && exercise.duration_minutes > 0 && (
-          <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-            <Clock className="h-3 w-3" />
-            {exercise.duration_minutes} min
-          </span>
+          <span className="text-xs text-muted-foreground">· {exercise.duration_minutes} min</span>
         )}
         {exercise.calories_burned && exercise.calories_burned > 0 && (
-          <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-            <Flame className="h-3 w-3" />
-            {exercise.calories_burned} cal
-          </span>
+          <span className="text-xs text-muted-foreground">· {exercise.calories_burned} cal</span>
         )}
         {exercise.steps && exercise.steps > 0 && (
-          <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-            <Footprints className="h-3 w-3" />
-            {exercise.steps.toLocaleString()}
-          </span>
+          <span className="text-xs text-muted-foreground">· {exercise.steps.toLocaleString()} steps</span>
+        )}
+        {exercise.intensity && (
+          <span className="text-xs text-muted-foreground">· {exercise.intensity}</span>
         )}
       </div>
 
-      {/* Videos Side by Side with better differentiation */}
+      {/* Videos Side by Side */}
       {hasVideo && (
-        <div className={cn("grid gap-4", hasAnalyzedVideo || isAnalyzing ? "grid-cols-2" : "grid-cols-1 max-w-md")}>
-          {/* Original Video Section */}
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-slate-400" />
-              <p className="text-xs font-medium text-muted-foreground">Original Video</p>
-            </div>
+        <div className={cn("grid gap-3 mb-2", hasAnalyzedVideo || isAnalyzing ? "grid-cols-2" : "grid-cols-1 max-w-sm")}>
+          {/* Original Video */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">Original</p>
             <video
               src={exercise.video_url!}
               controls
-              className="w-full rounded-lg bg-black"
-              style={{ height: "280px", objectFit: "contain" }}
+              className="w-full rounded bg-black"
+              style={{ height: "220px", objectFit: "contain" }}
               playsInline
             />
           </div>
 
-          {/* Analyzed Video Section */}
+          {/* Analyzed Video */}
           {(hasAnalyzedVideo || isAnalyzing) && (
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary" />
-                <p className="text-xs font-medium text-primary">
-                  {isAnalyzing ? "Processing Pose Analysis..." : "Pose Overlay"}
-                </p>
-              </div>
+            <div>
+              <p className="text-[10px] text-emerald-600 mb-1">
+                {isAnalyzing ? "Processing..." : "Pose Overlay"}
+              </p>
               {hasAnalyzedVideo ? (
                 <video
                   src={processedUrl!}
                   controls
-                  className="w-full rounded-lg bg-black"
-                  style={{ height: "280px", objectFit: "contain" }}
+                  className="w-full rounded bg-black"
+                  style={{ height: "220px", objectFit: "contain" }}
                   playsInline
                 />
               ) : (
                 <div 
-                  className="w-full rounded-lg bg-slate-900 flex items-center justify-center"
-                  style={{ height: "280px" }}
+                  className="w-full rounded bg-slate-900 flex items-center justify-center"
+                  style={{ height: "220px" }}
                 >
                   <div className="text-center">
-                    <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-3" />
-                    <p className="text-sm text-slate-400">Analyzing movement...</p>
+                    <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2" />
+                    <p className="text-xs text-slate-400">Analyzing...</p>
                   </div>
                 </div>
               )}
@@ -306,18 +310,18 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
         </div>
       )}
 
-      {/* Analysis Summary - Bold */}
+      {/* Analysis Summary */}
       {analysis?.summary && (
-        <p className="text-sm font-semibold text-foreground leading-relaxed">
+        <p className="text-sm text-foreground leading-relaxed mb-2">
           {analysis.summary}
         </p>
       )}
 
-      {/* Symmetry stats if available */}
+      {/* Symmetry stats inline */}
       {analysis?.symmetry_analysis && Object.keys(analysis.symmetry_analysis).length > 0 && (
-        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
           {Object.entries(analysis.symmetry_analysis).map(([joint, data]) => (
-            <span key={joint} className={cn(!data.symmetric && "text-amber-600 font-medium")}>
+            <span key={joint} className={cn(!data.symmetric && "text-amber-600")}>
               {joint}: {Math.round(data.difference)}° diff
             </span>
           ))}
@@ -326,7 +330,7 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
 
       {/* Notes */}
       {exercise.notes && (
-        <p className="text-xs text-muted-foreground italic">{exercise.notes}</p>
+        <p className="text-xs text-muted-foreground mt-1">{exercise.notes}</p>
       )}
     </div>
   );

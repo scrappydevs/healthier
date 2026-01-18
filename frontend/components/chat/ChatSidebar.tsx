@@ -678,9 +678,8 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
         </div>
 
         {/* Location indicator */}
-        <div className="flex items-center gap-1.5 mt-2">
-          <span className="text-sm">📍</span>
-          <span className="text-sm font-medium text-foreground">{pageLabel}</span>
+        <div className="flex items-center gap-1.5 mt-2 text-muted-foreground">
+          <span className="text-xs">{pageLabel}</span>
         </div>
       </div>
     </div>

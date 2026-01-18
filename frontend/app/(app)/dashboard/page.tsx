@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { 
   Search, 
   AlertCircle,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -20,7 +21,8 @@ import {
   Play,
   Video,
   BarChart3,
-  Loader2
+  Loader2,
+  Info
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
@@ -30,7 +32,9 @@ import {
   getPatientExercises,
   getPatientMedications,
   getPatientJournal,
+  getPatientPillLogs,
   getPills,
+  assignPatientMedication,
   generateDailySummary,
   createPatientPlan,
   updatePatientPlan,
@@ -38,7 +42,9 @@ import {
   getExercisePoseAnalysis,
   type Patient,
   type Pill as PillType,
+  type PillLog,
   type DailySummaryResponse,
+  type DailySummaryAlert,
   type JournalEntry,
   type PatientPlan
 } from "@/lib/api";
@@ -491,164 +497,139 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
   const currentVideoUrl = videoView === "analyzed" && hasProcessedVideo ? processedUrl : exercise.video_url;
 
   return (
-    <div className="p-3 bg-slate-50/50 rounded">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-foreground text-sm">{exercise.exercise_type || exercise.name || "Exercise"}</p>
-          <p className="text-xs text-muted-foreground">
-            {formatTime(exercise.logged_at)}
-            {exercise.duration_minutes && ` · ${exercise.duration_minutes} min`}
-            {exercise.calories_burned && ` · ${exercise.calories_burned} cal`}
-          </p>
+    <div className="py-3 border-b last:border-b-0">
+      {/* Header - inline layout */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-foreground text-sm">{exercise.exercise_type || exercise.name || "Exercise"}</p>
+              {isAnalyzing ? (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                </span>
+              ) : hasAnalysis ? (
+                <span className="text-xs text-emerald-600">✓</span>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {formatTime(exercise.logged_at)}
+              {exercise.duration_minutes && ` · ${exercise.duration_minutes} min`}
+              {exercise.calories_burned && ` · ${exercise.calories_burned} cal`}
+            </p>
+          </div>
         </div>
         
-          <div className="flex items-center gap-2">
-          {/* Status indicator */}
-          {isAnalyzing ? (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Analyzing...
-              </span>
-          ) : hasAnalysis ? (
-            <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-              Analyzed
-            </span>
-          ) : null}
-          
-          {/* Video Toggle */}
-          {hasVideo && (
-            <button
-              onClick={() => setShowVideo(!showVideo)}
-              className={cn(
-                "flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors",
-                showVideo ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
-              )}
-            >
-              <Video className="h-3 w-3" />
-              <span>{showVideo ? "Hide" : "Video"}</span>
-            </button>
+        {/* Video Toggle */}
+        {hasVideo && (
+          <button
+            onClick={() => setShowVideo(!showVideo)}
+            className={cn(
+              "flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors",
+              showVideo ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
             )}
-          </div>
-          </div>
+          >
+            <Video className="h-3 w-3" />
+            <span>{showVideo ? "Hide" : "Video"}</span>
+          </button>
+        )}
+      </div>
 
       {/* Expandable Video Section */}
       {hasVideo && showVideo && (
-        <div className="mt-3 rounded-lg overflow-hidden border bg-white">
-          {/* Video View Toggle (Raw / Analyzed) */}
+        <div className="mt-3 border-t pt-3">
+          {/* Video View Toggle */}
           {hasProcessedVideo && (
-            <div className="flex bg-slate-100">
+            <div className="flex gap-2 mb-2">
               <button
                 onClick={() => setVideoView("raw")}
                 className={cn(
-                  "flex-1 px-2 py-1 text-[10px] font-medium transition-colors",
+                  "text-xs px-2 py-0.5 rounded transition-colors",
                   videoView === "raw" 
-                    ? "bg-white text-foreground" 
+                    ? "bg-slate-200 text-foreground" 
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                Raw Video
+                Original Video
               </button>
               <button
                 onClick={() => setVideoView("analyzed")}
                 className={cn(
-                  "flex-1 px-2 py-1 text-[10px] font-medium transition-colors",
+                  "text-xs px-2 py-0.5 rounded transition-colors",
                   videoView === "analyzed" 
-                    ? "bg-white text-foreground" 
+                    ? "bg-emerald-100 text-emerald-700" 
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                Pose Analysis
+                Pose Overlay
               </button>
-          </div>
+            </div>
           )}
           
           {/* Video Player */}
-          <div className="relative bg-black flex items-center justify-center min-h-[200px] max-h-[400px]">
+          <div className="relative bg-black rounded overflow-hidden flex items-center justify-center min-h-[180px] max-h-[300px]">
             <video
               key={currentVideoUrl}
               src={currentVideoUrl!}
               controls
-              className="max-w-full max-h-[400px] w-auto h-auto"
+              className="max-w-full max-h-[300px] w-auto h-auto"
               preload="metadata"
             />
-            {/* Video type indicator */}
-            <div className={cn(
-              "absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-medium",
-              videoView === "analyzed" && hasProcessedVideo
-                ? "bg-emerald-500 text-white"
-                : "bg-black/50 text-white"
-            )}>
-              {videoView === "analyzed" && hasProcessedVideo ? "Pose Overlay" : "Original"}
-          </div>
           </div>
           
-          {/* Pose Analysis Section */}
-          <div className="p-3 bg-slate-50">
-            {hasAnalysis ? (
-              <div className="space-y-3">
-                {/* AI Summary */}
-                <p className="text-sm font-medium text-foreground leading-relaxed">{analysis.summary}</p>
-                
-                {/* Asymmetry Alerts */}
-                {asymmetryIssues.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {asymmetryIssues.map(({ joint, left, right, difference }) => (
-                      <span
-                        key={joint}
-                        className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded"
-                        title={`Left: ${left}° | Right: ${right}°`}
-                      >
-                        <AlertCircle className="h-3 w-3" />
-                        {joint}: {difference.toFixed(0)}° diff
-                      </span>
-                    ))}
-                  </div>
-                )}
-                
-                {/* Range of Motion Details */}
-                {analysis.angle_statistics && Object.keys(analysis.angle_statistics).length > 0 && (
-                  <details className="group">
-                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
-                      <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                      Range of motion details
-                    </summary>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {Object.entries(analysis.angle_statistics).slice(0, 4).map(([joint, stats]) => (
-                        <div key={joint} className="text-xs px-2 py-1.5 bg-white rounded border">
-                          <span className="text-muted-foreground">{joint.replace(/_/g, " ")}:</span>
-                          <span className="ml-1 font-medium">{stats.range}° range</span>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
-            ) : (
-              <button
-                onClick={handleAnalyze}
-                disabled={isAnalyzing}
-                className="w-full flex items-center justify-center gap-2 text-sm py-2 text-primary hover:bg-primary/5 rounded transition-colors disabled:opacity-50"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Analyzing movement...</span>
-                  </>
-                ) : (
-                  <>
-                    <BarChart3 className="h-4 w-4" />
-                    <span>Analyze movement</span>
-                  </>
-                )}
-              </button>
+          {/* Pose Analysis Summary */}
+          {hasAnalysis && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-foreground leading-relaxed">{analysis.summary}</p>
+              
+              {/* Asymmetry inline */}
+              {asymmetryIssues.length > 0 && (
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  {asymmetryIssues.map(({ joint, difference }) => (
+                    <span key={joint}>
+                      {joint}: {difference.toFixed(0)}° diff
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Analyze button if no analysis */}
+          {!hasAnalysis && (
+            <button
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+              className="mt-2 flex items-center gap-2 text-xs text-primary hover:underline disabled:opacity-50"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Analyzing...</span>
+                </>
+              ) : (
+                <>
+                  <BarChart3 className="h-3 w-3" />
+                  <span>Analyze movement</span>
+                </>
+              )}
+            </button>
           )}
         </div>
-      </div>
       )}
     </div>
   );
 }
+
+type AssignedMedication = {
+  id: string;
+  name: string;
+  strength?: number;
+  unit?: string;
+  dosage_form?: string;
+  frequency?: string;
+  times_of_day?: string[];
+};
 
 function PlansContent({ patient }: { patient: Patient }) {
   const [showMedForm, setShowMedForm] = useState(false);
@@ -656,14 +637,14 @@ function PlansContent({ patient }: { patient: Patient }) {
   const [showExerciseForm, setShowExerciseForm] = useState(false);
   const [dietPlan, setDietPlan] = useState<PatientPlan | null>(null);
   const [exercisePlan, setExercisePlan] = useState<PatientPlan | null>(null);
-  const [medicationCount, setMedicationCount] = useState(0);
+  const [medications, setMedications] = useState<AssignedMedication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchPlans = async () => {
     setIsLoading(true);
     try {
       const [plansRes, medsRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/patients/${patient.id}/plans`).then(r => r.json()),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/patients/${patient.id}/plans`, { cache: "no-store" }).then(r => r.json()),
         getPatientMedications(patient.id),
       ]);
       
@@ -682,7 +663,18 @@ function PlansContent({ patient }: { patient: Patient }) {
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           )[0] 
         : null);
-      setMedicationCount(medsRes.total);
+      
+      // Store full medication list from assigned_medications
+      const assignedMeds = medsRes.assigned_medications || [];
+      setMedications(assignedMeds.map((m: Record<string, unknown>) => ({
+        id: m.id as string,
+        name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
+        strength: (m.pills as Record<string, unknown>)?.strength as number,
+        unit: (m.pills as Record<string, unknown>)?.unit as string,
+        dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
+        frequency: m.frequency as string,
+        times_of_day: m.times_of_day as string[],
+      })));
     } catch (err) {
       console.error("Failed to fetch plans:", err);
     } finally {
@@ -719,14 +711,40 @@ function PlansContent({ patient }: { patient: Patient }) {
           {showMedForm && (
             <MedicationAssignForm 
               patientId={patient.id} 
-              onClose={() => setShowMedForm(false)} 
+              onClose={() => { setShowMedForm(false); handlePlanSaved(); }} 
             />
           )}
           
           {!showMedForm && (
-          <p className="text-sm text-muted-foreground">
-            {isLoading ? "Loading..." : `${medicationCount} active prescriptions`}
-            </p>
+            <div className="space-y-2">
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              ) : medications.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No active prescriptions</p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">{medications.length} active prescription{medications.length !== 1 ? "s" : ""}</p>
+                  <div className="space-y-1.5">
+                    {medications.map((med) => (
+                      <div key={med.id} className="flex items-center justify-between p-2 bg-primary/5 rounded text-sm">
+                        <div>
+                          <span className="font-medium text-foreground">{med.name}</span>
+                          {med.strength && med.unit && (
+                            <span className="text-muted-foreground ml-1">
+                              {med.strength}{med.unit}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {med.frequency?.replace(/_/g, " ")}
+                          {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
 
@@ -769,9 +787,33 @@ function PlansContent({ patient }: { patient: Patient }) {
           {!showDietForm && (
           <div className="space-y-2">
             {dietPlan ? (
-              <div className="p-3 bg-amber-50 rounded border">
+              <div className="p-3 bg-amber-50 rounded border space-y-2">
                 <p className="text-base text-foreground leading-relaxed">{dietPlan.notes || "No notes"}</p>
-                <p className="text-xs text-muted-foreground mt-2">
+                {(dietPlan.calorie_target || dietPlan.protein_target || dietPlan.carb_target || dietPlan.fat_target) && (
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-amber-200/50">
+                    {dietPlan.calorie_target && (
+                      <span className="text-xs text-muted-foreground">
+                        Target: {dietPlan.calorie_target} cal
+                      </span>
+                    )}
+                    {dietPlan.protein_target && (
+                      <span className="text-xs text-muted-foreground">
+                        · {dietPlan.protein_target}g protein
+                      </span>
+                    )}
+                    {dietPlan.carb_target && (
+                      <span className="text-xs text-muted-foreground">
+                        · {dietPlan.carb_target}g carbs
+                      </span>
+                    )}
+                    {dietPlan.fat_target && (
+                      <span className="text-xs text-muted-foreground">
+                        · {dietPlan.fat_target}g fat
+                      </span>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
                   Updated {new Date(dietPlan.updated_at || dietPlan.created_at).toLocaleDateString()}
                 </p>
               </div>
@@ -870,11 +912,13 @@ function OverviewContent({ patient }: { patient: Patient }) {
     } | null;
   }>>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [pillLogs, setPillLogs] = useState<PillLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [aiSummary, setAiSummary] = useState<DailySummaryResponse | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [mealsExpanded, setMealsExpanded] = useState(false);
+  const [medicationsExpanded, setMedicationsExpanded] = useState(false);
   const [exercisesExpanded, setExercisesExpanded] = useState(false);
   const [journalExpanded, setJournalExpanded] = useState(false);
   const [journalSectionSummary, setJournalSectionSummary] = useState<string>("");
@@ -953,26 +997,30 @@ function OverviewContent({ patient }: { patient: Patient }) {
       try {
         if (viewMode === "all") {
           // Fetch all recent data without date filter
-          const [mealsRes, exercisesRes, journalRes] = await Promise.all([
+          const [mealsRes, exercisesRes, journalRes, pillLogsRes] = await Promise.all([
             getPatientMeals(patient.id),
             getPatientExercises(patient.id),
             getPatientJournal(patient.id),
+            getPatientPillLogs(patient.id),
           ]);
           
           setMeals(mealsRes.meals);
           setExercises(exercisesRes.exercises);
           setJournalEntries(journalRes.entries);
+          setPillLogs(pillLogsRes.logs);
         } else {
           // Fetch data for specific date
-          const [mealsRes, exercisesRes, journalRes] = await Promise.all([
+          const [mealsRes, exercisesRes, journalRes, pillLogsRes] = await Promise.all([
             getPatientMeals(patient.id, selectedDate),
             getPatientExercises(patient.id, selectedDate),
             getPatientJournal(patient.id, selectedDate, selectedDate),
+            getPatientPillLogs(patient.id, selectedDate),
           ]);
           
           setMeals(mealsRes.meals);
           setExercises(exercisesRes.exercises);
           setJournalEntries(journalRes.entries);
+          setPillLogs(pillLogsRes.logs);
         }
         
         // Create hash of data to detect changes
@@ -1001,12 +1049,13 @@ function OverviewContent({ patient }: { patient: Patient }) {
     }
   }, [meals.length, exercises.length, journalEntries.length, isLoading]);
 
-  const handleGenerateSummary = async () => {
+  const handleGenerateSummary = async (forceRefresh = false) => {
     setIsGeneratingSummary(true);
     try {
       // Use selected date instead of always using today
       const summaryDate = viewMode === "day" ? selectedDate : todayDate;
-      const summary = await generateDailySummary(patient.id, summaryDate);
+      // Pass forceRefresh to bypass cache when manually refreshing
+      const summary = await generateDailySummary(patient.id, summaryDate, forceRefresh);
       setAiSummary(summary);
       // Set section summaries from the response
       if (summary.journal_summary) setJournalSectionSummary(summary.journal_summary);
@@ -1153,25 +1202,44 @@ function OverviewContent({ patient }: { patient: Patient }) {
           </h3>
           {aiSummary && (
             <button
-              onClick={handleGenerateSummary}
+              onClick={() => handleGenerateSummary(true)}
               className="text-xs text-muted-foreground hover:text-foreground"
+              title="Force regenerate summary (uses AI credits)"
             >
               Refresh
             </button>
           )}
         </div>
-        <div className="p-4">
+        <div className="px-4 py-3">
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading...</p>
           ) : aiSummary ? (
             <>
-              <p className="text-sm font-medium text-foreground leading-relaxed">{aiSummary.summary}</p>
-              <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+              {aiSummary.alerts && aiSummary.alerts.length > 0 ? (
+                <div className="space-y-2">
+                  {aiSummary.alerts.map((alert: DailySummaryAlert, idx: number) => (
+                    <p
+                      key={idx}
+                      className={cn(
+                        "text-sm text-foreground leading-snug pl-3 border-l-2",
+                        alert.severity === "high" && "border-red-500",
+                        alert.severity === "medium" && "border-amber-500",
+                        alert.severity === "low" && "border-blue-500"
+                      )}
+                    >
+                      {alert.message}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No alerts for this period.</p>
+              )}
+              <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
                 <span>{aiSummary.stats.meals} meals</span>
                 <span>·</span>
                 <span>{aiSummary.stats.exercises} exercises</span>
                 <span>·</span>
-                <span>{aiSummary.stats.adherence_percent}% meds</span>
+                <span>{aiSummary.stats.medications_taken}/{aiSummary.stats.medications_taken + aiSummary.stats.medications_missed + (aiSummary.stats.medications_pending || 0)} meds</span>
                 <span>·</span>
                 <span>{aiSummary.stats.journal_entries} journal</span>
               </div>
@@ -1207,7 +1275,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
               No journal entries {viewMode === "all" ? "recorded" : "today"}
             </p>
           ) : journalSectionSummary ? (
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-sm font-medium text-foreground mt-2 leading-relaxed">
               {journalSectionSummary}
             </p>
           ) : (
@@ -1226,13 +1294,31 @@ function OverviewContent({ patient }: { patient: Patient }) {
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{dateStr}</p>
                   )}
                   {entries.map((entry) => (
-                    <div key={entry.id} className="py-2 border-b border-slate-100 last:border-b-0">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
+                    <div key={entry.id} className="py-3 border-b border-slate-100 last:border-b-0 space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span>{getMoodEmoji(entry.mood)}</span>
                         <span>{formatTime(entry.logged_at)}</span>
                         {entry.duration_seconds && <span>· {formatDuration(entry.duration_seconds)}</span>}
                       </div>
-                      <p className="text-sm text-foreground leading-relaxed">{entry.transcript}</p>
+                      {entry.ai_analysis?.summary && (
+                        <div>
+                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Summary</p>
+                          <p className="text-sm text-foreground leading-relaxed">{entry.ai_analysis.summary}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Raw Transcript</p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{entry.transcript}</p>
+                      </div>
+                      {entry.tags && entry.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {entry.tags.map((tag, idx) => (
+                            <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1265,7 +1351,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
               No meals logged {viewMode === "all" ? "yet" : "today"}
             </p>
           ) : mealsSectionSummary ? (
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-sm font-medium text-foreground mt-2 leading-relaxed">
               {mealsSectionSummary}
             </p>
           ) : (
@@ -1284,20 +1370,25 @@ function OverviewContent({ patient }: { patient: Patient }) {
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
                   )}
                   {dateMeals.map((meal) => (
-                    <div key={meal.id} className="flex items-center gap-3 py-2 border-b border-slate-100 last:border-b-0">
-                      {meal.image_url ? (
-                        <img src={meal.image_url} alt={meal.name} className="w-10 h-10 rounded object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center flex-shrink-0">
-                          <Utensils className="h-4 w-4 text-slate-400" />
+                    <div key={meal.id} className="py-3 border-b border-slate-100 last:border-b-0 space-y-2">
+                      <div className="flex items-center gap-3">
+                        {meal.image_url ? (
+                          <img src={meal.image_url} alt={meal.name} className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center flex-shrink-0">
+                            <Utensils className="h-4 w-4 text-slate-400" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-foreground text-sm">{meal.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {mealTypeLabel(meal.meal_type)} · {formatTime(meal.consumed_at)}
+                            {meal.total_calories > 0 && ` · ${meal.total_calories} cal`}
+                          </p>
+                          {meal.ai_analysis && (
+                            <p className="text-sm text-emerald-600 leading-relaxed mt-1">{meal.ai_analysis}</p>
+                          )}
                         </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground text-sm">{meal.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {mealTypeLabel(meal.meal_type)} · {formatTime(meal.consumed_at)}
-                          {meal.total_calories > 0 && ` · ${meal.total_calories} cal`}
-                        </p>
                       </div>
                     </div>
                   ))}
@@ -1331,7 +1422,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
               No exercises logged {viewMode === "all" ? "yet" : "today"}
             </p>
           ) : exercisesSectionSummary ? (
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-sm font-medium text-foreground mt-2 leading-relaxed">
               {exercisesSectionSummary}
             </p>
           ) : (
@@ -1344,16 +1435,116 @@ function OverviewContent({ patient }: { patient: Patient }) {
         {exercisesExpanded && exercises.length > 0 && (
           <div className="px-4 pb-4 border-t">
             <div className="pt-3 space-y-2">
-              {(viewMode === "all" ? groupByDate(exercises) : [[formatDateDisplay(selectedDate), exercises] as [string, typeof exercises]]).map(([dateStr, dateExercises]) => (
-                <div key={dateStr}>
-                  {viewMode === "all" && (
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
-                  )}
-                  {dateExercises.map((exercise) => (
-                    <ExerciseCard key={exercise.id} exercise={exercise} />
-                  ))}
-                </div>
-              ))}
+              {(viewMode === "all" ? groupByDate(exercises) : [[formatDateDisplay(selectedDate), exercises] as [string, typeof exercises]]).map(([dateStr, dateExercises], idx) => {
+                const isToday = dateStr === "Today";
+                const exerciseCount = dateExercises.length;
+                const totalMin = dateExercises.reduce((sum, e) => sum + (e.duration_minutes || 0), 0);
+                const totalCal = dateExercises.reduce((sum, e) => sum + (e.calories_burned || 0), 0);
+                
+                // For "all" view, make past days collapsible
+                if (viewMode === "all" && !isToday) {
+                  return (
+                    <details key={dateStr} className="group border-b last:border-b-0">
+                      <summary className="flex items-center justify-between py-2 cursor-pointer hover:bg-slate-50 -mx-4 px-4">
+                        <div className="flex items-center gap-2">
+                          <ChevronRight className="h-3 w-3 text-muted-foreground transition-transform group-open:rotate-90" />
+                          <span className="text-xs font-medium text-muted-foreground">{dateStr}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {exerciseCount} {exerciseCount === 1 ? "workout" : "workouts"} · {totalMin} min · {totalCal} cal
+                        </span>
+                      </summary>
+                      <div className="pt-1 pb-2">
+                        {dateExercises.map((exercise) => (
+                          <ExerciseCard key={exercise.id} exercise={exercise} />
+                        ))}
+                      </div>
+                    </details>
+                  );
+                }
+                
+                return (
+                  <div key={dateStr}>
+                    {viewMode === "all" && (
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
+                    )}
+                    {dateExercises.map((exercise) => (
+                      <ExerciseCard key={exercise.id} exercise={exercise} />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Medications Section */}
+      <div className="bg-white rounded-lg shadow-sm">
+        <div className="px-4 py-3">
+          <button
+            onClick={() => setMedicationsExpanded(!medicationsExpanded)}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Medications</h3>
+              <span className="text-xs text-muted-foreground">
+                {pillLogs.filter(l => l.status === "taken" || l.status === "late").length} taken · {pillLogs.filter(l => l.status === "missed").length} missed · {pillLogs.filter(l => l.status === "pending").length} upcoming
+              </span>
+            </div>
+            <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", medicationsExpanded && "rotate-180")} />
+          </button>
+          {isLoading ? (
+            <div className="mt-2 space-y-2">
+              <div className="h-3 bg-slate-100 rounded w-3/4 animate-pulse"></div>
+              <div className="h-3 bg-slate-100 rounded w-1/2 animate-pulse"></div>
+            </div>
+          ) : pillLogs.length === 0 ? (
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              No medications scheduled {viewMode === "all" ? "yet" : "today"}
+            </p>
+          ) : (
+            <div className="mt-2">
+              <p className="text-sm font-medium text-foreground leading-relaxed">
+                {pillLogs.filter(l => l.status === "taken" || l.status === "late").length} of {pillLogs.length} medications taken
+                {pillLogs.filter(l => l.status === "missed").length > 0 && `, ${pillLogs.filter(l => l.status === "missed").length} missed`}
+              </p>
+            </div>
+          )}
+        </div>
+        {medicationsExpanded && pillLogs.length > 0 && (
+          <div className="px-4 pb-4 border-t">
+            <div className="pt-3 space-y-2">
+              {pillLogs.map((log) => {
+                const pill = log.patient_pills?.pills;
+                const statusColors: Record<string, string> = {
+                  taken: "text-emerald-600 bg-emerald-50",
+                  late: "text-amber-600 bg-amber-50",
+                  missed: "text-red-600 bg-red-50",
+                  pending: "text-blue-600 bg-blue-50"
+                };
+                const statusLabels: Record<string, string> = {
+                  taken: "taken",
+                  late: "late",
+                  missed: "missed",
+                  pending: "upcoming"
+                };
+                return (
+                  <div key={log.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-foreground">
+                        {pill?.name || "Unknown"} {pill?.strength}{pill?.unit}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Scheduled: {new Date(log.scheduled_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                      </p>
+                    </div>
+                    <span className={cn("text-xs font-medium px-2 py-1 rounded", statusColors[log.status])}>
+                      {statusLabels[log.status] || log.status}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1395,9 +1586,12 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
 
   const handleSubmit = async () => {
     if (!selectedMedId) return;
-    // TODO: Implement API call to create patient_pills record
-    console.log("Assign medication:", { patientId, pillId: selectedMedId, frequency, selectedDays, times });
-    onClose();
+    try {
+      await assignPatientMedication(patientId, selectedMedId, frequency, selectedDays, times);
+      onClose();
+    } catch (err) {
+      console.error("Failed to assign medication:", err);
+    }
   };
 
   return (
@@ -1479,12 +1673,20 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
 // Inline Diet Instruction Form
 function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: string; existingPlan?: PatientPlan | null; onClose: () => void }) {
   const [notes, setNotes] = useState(existingPlan?.notes || "");
+  const [calorieTarget, setCalorieTarget] = useState(existingPlan?.calorie_target?.toString() || "");
+  const [proteinTarget, setProteinTarget] = useState(existingPlan?.protein_target?.toString() || "");
+  const [carbTarget, setCarbTarget] = useState(existingPlan?.carb_target?.toString() || "");
+  const [fatTarget, setFatTarget] = useState(existingPlan?.fat_target?.toString() || "");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (existingPlan) {
       setNotes(existingPlan.notes || "");
+      setCalorieTarget(existingPlan.calorie_target?.toString() || "");
+      setProteinTarget(existingPlan.protein_target?.toString() || "");
+      setCarbTarget(existingPlan.carb_target?.toString() || "");
+      setFatTarget(existingPlan.fat_target?.toString() || "");
     }
   }, [existingPlan]);
 
@@ -1497,23 +1699,27 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
     setIsSaving(true);
     setError(null);
     try {
+      const planData = {
+        notes: notes.trim(),
+        calorie_target: calorieTarget ? parseInt(calorieTarget) : null,
+        protein_target: proteinTarget ? parseInt(proteinTarget) : null,
+        carb_target: carbTarget ? parseInt(carbTarget) : null,
+        fat_target: fatTarget ? parseInt(fatTarget) : null,
+      };
+
       if (existingPlan) {
-        // Update existing plan
-        const result = await updatePatientPlan(patientId, existingPlan.id, {
-          notes: notes.trim(),
-        });
+        const result = await updatePatientPlan(patientId, existingPlan.id, planData);
         if (result.plan) {
-    onClose();
+          onClose();
         } else {
           setError("Failed to update plan");
         }
       } else {
-        // Create new plan - first deactivate any existing active diet plans
         const result = await createPatientPlan(patientId, {
           plan_type: "diet",
           title: "Diet Plan",
-          notes: notes.trim(),
           restrictions: [],
+          ...planData,
         });
         if (result.plan) {
           onClose();
@@ -1540,6 +1746,48 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
           rows={3}
           className="w-full px-3 py-2 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary resize-none"
         />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">Daily Calorie Target</label>
+          <input
+            type="number"
+            value={calorieTarget}
+            onChange={(e) => setCalorieTarget(e.target.value)}
+            placeholder="e.g., 2000"
+            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">Protein Target (g)</label>
+          <input
+            type="number"
+            value={proteinTarget}
+            onChange={(e) => setProteinTarget(e.target.value)}
+            placeholder="e.g., 150"
+            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">Carb Target (g)</label>
+          <input
+            type="number"
+            value={carbTarget}
+            onChange={(e) => setCarbTarget(e.target.value)}
+            placeholder="e.g., 250"
+            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1">Fat Target (g)</label>
+          <input
+            type="number"
+            value={fatTarget}
+            onChange={(e) => setFatTarget(e.target.value)}
+            placeholder="e.g., 65"
+            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex items-center gap-2">
