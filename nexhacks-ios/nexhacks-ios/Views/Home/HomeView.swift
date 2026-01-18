@@ -311,7 +311,12 @@ struct HomeView: View {
                     .cornerRadius(AppTheme.CornerRadius.md)
             } else {
                 ForEach(viewModel.upcomingReminders) { medication in
-                    MedicationReminderCard(medication: medication)
+                    Button {
+                        appState.openMedicationDetail(medication)
+                    } label: {
+                        MedicationReminderCard(medication: medication)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }
