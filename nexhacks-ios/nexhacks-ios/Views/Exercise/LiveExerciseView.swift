@@ -25,9 +25,7 @@ struct LiveExerciseView: View {
     @State private var showingSaveSheet = false
     @State private var recordedVideoURL: URL?
     @State private var finalDuration: TimeInterval = 0
-    
-    // Frame capture timer
-    let frameTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect() // Send frame every 0.5s
+    @State private var frameAnalysisTask: Task<Void, Never>?
     
     var body: some View {
         ZStack {
@@ -96,6 +94,10 @@ struct LiveExerciseView: View {
             }
         }
         .onDisappear {
+            // Cancel frame analysis task
+            frameAnalysisTask?.cancel()
+            frameAnalysisTask = nil
+            
             if isRecording {
                 isRecording = false
                 Task {
@@ -107,11 +109,6 @@ struct LiveExerciseView: View {
                 await analysisService.disconnect()
             }
             cameraManager.stopSession()
-        }
-        .onReceive(frameTimer) { _ in
-            if isRecording && analysisService.isAnalyzing {
-                captureAndAnalyzeFrame()
-            }
         }
         .sheet(isPresented: $showingSaveSheet) {
             SaveExerciseSheet(
@@ -179,50 +176,19 @@ struct LiveExerciseView: View {
     
     private var feedbackOverlay: some View {
         VStack(spacing: 16) {
-            // Exercise Type & Reps
-            HStack(spacing: 20) {
-                // Exercise Type
-                VStack(spacing: 4) {
-                    Text(analysisService.currentExerciseType ?? "Detecting...")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    Text("EXERCISE")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.black.opacity(0.6))
-                .cornerRadius(12)
-                
-                // Rep Counter
-                VStack(spacing: 4) {
-                    Text("\(analysisService.repCount)")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                    Text("REPS")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(Color.appPrimary.opacity(0.8))
-                .cornerRadius(12)
-                
-                // Form Score
-                VStack(spacing: 4) {
-                    Text("\(analysisService.formScore)/10")
-                        .font(.headline)
-                        .foregroundColor(formScoreColor)
-                    Text("FORM")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.black.opacity(0.6))
-                .cornerRadius(12)
+            // Exercise Name - prefer plan item name over detected type
+            VStack(spacing: 4) {
+                Text(planItemName ?? analysisService.currentExerciseType ?? "Detecting...")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Text("EXERCISE")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.7))
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.black.opacity(0.6))
+            .cornerRadius(12)
             
             // Feedback Banner
             if !analysisService.lastFeedback.isEmpty {
@@ -253,12 +219,6 @@ struct LiveExerciseView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: analysisService.lastFeedback)
         .animation(.easeInOut(duration: 0.3), value: analysisService.safetyAlert)
-    }
-    
-    private var formScoreColor: Color {
-        if analysisService.formScore >= 8 { return .green }
-        if analysisService.formScore >= 5 { return .yellow }
-        return .red
     }
     
     // MARK: - Bottom Controls
@@ -298,20 +258,30 @@ struct LiveExerciseView: View {
                         finalDuration = Date().timeIntervalSince(startTime)
                     }
                     isRecording = false
+                    
+                    // Cancel frame analysis task
+                    frameAnalysisTask?.cancel()
+                    frameAnalysisTask = nil
+                    
                     Task {
                         await analysisService.stopSession()
                         recordedVideoURL = cameraManager.stopRecording()
                         showingSaveSheet = true
                     }
                 } else {
-                    // Start recording - update state first, then do async work
+                    // Start recording
                     isRecording = true
                     recordingStartTime = Date()
                     finalDuration = 0
                     cameraManager.startRecording()
+                    
+                    // Start analysis and frame capture
                     Task {
                         await analysisService.connect()
                         await analysisService.startSession(exerciseType: selectedType.rawValue)
+                        
+                        // Start frame capture loop after analysis is ready
+                        startFrameCapture()
                     }
                 }
             } label: {
@@ -341,6 +311,31 @@ struct LiveExerciseView: View {
     }
     
     // MARK: - Recording Methods
+    
+    private func startFrameCapture() {
+        // Cancel any existing task
+        frameAnalysisTask?.cancel()
+        
+        frameAnalysisTask = Task { @MainActor in
+            print("Frame capture loop started")
+            var frameCount = 0
+            
+            while !Task.isCancelled && isRecording && analysisService.isAnalyzing {
+                if let imageData = cameraManager.captureCurrentFrame() {
+                    frameCount += 1
+                    if frameCount % 10 == 0 {
+                        print("Sending frame \(frameCount) to analysis")
+                    }
+                    await analysisService.analyzeFrame(imageData)
+                }
+                
+                // Wait ~500ms between frames
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+            
+            print("Frame capture loop ended after \(frameCount) frames")
+        }
+    }
     
     private func captureAndAnalyzeFrame() {
         guard let imageData = cameraManager.captureCurrentFrame() else { return }
@@ -402,15 +397,13 @@ struct SaveExerciseSheet: View {
                     VStack(spacing: AppTheme.Spacing.lg) {
                         // Summary
                         VStack(spacing: AppTheme.Spacing.md) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 50))
+                                .foregroundColor(.appPrimary)
+                            
                             Text("Workout Complete!")
                                 .font(AppTheme.Typography.title2)
                                 .foregroundColor(.textPrimary)
-                            
-                            HStack(spacing: AppTheme.Spacing.xl) {
-                                SummaryItem(value: "\(Int(duration / 60))", label: "MIN")
-                                SummaryItem(value: "\(repCount)", label: "REPS")
-                                SummaryItem(value: exerciseType.rawValue, label: "TYPE")
-                            }
                         }
                         .padding(AppTheme.Spacing.lg)
                         .background(Color.cardBackground)
@@ -499,22 +492,6 @@ struct SaveExerciseSheet: View {
     }
 }
 
-struct SummaryItem: View {
-    let value: String
-    let label: String
-    
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.title2.bold())
-                .foregroundColor(.textPrimary)
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-        }
-    }
-}
-
 // MARK: - Camera Preview
 
 struct CameraPreviewView: UIViewRepresentable {
@@ -565,6 +542,7 @@ class CameraManager: NSObject, ObservableObject {
     private var videoOutput: AVCaptureVideoDataOutput?
     private var movieOutput: AVCaptureMovieFileOutput?
     private var currentFrame: Data?
+    private let frameLock = NSLock() // Thread safety for frame access
     private var recordingURL: URL?
     
     func checkPermissions() {
@@ -645,6 +623,13 @@ class CameraManager: NSObject, ObservableObject {
             if self.session.canAddOutput(videoOutput) {
                 self.session.addOutput(videoOutput)
                 self.videoOutput = videoOutput
+                
+                // Set video orientation for proper frame capture
+                if let connection = videoOutput.connection(with: .video) {
+                    if connection.isVideoRotationAngleSupported(90) {
+                        connection.videoRotationAngle = 90
+                    }
+                }
             }
             
             // Movie file output (for recording)
@@ -683,6 +668,8 @@ class CameraManager: NSObject, ObservableObject {
     }
     
     func captureCurrentFrame() -> Data? {
+        frameLock.lock()
+        defer { frameLock.unlock() }
         return currentFrame
     }
     
@@ -700,11 +687,32 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
         
-        let uiImage = UIImage(cgImage: cgImage)
+        // Fix orientation for back camera
+        let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+        
+        // Resize for efficient transmission
+        let resized = resizeImage(uiImage, maxWidth: 640)
         
         // Compress to JPEG for transmission
-        if let jpegData = uiImage.jpegData(compressionQuality: 0.5) {
+        if let jpegData = resized.jpegData(compressionQuality: 0.6) {
+            frameLock.lock()
             currentFrame = jpegData
+            frameLock.unlock()
+        }
+    }
+    
+    private func resizeImage(_ image: UIImage, maxWidth: CGFloat) -> UIImage {
+        let originalSize = image.size
+        guard originalSize.width > maxWidth else { return image }
+        
+        let scale = maxWidth / originalSize.width
+        let newSize = CGSize(width: originalSize.width * scale, height: originalSize.height * scale)
+        
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
         }
     }
 }

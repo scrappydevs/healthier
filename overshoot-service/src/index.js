@@ -129,22 +129,7 @@ wssMedication.on('connection', (ws) => {
               required: ["description"]
             };
 
-            const prompt = `You are a medication assistant with vision capabilities helping elderly patients.
-
-Describe what you see in the camera. Focus on:
-- Pills (color, shape, size, markings/imprints)
-- Medication bottles or packaging
-- Prescription labels
-- Pill organizers or dispensers
-
-${medicationContext ? `\nUser's Medications:\n${medicationContext}\n\nIf you can match what you see to the user's medications, identify which one it is.` : ''}
-
-Respond ONLY with valid JSON matching this schema:
-{
-  "description": "brief description"
-}
-
-Make it brief, clear, and specific about colors and shapes.`;
+            const prompt = "Describe what you see.";
 
             overshootSession = new OvershootStreamSession({
               apiUrl: process.env.OVERSHOOT_API_URL || "https://cluster1.overshoot.ai/api/v0.2",

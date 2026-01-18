@@ -460,7 +460,8 @@ class MedicationCameraManager: NSObject, ObservableObject {
     
     private func setupCaptureSession() {
         let session = AVCaptureSession()
-        session.sessionPreset = .medium
+        // Use higher quality for better pill detection
+        session.sessionPreset = .high
         
         guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
               let input = try? AVCaptureDeviceInput(device: camera) else {
@@ -477,6 +478,13 @@ class MedicationCameraManager: NSObject, ObservableObject {
         
         if session.canAddOutput(output) {
             session.addOutput(output)
+            
+            // Set video orientation to portrait for proper frame orientation
+            if let connection = output.connection(with: .video) {
+                if connection.isVideoRotationAngleSupported(90) {
+                    connection.videoRotationAngle = 90
+                }
+            }
         }
         
         captureSession = session
@@ -498,17 +506,19 @@ extension MedicationCameraManager: AVCaptureVideoDataOutputSampleBufferDelegate 
         
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
         
-        let uiImage = UIImage(cgImage: cgImage)
+        // Create UIImage - orientation is handled by video connection rotation
+        let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
         let resizedImage = resizeForVision(uiImage)
         
-        // Compress to JPEG
-        guard let jpegData = resizedImage.jpegData(compressionQuality: 0.35) else { return }
+        // Compress to JPEG with better quality for pill detection
+        guard let jpegData = resizedImage.jpegData(compressionQuality: 0.6) else { return }
         
         frameCallback?(jpegData)
     }
 
     private func resizeForVision(_ image: UIImage) -> UIImage {
-        let maxWidth: CGFloat = 640
+        // Increase resolution for better pill detection
+        let maxWidth: CGFloat = 800
         let originalSize = image.size
         guard originalSize.width > 0, originalSize.height > 0 else { return image }
 
@@ -526,7 +536,8 @@ extension MedicationCameraManager: AVCaptureVideoDataOutputSampleBufferDelegate 
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
-        return renderer.image { _ in
+        return renderer.image { ctx in
+            // Draw with proper aspect ratio
             image.draw(in: CGRect(origin: .zero, size: targetSize))
         }
     }

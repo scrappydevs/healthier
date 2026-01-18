@@ -86,7 +86,10 @@ class ExerciseAnalysisService: NSObject, ObservableObject {
         formScore = 7
         safetyAlert = nil
         currentExerciseType = exerciseType
+        frameSentCount = 0
         isAnalyzing = true
+        
+        print("ExerciseAnalysis: Session started, isAnalyzing=\(isAnalyzing)")
         
         let message: [String: Any] = [
             "type": "start",
@@ -115,8 +118,13 @@ class ExerciseAnalysisService: NSObject, ObservableObject {
     
     // MARK: - Frame Analysis
     
+    private var frameSentCount = 0
+    
     func analyzeFrame(_ imageData: Data) async {
-        guard isConnected && isAnalyzing else { return }
+        guard isConnected && isAnalyzing else {
+            print("ExerciseAnalysis: Skipping frame - connected:\(isConnected) analyzing:\(isAnalyzing)")
+            return
+        }
         
         let base64Frame = imageData.base64EncodedString()
         
@@ -124,6 +132,11 @@ class ExerciseAnalysisService: NSObject, ObservableObject {
             "type": "frame",
             "frame": base64Frame
         ]
+        
+        frameSentCount += 1
+        if frameSentCount % 10 == 0 {
+            print("ExerciseAnalysis: Sent \(frameSentCount) frames (\(imageData.count) bytes)")
+        }
         
         await sendJSON(message)
     }
@@ -133,6 +146,12 @@ class ExerciseAnalysisService: NSObject, ObservableObject {
     private func sendJSON(_ dict: [String: Any]) async {
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
               let string = String(data: data, encoding: .utf8) else {
+            print("ExerciseAnalysis: Failed to serialize JSON")
+            return
+        }
+        
+        guard webSocket != nil else {
+            print("ExerciseAnalysis: WebSocket is nil, cannot send")
             return
         }
         
