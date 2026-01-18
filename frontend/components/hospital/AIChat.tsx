@@ -607,7 +607,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                         onClick={() => loadSession(session)}
                         className={`w-full text-left px-4 py-2.5 border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50 transition-colors ${
                           sessionId === session.id
-                            ? 'bg-blue-50 border-l-2 border-l-blue-600'
+                            ? 'bg-slate-50 border-l-2 border-l-slate-900'
                             : ''
                         }`}
                       >
@@ -666,7 +666,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                       <div
                         className={`max-w-[80%] px-4 py-3 text-sm font-light leading-relaxed ${
                           msg.role === 'user'
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-slate-900 text-white'
                             : 'bg-neutral-100 text-neutral-900'
                         }`}
                         style={{
@@ -778,7 +778,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                       onClick={() => selectAutocompleteItem(room)}
                       className={`w-full text-left px-3 py-2 text-xs font-light transition-colors ${
                         idx === selectedAutocompleteIndex
-                          ? 'bg-blue-100 text-blue-900 border-l-2 border-blue-600'
+                          ? 'bg-slate-100 text-slate-900 border-l-2 border-slate-900'
                           : 'text-neutral-900 hover:bg-neutral-50'
                       }`}
                     >
@@ -810,7 +810,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                 <button
                   onClick={handleSendMessage}
                   disabled={isLoading || isStreaming || input.trim() === ''}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-light rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-slate-900 text-white text-sm font-light rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <svg
                     className="w-4 h-4"
@@ -867,7 +867,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
               whileTap={{ scale: 0.95 }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
               onClick={() => setIsOpen(true)}
-              className="w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center rounded-full"
+              className="w-14 h-14 bg-slate-900 hover:bg-slate-800 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center rounded-full"
               title="PillPal AI Assistant"
             >
               <svg

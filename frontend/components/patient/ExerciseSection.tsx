@@ -11,7 +11,7 @@ interface ExerciseSectionProps {
 }
 
 const intensityColors: Record<string, string> = {
-  light: "bg-blue-100 text-blue-700",
+  light: "bg-slate-100 text-slate-900",
   moderate: "bg-amber-100 text-amber-700",
   vigorous: "bg-red-100 text-red-700",
 };

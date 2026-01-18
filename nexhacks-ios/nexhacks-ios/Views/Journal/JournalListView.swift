@@ -111,56 +111,124 @@ struct JournalListView: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: AppTheme.Spacing.lg) {
-            Image(systemName: "book.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.appPrimary)
+        VStack(spacing: AppTheme.Spacing.xl) {
+            Spacer()
+            
+            ZStack {
+                Circle()
+                    .fill(Color.appPrimary.opacity(0.1))
+                    .frame(width: 120, height: 120)
+                
+                Image(systemName: "book.fill")
+                    .font(.system(size: 50))
+                    .foregroundColor(.appPrimary)
+            }
 
-            Text("Start your first journal entry")
-                .font(AppTheme.Typography.title)
-                .foregroundColor(.textPrimary)
+            VStack(spacing: AppTheme.Spacing.sm) {
+                Text("Start Your Journal")
+                    .font(AppTheme.Typography.title)
+                    .foregroundColor(.textPrimary)
 
-            Text("Tap the microphone to begin voice journaling")
-                .font(AppTheme.Typography.body)
-                .foregroundColor(.textSecondary)
-                .multilineTextAlignment(.center)
+                Text("Capture your thoughts and experiences with voice journaling")
+                    .font(AppTheme.Typography.body)
+                    .foregroundColor(.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+            }
+
+            Spacer()
         }
-        .padding(AppTheme.Spacing.xl)
     }
+}
 
+struct StatItem: View {
+    let icon: String
+    let value: String
+    let label: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: AppTheme.Spacing.xs) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(AppTheme.Typography.title2)
+                .foregroundColor(.textPrimary)
+            
+            Text(label)
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
 }
 
 struct JournalEntryCard: View {
     let entry: JournalEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            HStack {
-                Text(entry.date, style: .date)
-                    .font(AppTheme.Typography.subheadline)
-                    .foregroundColor(.textSecondary)
-
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            // Header
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.date, style: .time)
+                        .font(AppTheme.Typography.headline)
+                        .foregroundColor(.textPrimary)
+                    
+                    if let duration = entry.duration {
+                        HStack(spacing: 4) {
+                            Image(systemName: "waveform")
+                                .font(.caption2)
+                                .foregroundColor(.appPrimary)
+                            Text(formatDuration(duration))
+                                .font(AppTheme.Typography.caption)
+                                .foregroundColor(.appPrimary)
+                        }
+                    }
+                }
+                
                 Spacer()
-
-                if let duration = entry.duration {
-                    Text(formatDuration(duration))
+                
+                // Word count badge
+                if !entry.transcript.isEmpty {
+                    Text("\(wordCount) words")
                         .font(AppTheme.Typography.caption)
-                        .foregroundColor(.appPrimary)
+                        .foregroundColor(.textSecondary)
                         .padding(.horizontal, AppTheme.Spacing.sm)
-                        .padding(.vertical, AppTheme.Spacing.xs)
-                        .background(Color.appPrimary.opacity(0.1))
+                        .padding(.vertical, 4)
+                        .background(Color.appBackground)
                         .cornerRadius(AppTheme.CornerRadius.sm)
                 }
-
-                Text(entry.date, style: .time)
-                    .font(AppTheme.Typography.caption)
-                    .foregroundColor(.textSecondary)
             }
-
+            
+            Divider()
+                .background(Color.divider)
+            
+            // Preview text
             Text(previewText)
                 .font(AppTheme.Typography.body)
                 .foregroundColor(.textPrimary)
-                .lineLimit(3)
+                .lineLimit(4)
+                .lineSpacing(4)
+            
+            // Tags if available
+            if !entry.tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        ForEach(entry.tags.prefix(3), id: \.self) { tag in
+                            Text(tag)
+                                .font(AppTheme.Typography.caption)
+                                .foregroundColor(.appPrimary)
+                                .padding(.horizontal, AppTheme.Spacing.sm)
+                                .padding(.vertical, 4)
+                                .background(Color.appPrimary.opacity(0.1))
+                                .cornerRadius(AppTheme.CornerRadius.sm)
+                        }
+                    }
+                }
+            }
         }
         .padding(AppTheme.Spacing.md)
         .background(Color.cardBackground)
@@ -169,15 +237,28 @@ struct JournalEntryCard: View {
     }
 
     private var previewText: String {
-        let lines = entry.transcript.components(separatedBy: .newlines)
-        let preview = lines.prefix(3).joined(separator: " ")
-        return preview.isEmpty ? "No transcript" : preview
+        let trimmed = entry.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "No transcript available"
+        }
+        let lines = trimmed.components(separatedBy: .newlines)
+        let preview = lines.prefix(4).joined(separator: " ")
+        return preview
+    }
+    
+    private var wordCount: Int {
+        entry.transcript.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .count
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        }
+        return "\(seconds)s"
     }
 }
 

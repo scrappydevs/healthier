@@ -203,31 +203,13 @@ class ExerciseViewModel: ObservableObject {
     }
     
     private func syncExerciseToSupabase(_ exercise: Exercise) async {
-        guard let currentUserId = supabaseService.getCurrentUserId() else {
-            print("Cannot sync exercise: No authenticated user")
-            return
-        }
-        
-        let supabaseExercise = SupabaseExercise(
-            id: exercise.id,
-            userId: currentUserId,
-            name: exercise.name,
-            type: exercise.type.rawValue.lowercased(),
-            duration: Int(exercise.duration),
-            caloriesBurned: exercise.caloriesBurned,
-            distance: exercise.distance,
-            startTime: exercise.startTime,
-            endTime: exercise.endTime,
-            heartRateAvg: exercise.heartRateAvg,
-            heartRateMax: exercise.heartRateMax,
-            videoUrl: exercise.videoURL,
-            notes: exercise.notes
-        )
-        
         do {
-            try await supabaseService.saveExercise(supabaseExercise)
+            try await supabaseService.saveExercise(exercise)
         } catch {
             print("Failed to sync exercise to Supabase: \(error)")
+            await MainActor.run {
+                errorMessage = "Failed to sync exercise: \(error.localizedDescription)"
+            }
         }
     }
 }

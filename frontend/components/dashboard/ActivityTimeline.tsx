@@ -35,13 +35,13 @@ const typeConfig = {
   },
   exercise: { 
     icon: Activity,
-    bgColor: "bg-blue-100",
-    iconColor: "text-blue-600",
+    bgColor: "bg-slate-100",
+    iconColor: "text-slate-600",
   },
 };
 
 const statusStyles = {
-  completed: "bg-blue-100 text-blue-800",
+  completed: "bg-slate-100 text-slate-800",
   pending: "bg-muted text-muted-foreground",
   missed: "bg-red-100 text-red-800",
 };

@@ -25,7 +25,7 @@ type AlertsFeedProps = {
 const severityStyles = {
   critical: "bg-red-100 text-red-800",
   high: "bg-amber-100 text-amber-800",
-  medium: "bg-blue-100 text-blue-800",
+  medium: "bg-slate-100 text-slate-800",
   low: "bg-muted text-muted-foreground",
 };
 
