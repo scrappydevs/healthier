@@ -234,7 +234,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     }
                 },
                 "required": ["patient_id"]
@@ -251,7 +251,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     }
                 },
                 "required": ["patient_id"]
@@ -268,7 +268,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     }
                 },
                 "required": ["patient_id"]
@@ -285,7 +285,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     },
                     "status": {
                         "type": "string",
@@ -311,7 +311,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001') to transfer"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith') to transfer"
                     },
                     "from_room": {
                         "type": "string",
@@ -340,7 +340,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     },
                     "note_type": {
                         "type": "string",
@@ -366,7 +366,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     },
                     "instructions": {
                         "type": "string",
@@ -577,7 +577,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001') - optional, if not provided returns all"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith') - optional, if not provided returns all"
                     }
                 },
                 "required": []
@@ -594,7 +594,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     },
                     "medication_id": {
                         "type": "string",
@@ -896,13 +896,15 @@ MOCK_ROOMS = [
 ]
 
 # Patients matching the floor plan rooms
+# IMPORTANT: This mock data should match the real Supabase database!
+# Real users: John Doe, Sarah Smith, Robert Johnson, Mary Williams, James Brown, David Chung
 MOCK_PATIENTS = [
-    {"id": "P-001", "name": "John Smith", "age": 72, "condition": "Post-cardiac surgery", "room": "Room 1", "status": "stable"},
-    {"id": "P-002", "name": "Mary Johnson", "age": 68, "condition": "Arrhythmia monitoring", "room": "Room 2", "status": "improving"},
-    {"id": "P-003", "name": "Robert Davis", "age": 81, "condition": "COPD exacerbation", "room": "Room 3", "status": "attention"},
-    {"id": "P-004", "name": "Linda Wilson", "age": 65, "condition": "Post-stroke recovery", "room": "Room 4", "status": "stable"},
-    {"id": "P-005", "name": "Patricia Miller", "age": 70, "condition": "Hip replacement", "room": "Room 6", "status": "stable"},
-    {"id": "P-006", "name": "Michael Garcia", "age": 85, "condition": "Multi-organ failure", "room": "Critical Room", "status": "critical"},
+    {"id": "aaaa1111-0000-0000-0000-000000000001", "name": "John Doe", "age": 73, "condition": "Hypertension, Type 2 Diabetes", "room": "Room 1", "status": "stable"},
+    {"id": "aaaa2222-0000-0000-0000-000000000002", "name": "Sarah Smith", "age": 77, "condition": "Heart Disease, Arthritis", "room": "Room 2", "status": "attention"},
+    {"id": "aaaa3333-0000-0000-0000-000000000003", "name": "Robert Johnson", "age": 70, "condition": "COPD", "room": "Room 3", "status": "stable"},
+    {"id": "aaaa4444-0000-0000-0000-000000000004", "name": "Mary Williams", "age": 65, "condition": "Osteoporosis, Hypothyroidism", "room": "Room 4", "status": "stable"},
+    {"id": "aaaa5555-0000-0000-0000-000000000005", "name": "James Brown", "age": 82, "condition": "Alzheimer's", "room": "Room 5", "status": "attention"},
+    {"id": "aa153118-6c50-486f-9fa3-7ad06b9943d9", "name": "David Chung", "age": None, "condition": "General monitoring", "room": "Room 6", "status": "stable"},
 ]
 
 MOCK_HAZARDS = [
@@ -912,17 +914,17 @@ MOCK_HAZARDS = [
 ]
 
 MOCK_ALERTS = [
-    {"id": "A-001", "title": "Critical vitals - Critical Room", "description": "Patient P-006 blood pressure dropping", "severity": "critical", "status": "active", "patient_id": "P-006", "room_id": "critical-room"},
-    {"id": "A-002", "title": "Medication overdue", "description": "Patient P-002 missed 2PM medication", "severity": "high", "status": "active", "patient_id": "P-002", "room_id": "room-2"},
-    {"id": "A-003", "title": "Patient needs attention", "description": "Patient P-003 in Room 3 needs monitoring", "severity": "medium", "status": "active", "patient_id": "P-003", "room_id": "room-3"},
+    {"id": "A-001", "title": "Heart condition monitoring", "description": "Sarah Smith requires extra monitoring due to Heart Disease", "severity": "high", "status": "active", "patient_id": "aaaa2222-0000-0000-0000-000000000002", "room_id": "room-2"},
+    {"id": "A-002", "title": "Medication reminder", "description": "John Doe diabetes medication schedule", "severity": "medium", "status": "active", "patient_id": "aaaa1111-0000-0000-0000-000000000001", "room_id": "room-1"},
+    {"id": "A-003", "title": "Fall risk - Alzheimer's patient", "description": "James Brown in Room 5 needs supervision", "severity": "high", "status": "active", "patient_id": "aaaa5555-0000-0000-0000-000000000005", "room_id": "room-5"},
 ]
 
 MOCK_MEDICATIONS = [
-    {"id": "M-001", "patient_id": "P-001", "name": "Aspirin", "dosage": "81mg", "schedule": "8:00 AM", "status": "given"},
-    {"id": "M-002", "patient_id": "P-001", "name": "Metoprolol", "dosage": "25mg", "schedule": "8:00 AM, 8:00 PM", "status": "given"},
-    {"id": "M-003", "patient_id": "P-002", "name": "Amiodarone", "dosage": "200mg", "schedule": "2:00 PM", "status": "overdue"},
-    {"id": "M-004", "patient_id": "P-003", "name": "Albuterol", "dosage": "2 puffs", "schedule": "Every 4 hours", "status": "given"},
-    {"id": "M-005", "patient_id": "P-006", "name": "Norepinephrine", "dosage": "IV drip", "schedule": "Continuous", "status": "active"},
+    {"id": "M-001", "patient_id": "aaaa1111-0000-0000-0000-000000000001", "name": "Metformin", "dosage": "500mg", "schedule": "8:00 AM, 6:00 PM", "status": "given"},
+    {"id": "M-002", "patient_id": "aaaa1111-0000-0000-0000-000000000001", "name": "Lisinopril", "dosage": "10mg", "schedule": "8:00 AM", "status": "given"},
+    {"id": "M-003", "patient_id": "aaaa2222-0000-0000-0000-000000000002", "name": "Aspirin", "dosage": "81mg", "schedule": "8:00 AM", "status": "given"},
+    {"id": "M-004", "patient_id": "aaaa3333-0000-0000-0000-000000000003", "name": "Albuterol", "dosage": "2 puffs", "schedule": "Every 4 hours", "status": "given"},
+    {"id": "M-005", "patient_id": "aaaa5555-0000-0000-0000-000000000005", "name": "Donepezil", "dosage": "10mg", "schedule": "Bedtime", "status": "pending"},
 ]
 
 

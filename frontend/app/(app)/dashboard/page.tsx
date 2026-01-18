@@ -40,13 +40,20 @@ import {
   updatePatientPlan,
   analyzeExercisePose,
   getExercisePoseAnalysis,
+  updatePatient,
+  getExerciseCatalog,
+  getPrescribedExercises,
+  prescribeExercise,
+  removePrescribedExercise,
   type Patient,
   type Pill as PillType,
   type PillLog,
   type DailySummaryResponse,
   type DailySummaryAlert,
   type JournalEntry,
-  type PatientPlan
+  type PatientPlan,
+  type ExerciseCatalogItem,
+  type PrescribedExercise
 } from "@/lib/api";
 import { FoodSection } from "@/components/patient/FoodSection";
 import { ExerciseSection } from "@/components/patient/ExerciseSection";
@@ -65,6 +72,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [careSettingFilter, setCareSettingFilter] = useState<"all" | "in_clinic" | "at_home">("all");
   
   // Helper to get local date string (YYYY-MM-DD)
   const getLocalDate = (date: Date): string => {
@@ -97,9 +105,14 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
-  const filteredPatients = patients.filter(p => 
-    p.full_name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredPatients = patients.filter(p => {
+    const matchesSearch = p.full_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCareSetting = careSettingFilter === "all" || p.care_setting === careSettingFilter;
+    return matchesSearch && matchesCareSetting;
+  });
+  
+  const inClinicCount = patients.filter(p => p.care_setting === "in_clinic").length;
+  const atHomeCount = patients.filter(p => p.care_setting === "at_home").length;
 
   const getStatusFromAdherence = (rate: number): "good" | "warning" | "critical" => {
     if (rate >= 85) return "good";
@@ -177,10 +190,41 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Column Header */}
-        <div className="px-3 py-1.5 border-b bg-muted/20 flex items-center justify-between">
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Patient</span>
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Adherence</span>
+        {/* Care Setting Tabs */}
+        <div className="flex border-b">
+          <button
+            onClick={() => setCareSettingFilter("all")}
+            className={cn(
+              "flex-1 py-1.5 text-xs font-semibold tracking-tight transition-colors",
+              careSettingFilter === "all" 
+                ? "text-slate-900 border-b-2 border-slate-900" 
+                : "text-slate-500 hover:text-slate-900"
+            )}
+          >
+            All ({patients.length})
+          </button>
+          <button
+            onClick={() => setCareSettingFilter("in_clinic")}
+            className={cn(
+              "flex-1 py-1.5 text-xs font-semibold tracking-tight transition-colors",
+              careSettingFilter === "in_clinic" 
+                ? "text-slate-900 border-b-2 border-slate-900" 
+                : "text-slate-500 hover:text-slate-900"
+            )}
+          >
+            Clinic ({inClinicCount})
+          </button>
+          <button
+            onClick={() => setCareSettingFilter("at_home")}
+            className={cn(
+              "flex-1 py-1.5 text-xs font-semibold tracking-tight transition-colors",
+              careSettingFilter === "at_home" 
+                ? "text-slate-900 border-b-2 border-slate-900" 
+                : "text-slate-500 hover:text-slate-900"
+            )}
+          >
+            Home ({atHomeCount})
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -192,56 +236,84 @@ export default function DashboardPage() {
               const hasMeds = patient.medication_count > 0;
               const status = hasMeds ? getStatusFromAdherence(patient.adherence_rate) : null;
               return (
-                <button
+                <div
                   key={patient.id}
-                  onClick={() => {
-                    setSelectedPatient(patient);
-                    setActiveTab("overview");
-                  }}
                   className={cn(
-                    "w-full px-3 py-2 text-left transition-colors border-l-2",
+                    "px-3 py-2 transition-colors border-l-2",
                     isSelected 
                       ? "bg-primary/5 border-l-primary" 
                       : "border-l-transparent hover:bg-muted/30"
                   )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-foreground truncate">
-                      {patient.full_name}
-                    </span>
-                    {hasMeds ? (
-                      <div className="flex items-center gap-1">
-                      <span className={cn(
-                        "text-xs font-semibold tabular-nums",
-                          "text-muted-foreground"
-                      )}>
-                        {Math.round(patient.adherence_rate)}%
+                  <div className="flex items-center justify-between gap-1">
+                    <button
+                      onClick={() => {
+                        setSelectedPatient(patient);
+                        setActiveTab("overview");
+                      }}
+                      className="flex-1 text-left min-w-0"
+                    >
+                      <span className="text-sm font-medium text-slate-900 tracking-tight truncate block">
+                        {patient.full_name}
                       </span>
-                        {status === "critical" && (
-                          <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        )}
-                        {status === "warning" && (
-                          <svg className="w-3 h-3 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {hasMeds ? (
+                        <>
+                          <span className="text-xs font-semibold tabular-nums text-slate-500">
+                            {Math.round(patient.adherence_rate)}%
+                          </span>
+                          {status === "critical" && (
+                            <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          )}
+                          {status === "warning" && (
+                            <svg className="w-3 h-3 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {patient.medication_count} meds
-                    </span>
-                    <span className="text-muted-foreground/50">·</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatLastActive(patient.last_active)}
-                    </span>
+                  <div className="flex items-center justify-between mt-0.5">
+                    <button
+                      onClick={() => {
+                        setSelectedPatient(patient);
+                        setActiveTab("overview");
+                      }}
+                      className="text-left"
+                    >
+                      <span className="text-xs text-slate-500">
+                        {patient.medication_count} meds · {formatLastActive(patient.last_active)}
+                      </span>
+                    </button>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const newSetting = patient.care_setting === "in_clinic" ? "at_home" : "in_clinic";
+                        try {
+                          await updatePatient(patient.id, { care_setting: newSetting });
+                          setPatients(prev => prev.map(p => 
+                            p.id === patient.id ? { ...p, care_setting: newSetting } : p
+                          ));
+                          if (selectedPatient?.id === patient.id) {
+                            setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
+                          }
+                        } catch (err) {
+                          console.error("Failed to update care setting:", err);
+                        }
+                      }}
+                      title={patient.care_setting === "in_clinic" ? "Move to At-Home" : "Move to In-Clinic"}
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                    >
+                      {patient.care_setting === "in_clinic" ? "Clinic" : "Home"}
+                    </button>
                   </div>
-                </button>
+                </div>
               );
             })
           )}
@@ -257,12 +329,15 @@ export default function DashboardPage() {
               <div className="flex items-center gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-base font-semibold text-foreground">
+                    <h1 className="text-base font-semibold text-slate-900 tracking-tight">
                       {selectedPatient.full_name}
                     </h1>
+                    <span className="text-xs text-slate-500">
+                      {selectedPatient.care_setting === "in_clinic" ? "In-Clinic" : "At-Home"}
+                    </span>
                     <StatusBadge status={getStatusFromAdherence(selectedPatient.adherence_rate)} />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-slate-500 mt-0.5">
                     {selectedPatient.age ? `${selectedPatient.age} yrs` : "Age unknown"} · {selectedPatient.medication_count} medications
                   </p>
                 </div>
@@ -567,12 +642,12 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
           )}
           
           {/* Video Player */}
-          <div className="relative bg-black rounded overflow-hidden flex items-center justify-center min-h-[180px] max-h-[300px]">
+          <div className="relative bg-black rounded overflow-hidden flex items-center justify-center min-h-[280px] max-h-[400px]">
             <video
               key={currentVideoUrl}
               src={currentVideoUrl!}
               controls
-              className="max-w-full max-h-[300px] w-auto h-auto"
+              className="max-w-full max-h-[400px] w-auto h-auto"
               preload="metadata"
             />
           </div>
@@ -582,14 +657,26 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
             <div className="mt-3 space-y-2">
               <p className="text-sm text-foreground leading-relaxed">{analysis.summary}</p>
               
-              {/* Asymmetry inline */}
+              {/* Asymmetry inline with severity colors */}
               {asymmetryIssues.length > 0 && (
-                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  {asymmetryIssues.map(({ joint, difference }) => (
-                    <span key={joint}>
-                      {joint}: {difference.toFixed(0)}° diff
-                    </span>
-                  ))}
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {asymmetryIssues.map(({ joint, difference }) => {
+                    // Color coding: red >= 40°, amber >= 20°, green < 20°
+                    const severity = difference >= 40 ? "high" : difference >= 20 ? "medium" : "low";
+                    return (
+                      <span 
+                        key={joint}
+                        className={cn(
+                          "px-1.5 py-0.5 rounded",
+                          severity === "high" && "bg-red-100 text-red-700",
+                          severity === "medium" && "bg-amber-100 text-amber-700",
+                          severity === "low" && "bg-green-100 text-green-700"
+                        )}
+                      >
+                        {joint}: {difference.toFixed(0)}° diff
+                      </span>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -638,14 +725,16 @@ function PlansContent({ patient }: { patient: Patient }) {
   const [dietPlan, setDietPlan] = useState<PatientPlan | null>(null);
   const [exercisePlan, setExercisePlan] = useState<PatientPlan | null>(null);
   const [medications, setMedications] = useState<AssignedMedication[]>([]);
+  const [prescribedExercises, setPrescribedExercises] = useState<PrescribedExercise[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchPlans = async () => {
     setIsLoading(true);
     try {
-      const [plansRes, medsRes] = await Promise.all([
+      const [plansRes, medsRes, prescribedRes] = await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/patients/${patient.id}/plans`, { cache: "no-store" }).then(r => r.json()),
         getPatientMedications(patient.id),
+        getPrescribedExercises(patient.id),
       ]);
       
       const plans = plansRes.plans || [];
@@ -675,6 +764,9 @@ function PlansContent({ patient }: { patient: Patient }) {
         frequency: m.frequency as string,
         times_of_day: m.times_of_day as string[],
       })));
+      
+      // Store prescribed exercises
+      setPrescribedExercises(prescribedRes.prescribed_exercises || []);
     } catch (err) {
       console.error("Failed to fetch plans:", err);
     } finally {
@@ -692,186 +784,202 @@ function PlansContent({ patient }: { patient: Patient }) {
 
   return (
     <div className="space-y-4">
-        {/* Medication Assignment */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Pill className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-medium text-foreground">Medication Plans</h3>
-            </div>
-            <button 
-              onClick={() => setShowMedForm(!showMedForm)}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              <Plus className="h-3 w-3" />
-            {showMedForm ? "Cancel" : "Assign"}
-            </button>
-          </div>
-          
-          {showMedForm && (
-            <MedicationAssignForm 
-              patientId={patient.id} 
-              onClose={() => { setShowMedForm(false); handlePlanSaved(); }} 
-            />
-          )}
-          
-          {!showMedForm && (
-            <div className="space-y-2">
-              {isLoading ? (
-                <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : medications.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No active prescriptions</p>
-              ) : (
-                <>
-                  <p className="text-xs text-muted-foreground">{medications.length} active prescription{medications.length !== 1 ? "s" : ""}</p>
-                  <div className="space-y-1.5">
-                    {medications.map((med) => (
-                      <div key={med.id} className="flex items-center justify-between p-2 bg-primary/5 rounded text-sm">
-                        <div>
-                          <span className="font-medium text-foreground">{med.name}</span>
-                          {med.strength && med.unit && (
-                            <span className="text-muted-foreground ml-1">
-                              {med.strength}{med.unit}
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {med.frequency?.replace(/_/g, " ")}
-                          {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Diet Instructions */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Utensils className="h-4 w-4 text-amber-600" />
-              <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
-            </div>
-            <button 
-              onClick={() => setShowDietForm(!showDietForm)}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-            {showDietForm ? (
-              <>
-                <span>Cancel</span>
-              </>
-            ) : dietPlan ? (
-              <>
-                <span>Edit</span>
-              </>
-            ) : (
-              <>
-              <Plus className="h-3 w-3" />
-                <span>Add</span>
-              </>
+      {/* Medications */}
+      <div className="bg-white rounded-lg border p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Pill className="h-5 w-5 text-primary" />
+            <h3 className="text-base font-semibold text-foreground">Medications</h3>
+            {medications.length > 0 && (
+              <span className="text-sm text-muted-foreground">({medications.length} active)</span>
             )}
-            </button>
           </div>
-          
-          {showDietForm && (
-            <DietInstructionForm 
-              patientId={patient.id} 
+          <button 
+            onClick={() => setShowMedForm(!showMedForm)}
+            className="text-sm text-primary hover:underline font-medium"
+          >
+            {showMedForm ? "Cancel" : "Assign"}
+          </button>
+        </div>
+        
+        {showMedForm && (
+          <MedicationAssignForm 
+            patientId={patient.id} 
+            onClose={() => { setShowMedForm(false); handlePlanSaved(); }} 
+          />
+        )}
+        
+        {!showMedForm && medications.length === 0 && (
+          <p className="text-sm text-muted-foreground">No medications assigned</p>
+        )}
+        
+        {!showMedForm && medications.length > 0 && (
+          <div className="space-y-3">
+            {medications.map((med) => (
+              <div key={med.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                <div>
+                  <p className="text-base font-medium text-foreground">
+                    {med.name}
+                    {med.strength && med.unit && (
+                      <span className="text-muted-foreground font-normal"> {med.strength}{med.unit}</span>
+                    )}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {med.frequency?.replace(/_/g, " ")}
+                  </p>
+                </div>
+                {med.times_of_day && med.times_of_day.length > 0 && (
+                  <span className="text-sm font-medium text-foreground bg-slate-100 px-2 py-1 rounded">
+                    {med.times_of_day.join(", ")}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Diet */}
+      <div className="bg-white rounded-lg border p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Utensils className="h-5 w-5 text-amber-600" />
+            <h3 className="text-base font-semibold text-foreground">Diet Plan</h3>
+          </div>
+          <button 
+            onClick={() => setShowDietForm(!showDietForm)}
+            className="text-sm text-primary hover:underline font-medium"
+          >
+            {showDietForm ? "Cancel" : dietPlan ? "Edit" : "Add"}
+          </button>
+        </div>
+        
+        {showDietForm && (
+          <DietInstructionForm 
+            patientId={patient.id} 
             existingPlan={dietPlan}
             onClose={() => { setShowDietForm(false); handlePlanSaved(); }} 
-            />
-          )}
-          
-          {!showDietForm && (
-          <div className="space-y-2">
-            {dietPlan ? (
-              <div className="p-3 bg-amber-50 rounded border space-y-2">
-                <p className="text-base text-foreground leading-relaxed">{dietPlan.notes || "No notes"}</p>
-                {(dietPlan.calorie_target || dietPlan.protein_target || dietPlan.carb_target || dietPlan.fat_target) && (
-                  <div className="flex flex-wrap gap-2 pt-2 border-t border-amber-200/50">
-                    {dietPlan.calorie_target && (
-                      <span className="text-xs text-muted-foreground">
-                        Target: {dietPlan.calorie_target} cal
-                      </span>
-                    )}
-                    {dietPlan.protein_target && (
-                      <span className="text-xs text-muted-foreground">
-                        · {dietPlan.protein_target}g protein
-                      </span>
-                    )}
-                    {dietPlan.carb_target && (
-                      <span className="text-xs text-muted-foreground">
-                        · {dietPlan.carb_target}g carbs
-                      </span>
-                    )}
-                    {dietPlan.fat_target && (
-                      <span className="text-xs text-muted-foreground">
-                        · {dietPlan.fat_target}g fat
-                      </span>
-                    )}
+          />
+        )}
+        
+        {!showDietForm && !dietPlan && (
+          <p className="text-sm text-muted-foreground">No diet plan set</p>
+        )}
+        
+        {!showDietForm && dietPlan && (
+          <div className="space-y-4">
+            {dietPlan.notes && (
+              <p className="text-base text-foreground">{dietPlan.notes}</p>
+            )}
+            {(dietPlan.calorie_target || dietPlan.protein_target || dietPlan.carb_target || dietPlan.fat_target) && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {dietPlan.calorie_target && (
+                  <div className="bg-amber-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-semibold text-amber-700">{dietPlan.calorie_target}</p>
+                    <p className="text-xs text-amber-600">calories</p>
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  Updated {new Date(dietPlan.updated_at || dietPlan.created_at).toLocaleDateString()}
-                </p>
+                {dietPlan.protein_target && (
+                  <div className="bg-amber-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-semibold text-amber-700">{dietPlan.protein_target}g</p>
+                    <p className="text-xs text-amber-600">protein</p>
+                  </div>
+                )}
+                {dietPlan.carb_target && (
+                  <div className="bg-amber-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-semibold text-amber-700">{dietPlan.carb_target}g</p>
+                    <p className="text-xs text-amber-600">carbs</p>
+                  </div>
+                )}
+                {dietPlan.fat_target && (
+                  <div className="bg-amber-50 rounded-lg p-3 text-center">
+                    <p className="text-lg font-semibold text-amber-700">{dietPlan.fat_target}g</p>
+                    <p className="text-xs text-amber-600">fat</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No diet plan set</p>
             )}
           </div>
-          )}
-        </div>
+        )}
+      </div>
 
-        {/* Exercise Plan */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-slate-600" />
-              <h3 className="text-sm font-medium text-foreground">Exercise Plan</h3>
-            </div>
-            <button 
-              onClick={() => setShowExerciseForm(!showExerciseForm)}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-            {showExerciseForm ? (
-              <>
-                <span>Cancel</span>
-              </>
-            ) : exercisePlan ? (
-              <>
-                <span>Edit</span>
-              </>
-            ) : (
-              <>
-              <Plus className="h-3 w-3" />
-                <span>Add</span>
-              </>
+      {/* Exercise */}
+      <div className="bg-white rounded-lg border p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-slate-600" />
+            <h3 className="text-base font-semibold text-foreground">Exercise Plan</h3>
+            {prescribedExercises.length > 0 && (
+              <span className="text-sm text-slate-500">({prescribedExercises.length} exercises)</span>
             )}
-            </button>
           </div>
-          
-          {showExerciseForm && (
-            <ExercisePlanForm 
-              patientId={patient.id} 
+          <button 
+            onClick={() => setShowExerciseForm(!showExerciseForm)}
+            className="text-sm text-primary hover:underline font-medium"
+          >
+            {showExerciseForm ? "Cancel" : "Add Exercise"}
+          </button>
+        </div>
+        
+        {showExerciseForm && (
+          <ExercisePlanForm 
+            patientId={patient.id} 
             existingPlan={exercisePlan}
+            existingPrescriptions={prescribedExercises}
             onClose={() => { setShowExerciseForm(false); handlePlanSaved(); }} 
-            />
-          )}
-          
-          {!showExerciseForm && (
+          />
+        )}
+        
+        {!showExerciseForm && prescribedExercises.length > 0 && (
           <div className="space-y-2">
-            {exercisePlan ? (
-              <div className="p-3 bg-slate-50 rounded border">
-                <p className="text-base text-foreground leading-relaxed">{exercisePlan.notes || "No guidelines specified"}</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Added {new Date(exercisePlan.created_at).toLocaleDateString()}
-                </p>
+            {prescribedExercises.map((rx) => (
+              <div key={rx.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-900">
+                    {rx.exercise_catalog.name}
+                    <span className="ml-2 text-xs text-slate-500 capitalize">
+                      {rx.exercise_catalog.category}
+                    </span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {rx.sets && rx.reps && `${rx.sets} sets × ${rx.reps} reps`}
+                    {rx.sets && rx.reps && rx.duration_seconds && " · "}
+                    {rx.duration_seconds && `${Math.round(rx.duration_seconds / 60)} min`}
+                    {(rx.sets || rx.duration_seconds) && " · "}
+                    {rx.frequency.replace("_", "×")}
+                  </p>
+                  {rx.form_notes && (
+                    <p className="text-xs text-slate-400 mt-0.5">{rx.form_notes}</p>
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await removePrescribedExercise(patient.id, rx.id);
+                      handlePlanSaved();
+                    } catch (err) {
+                      console.error("Failed to remove exercise:", err);
+                    }
+                  }}
+                  className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                  title="Remove exercise"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No exercise plan set</p>
-            )}
+            ))}
+          </div>
+        )}
+        
+        {!showExerciseForm && prescribedExercises.length === 0 && (
+          <p className="text-sm text-slate-500">No exercises prescribed. Click "Add Exercise" to assign specific exercises.</p>
+        )}
+        
+        {/* General guidelines (legacy) */}
+        {!showExerciseForm && exercisePlan?.notes && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="text-xs text-slate-500 mb-1">General Guidelines:</p>
+            <p className="text-sm text-slate-600">{exercisePlan.notes}</p>
           </div>
         )}
       </div>
@@ -1286,43 +1394,27 @@ function OverviewContent({ patient }: { patient: Patient }) {
           )}
         </div>
         {journalExpanded && journalEntries.length > 0 && (
-          <div className="px-4 pb-4 border-t">
-            <div className="pt-3 space-y-3">
-              {(viewMode === "all" ? groupByDate(journalEntries) : [[formatDateDisplay(selectedDate), journalEntries] as [string, typeof journalEntries]]).map(([dateStr, entries]) => (
-                <div key={dateStr} className="space-y-2">
-                  {viewMode === "all" && (
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{dateStr}</p>
-                  )}
-                  {entries.map((entry) => (
-                    <div key={entry.id} className="py-3 border-b border-slate-100 last:border-b-0 space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{getMoodEmoji(entry.mood)}</span>
-                        <span>{formatTime(entry.logged_at)}</span>
-                        {entry.duration_seconds && <span>· {formatDuration(entry.duration_seconds)}</span>}
-                      </div>
-                      {entry.ai_analysis?.summary && (
-                        <div>
-                          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Summary</p>
-                          <p className="text-sm text-foreground leading-relaxed">{entry.ai_analysis.summary}</p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Raw Transcript</p>
-                        <p className="text-sm text-muted-foreground leading-relaxed">{entry.transcript}</p>
-                      </div>
-                      {entry.tags && entry.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {entry.tags.map((tag, idx) => (
-                            <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+          <div className="px-4 pb-3 border-t">
+            <div className="pt-3 divide-y divide-slate-100">
+              {journalEntries.map((entry) => (
+                <div key={entry.id} className="py-2 first:pt-0 last:pb-0">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {formatTime(entry.logged_at)}
+                    </span>
+                    <p className="text-sm text-foreground line-clamp-2">{entry.transcript}</p>
+                  </div>
+                  {entry.tags && entry.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1 ml-12">
+                      {entry.tags.map((tag, idx) => (
+                        <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                          {tag}
+                        </span>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-            ))}
+              ))}
             </div>
           </div>
         )}
@@ -1802,79 +1894,221 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
   );
 }
 
-// Inline Exercise Plan Form
-function ExercisePlanForm({ patientId, existingPlan, onClose }: { patientId: string; existingPlan?: PatientPlan | null; onClose: () => void }) {
-  const [notes, setNotes] = useState(existingPlan?.notes || "");
+// Inline Exercise Plan Form - Now with exercise catalog selection
+function ExercisePlanForm({ 
+  patientId, 
+  existingPlan, 
+  existingPrescriptions,
+  onClose 
+}: { 
+  patientId: string; 
+  existingPlan?: PatientPlan | null; 
+  existingPrescriptions?: PrescribedExercise[];
+  onClose: () => void;
+}) {
+  const [catalog, setCatalog] = useState<ExerciseCatalogItem[]>([]);
+  const [selectedExercise, setSelectedExercise] = useState<string>("");
+  const [sets, setSets] = useState<number | "">("");
+  const [reps, setReps] = useState<number | "">("");
+  const [durationMinutes, setDurationMinutes] = useState<number | "">("");
+  const [frequency, setFrequency] = useState("daily");
+  const [formNotes, setFormNotes] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
 
   useEffect(() => {
-    if (existingPlan) {
-      setNotes(existingPlan.notes || "");
+    const fetchCatalog = async () => {
+      setIsLoadingCatalog(true);
+      try {
+        const res = await getExerciseCatalog();
+        setCatalog(res.exercises || []);
+      } catch (err) {
+        console.error("Failed to load exercise catalog:", err);
+      } finally {
+        setIsLoadingCatalog(false);
+      }
+    };
+    fetchCatalog();
+  }, []);
+
+  // Update defaults when exercise is selected
+  useEffect(() => {
+    if (selectedExercise) {
+      const exercise = catalog.find(e => e.id === selectedExercise);
+      if (exercise) {
+        if (exercise.default_sets) setSets(exercise.default_sets);
+        if (exercise.default_reps) setReps(exercise.default_reps);
+        if (exercise.default_duration_seconds) {
+          setDurationMinutes(Math.round(exercise.default_duration_seconds / 60));
+        }
+      }
     }
-  }, [existingPlan]);
+  }, [selectedExercise, catalog]);
 
   const handleSubmit = async () => {
-    if (!notes.trim()) {
-      setError("Please enter exercise guidelines");
+    if (!selectedExercise) {
+      setError("Please select an exercise");
       return;
     }
     
     setIsSaving(true);
     setError(null);
     try {
-      if (existingPlan) {
-        // Update existing plan
-        const result = await updatePatientPlan(patientId, existingPlan.id, {
-          notes: notes.trim(),
-        });
-        if (result.plan) {
-          onClose();
-        } else {
-          setError("Failed to update plan");
-        }
-      } else {
-        // Create new plan
-        const result = await createPatientPlan(patientId, {
-          plan_type: "exercise",
-          title: "Exercise Plan",
-          notes: notes.trim(),
-        });
-        if (result.plan) {
-          onClose();
-        } else {
-          setError("Failed to save plan");
-        }
-      }
-    } catch (err) {
-      console.error("Failed to save exercise plan:", err);
-      setError("Failed to save plan. Please try again.");
+      await prescribeExercise(patientId, {
+        exercise_id: selectedExercise,
+        sets: sets ? Number(sets) : undefined,
+        reps: reps ? Number(reps) : undefined,
+        duration_seconds: durationMinutes ? Number(durationMinutes) * 60 : undefined,
+        frequency,
+        form_notes: formNotes.trim() || undefined,
+      });
+      onClose();
+    } catch (err: unknown) {
+      console.error("Failed to prescribe exercise:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to prescribe exercise";
+      setError(errorMessage.includes("already prescribed") 
+        ? "This exercise is already prescribed to this patient" 
+        : "Failed to prescribe exercise. Please try again.");
     } finally {
       setIsSaving(false);
     }
   };
 
+  // Filter out already prescribed exercises
+  const prescribedIds = new Set(existingPrescriptions?.map(p => p.exercise_id) || []);
+  const filteredCatalog = catalog.filter(e => {
+    const matchesCategory = categoryFilter === "all" || e.category === categoryFilter;
+    const notAlreadyPrescribed = !prescribedIds.has(e.id);
+    return matchesCategory && notAlreadyPrescribed;
+  });
+
+  const selectedExerciseData = catalog.find(e => e.id === selectedExercise);
+
   return (
-    <div className="space-y-3 pt-3 border-t">
-      <div>
-        <label className="block text-sm font-medium text-foreground mb-1">Exercise Guidelines</label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="e.g., 30 minutes walking daily, strength training 3x per week, gentle stretching..."
-          rows={3}
-          className="w-full px-3 py-2 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-        />
-      </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSubmit} disabled={isSaving || !notes.trim()}>
-          {isSaving ? "Saving..." : existingPlan ? "Update Exercise Plan" : "Save Exercise Plan"}
-        </Button>
-        <button onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground px-3 py-1">
-          Cancel
-        </button>
-      </div>
+    <div className="space-y-4 pt-3 border-t">
+      {isLoadingCatalog ? (
+        <p className="text-sm text-slate-500">Loading exercises...</p>
+      ) : (
+        <>
+          {/* Category Filter */}
+          <div className="flex gap-2">
+            {["all", "strength", "cardio", "flexibility", "balance"].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={cn(
+                  "px-2.5 py-1 text-xs rounded-full transition-colors capitalize",
+                  categoryFilter === cat
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                )}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Exercise Selection */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Select Exercise</label>
+            <select
+              value={selectedExercise}
+              onChange={(e) => setSelectedExercise(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">Choose an exercise...</option>
+              {filteredCatalog.map((exercise) => (
+                <option key={exercise.id} value={exercise.id}>
+                  {exercise.name} ({exercise.category})
+                </option>
+              ))}
+            </select>
+            {selectedExerciseData?.description && (
+              <p className="text-xs text-slate-500 mt-1">{selectedExerciseData.description}</p>
+            )}
+          </div>
+
+          {/* Parameters */}
+          {selectedExercise && (
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Sets</label>
+                <input
+                  type="number"
+                  value={sets}
+                  onChange={(e) => setSets(e.target.value ? Number(e.target.value) : "")}
+                  placeholder="3"
+                  min="1"
+                  className="w-full px-2 py-1.5 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Reps</label>
+                <input
+                  type="number"
+                  value={reps}
+                  onChange={(e) => setReps(e.target.value ? Number(e.target.value) : "")}
+                  placeholder="10"
+                  min="1"
+                  className="w-full px-2 py-1.5 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Duration (min)</label>
+                <input
+                  type="number"
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(e.target.value ? Number(e.target.value) : "")}
+                  placeholder="5"
+                  min="1"
+                  className="w-full px-2 py-1.5 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Frequency</label>
+                <select
+                  value={frequency}
+                  onChange={(e) => setFrequency(e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="3x_week">3× / week</option>
+                  <option value="2x_week">2× / week</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="as_needed">As needed</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Form Notes */}
+          {selectedExercise && (
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Special Instructions (optional)</label>
+              <input
+                type="text"
+                value={formNotes}
+                onChange={(e) => setFormNotes(e.target.value)}
+                placeholder="e.g., Use wall for support, focus on knee alignment..."
+                className="w-full px-3 py-2 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+          )}
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={handleSubmit} disabled={isSaving || !selectedExercise}>
+              {isSaving ? "Adding..." : "Add Exercise"}
+            </Button>
+            <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-900 px-3 py-1">
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

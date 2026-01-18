@@ -59,6 +59,7 @@ export type Patient = {
   full_name: string;
   age: number | null;
   status: string;
+  care_setting: "in_clinic" | "at_home";
   adherence_rate: number;
   last_active: string | null;
   medication_count: number;
@@ -81,12 +82,14 @@ export type PatientListResponse = {
 export async function getPatients(params?: {
   clinician_id?: string;
   status?: string;
+  care_setting?: "in_clinic" | "at_home";
   page?: number;
   per_page?: number;
 }): Promise<PatientListResponse> {
   const searchParams = new URLSearchParams();
   if (params?.clinician_id) searchParams.set("clinician_id", params.clinician_id);
   if (params?.status) searchParams.set("status", params.status);
+  if (params?.care_setting) searchParams.set("care_setting", params.care_setting);
   if (params?.page) searchParams.set("page", params.page.toString());
   if (params?.per_page) searchParams.set("per_page", params.per_page.toString());
 
@@ -96,6 +99,17 @@ export async function getPatients(params?: {
 
 export async function getPatient(id: string): Promise<Patient> {
   return request<Patient>(`/api/v1/patients/${id}`);
+}
+
+export async function updatePatient(
+  id: string,
+  data: { care_setting?: "in_clinic" | "at_home"; status?: string }
+): Promise<Patient> {
+  return request<Patient>(`/api/v1/patients/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
 }
 
 // ============================================
@@ -731,6 +745,142 @@ export async function analyzeExercisePose(
   return request<AnalyzePoseResponse>(`/api/v1/exercises/${exerciseId}/analyze-pose`, {
     method: "POST",
   });
+}
+
+// ============================================
+// EXERCISE CATALOG & PRESCRIBED EXERCISES
+// ============================================
+
+export type ExerciseCatalogItem = {
+  id: string;
+  name: string;
+  category: "strength" | "cardio" | "flexibility" | "balance";
+  description: string | null;
+  video_demo_url: string | null;
+  default_sets: number | null;
+  default_reps: number | null;
+  default_duration_seconds: number | null;
+  difficulty: "easy" | "moderate" | "hard" | null;
+  target_muscles: string[] | null;
+};
+
+export type PrescribedExercise = {
+  id: string;
+  patient_id: string;
+  exercise_id: string;
+  sets: number | null;
+  reps: number | null;
+  duration_seconds: number | null;
+  frequency: "daily" | "3x_week" | "2x_week" | "weekly" | "as_needed";
+  form_notes: string | null;
+  priority: number;
+  is_active: boolean;
+  created_at: string;
+  exercise_catalog: ExerciseCatalogItem;
+};
+
+export type ExerciseAdherenceSummary = {
+  date: string;
+  summary: {
+    total_prescribed: number;
+    completed: number;
+    missed: number;
+    off_plan: number;
+  };
+  completed: Array<{
+    prescription: PrescribedExercise;
+    log: Exercise;
+    form_score: number | null;
+  }>;
+  missed: PrescribedExercise[];
+  off_plan: Exercise[];
+};
+
+export async function getExerciseCatalog(
+  category?: string
+): Promise<{ exercises: ExerciseCatalogItem[] }> {
+  const params = category ? `?category=${category}` : "";
+  return request<{ exercises: ExerciseCatalogItem[] }>(`/api/v1/exercise-catalog${params}`);
+}
+
+export async function getPrescribedExercises(
+  patientId: string,
+  includeInactive = false
+): Promise<{ prescribed_exercises: PrescribedExercise[] }> {
+  const params = includeInactive ? "?include_inactive=true" : "";
+  return request<{ prescribed_exercises: PrescribedExercise[] }>(
+    `/api/v1/patients/${patientId}/prescribed-exercises${params}`
+  );
+}
+
+export async function prescribeExercise(
+  patientId: string,
+  data: {
+    exercise_id: string;
+    sets?: number;
+    reps?: number;
+    duration_seconds?: number;
+    frequency?: string;
+    form_notes?: string;
+    priority?: number;
+  }
+): Promise<{ prescribed_exercise: PrescribedExercise }> {
+  const params = new URLSearchParams();
+  params.append("exercise_id", data.exercise_id);
+  if (data.sets) params.append("sets", String(data.sets));
+  if (data.reps) params.append("reps", String(data.reps));
+  if (data.duration_seconds) params.append("duration_seconds", String(data.duration_seconds));
+  if (data.frequency) params.append("frequency", data.frequency);
+  if (data.form_notes) params.append("form_notes", data.form_notes);
+  if (data.priority) params.append("priority", String(data.priority));
+  
+  return request<{ prescribed_exercise: PrescribedExercise }>(
+    `/api/v1/patients/${patientId}/prescribed-exercises?${params.toString()}`,
+    { method: "POST" }
+  );
+}
+
+export async function updatePrescribedExercise(
+  patientId: string,
+  prescriptionId: string,
+  updates: Partial<{
+    sets: number;
+    reps: number;
+    duration_seconds: number;
+    frequency: string;
+    form_notes: string;
+    priority: number;
+    is_active: boolean;
+  }>
+): Promise<{ prescribed_exercise: PrescribedExercise }> {
+  return request<{ prescribed_exercise: PrescribedExercise }>(
+    `/api/v1/patients/${patientId}/prescribed-exercises/${prescriptionId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    }
+  );
+}
+
+export async function removePrescribedExercise(
+  patientId: string,
+  prescriptionId: string
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(
+    `/api/v1/patients/${patientId}/prescribed-exercises/${prescriptionId}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function getExerciseAdherence(
+  patientId: string,
+  date?: string
+): Promise<ExerciseAdherenceSummary> {
+  const params = date ? `?date=${date}` : "";
+  return request<ExerciseAdherenceSummary>(
+    `/api/v1/patients/${patientId}/exercise-adherence${params}`
+  );
 }
 
 export async function getExercisePoseAnalysis(

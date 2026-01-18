@@ -46,18 +46,18 @@ function NavItem({
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-normal transition-colors w-full relative",
+        "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium tracking-tight transition-colors w-full relative",
         collapsed && "justify-center px-2",
         isActive
-          ? "bg-primary/8 text-primary"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          ? "bg-primary/8 text-slate-900"
+          : "text-slate-500 hover:bg-muted/50 hover:text-slate-900"
       )}
       title={collapsed ? item.name : undefined}
     >
-      <item.icon className={cn("h-4 w-4 shrink-0", isActive && "text-primary")} />
+      <item.icon className={cn("h-4 w-4 shrink-0", isActive ? "text-slate-900" : "text-slate-400")} />
       {!collapsed && <span>{item.name}</span>}
       {isActive && !collapsed && (
-        <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-primary" />
+        <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-slate-900" />
       )}
     </Link>
   );
@@ -149,7 +149,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         )}>
           {sidebarOpen ? (
             <>
-              <Link href="/" className="text-2xl font-bold text-foreground tracking-tight" style={{ fontFamily: 'var(--font-inter-tight), -apple-system, sans-serif' }}>
+              <Link href="/" className="text-xl font-semibold text-slate-900 tracking-tight">
                 healthier
               </Link>
               <Button
@@ -207,7 +207,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <button 
               onClick={() => logoutAction()}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 w-full",
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium tracking-tight text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 w-full",
                 !sidebarOpen && "justify-center px-2"
               )}
               title={!sidebarOpen ? "Sign out" : undefined}
@@ -230,7 +230,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         >
           {/* Header */}
           <header className="flex h-12 items-center justify-between bg-white px-4 shrink-0 border-b">
-            <h1 className="text-sm font-medium text-foreground">
+            <h1 className="text-sm font-semibold text-slate-900 tracking-tight">
               {navigation.find(n => pathname === n.href || 
                 (n.href !== "/dashboard" && pathname.startsWith(n.href)))?.name || "Dashboard"}
             </h1>

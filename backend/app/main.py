@@ -44,9 +44,12 @@ def get_cerebras_client() -> Optional[OpenAI]:
         print("⚠️ Cerebras not configured - CEREBRAS_KEY missing")
         return None
     
+    # Strip any whitespace/newlines from API key (common issue with env vars)
+    cerebras_key = settings.cerebras_key.strip().split('\n')[0].strip()
+    
     try:
         _cerebras_client = OpenAI(
-            api_key=settings.cerebras_key,
+            api_key=cerebras_key,
             base_url="https://api.cerebras.ai/v1"
         )
         print("✅ Cerebras client initialized")
@@ -72,6 +75,9 @@ def get_claude_client() -> Optional[anthropic.Anthropic]:
     if not claude_key:
         print("⚠️ Claude not configured - CLAUDE_API_KEY missing")
         return None
+    
+    # Strip any whitespace/newlines from API key (common issue with env vars)
+    claude_key = claude_key.strip().split('\n')[0].strip()
     
     try:
         _claude_client = anthropic.Anthropic(api_key=claude_key)

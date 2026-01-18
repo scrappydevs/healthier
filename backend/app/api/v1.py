@@ -119,6 +119,7 @@ async def update_current_user(
 async def list_patients(
     clinician_id: Optional[UUID] = Query(None),
     status: Optional[str] = Query(None),
+    care_setting: Optional[str] = Query(None, description="Filter by care setting: 'in_clinic' or 'at_home'"),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: Client = Depends(get_db),
@@ -128,6 +129,7 @@ async def list_patients(
     patients, total = await service.get_patients(
         clinician_id=clinician_id,
         status=status,
+        care_setting=care_setting,
         page=page,
         per_page=per_page,
     )
@@ -908,7 +910,7 @@ async def generate_journal_day_summary(
     if not force_refresh:
         cached_res = db.table("daily_summaries").select(
             "journal_summary, entry_counts"
-        ).eq("patient_id", str(patient_id)).eq("date", date).single().execute()
+        ).eq("patient_id", str(patient_id)).eq("date", date).maybe_single().execute()
         
         if cached_res.data:
             cached = cached_res.data
@@ -968,7 +970,7 @@ Provide a clear, natural summary of what the patient talked about:"""
     from datetime import datetime as dt
     existing = db.table("daily_summaries").select("id, entry_counts").eq(
         "patient_id", str(patient_id)
-    ).eq("date", date).single().execute()
+    ).eq("date", date).maybe_single().execute()
     
     if existing.data:
         # Update existing record
@@ -982,7 +984,7 @@ Provide a clear, natural summary of what the patient talked about:"""
         }).eq("id", existing.data.get("id")).execute()
     else:
         # Create new record (get patient info first)
-        patient_res = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+        patient_res = db.table("patients").select("user_id").eq("id", str(patient_id)).maybe_single().execute()
         user_id = patient_res.data.get("user_id") if patient_res.data else None
         
         db.table("daily_summaries").insert({
@@ -1077,7 +1079,7 @@ async def generate_daily_summary(
     if not force_refresh:
         cached_res = db.table("daily_summaries").select("*").eq(
             "patient_id", str(patient_id)
-        ).eq("date", target_date).single().execute()
+        ).eq("date", target_date).maybe_single().execute()
         
         if cached_res.data:
             cached = cached_res.data
@@ -1251,9 +1253,58 @@ Date: {target_date}
         for v in violations:
             context += f"- {v['meal_type'].title()}: {v['meal']} at {v['time']} - Violates dietary restrictions\n"
     
-    context += f"\n=== EXERCISES ({len(exercises)} logged, {total_exercise_min} min total) ===\n"
+    # Get prescribed exercises for this patient
+    prescribed_exercises = db.table("prescribed_exercises").select(
+        "*, exercise_catalog(name, category)"
+    ).eq("patient_id", str(patient_id)).eq("is_active", True).execute()
+    prescribed_list = prescribed_exercises.data or []
+    
+    context += f"\n=== PRESCRIBED EXERCISES ({len(prescribed_list)} assigned) ===\n"
+    for px in prescribed_list:
+        ex_name = px.get("exercise_catalog", {}).get("name", "Unknown")
+        ex_category = px.get("exercise_catalog", {}).get("category", "")
+        freq = px.get("frequency", "daily").replace("_", " ")
+        sets_reps = ""
+        if px.get("sets") and px.get("reps"):
+            sets_reps = f"{px['sets']} sets × {px['reps']} reps"
+        elif px.get("duration_seconds"):
+            sets_reps = f"{px['duration_seconds'] // 60} minutes"
+        context += f"- {ex_name} ({ex_category}): {sets_reps}, frequency: {freq}\n"
+        if px.get("form_notes"):
+            context += f"  Special instructions: {px['form_notes']}\n"
+    
+    context += f"\n=== LOGGED EXERCISES ({len(exercises)} logged, {total_exercise_min} min total) ===\n"
+    
+    # Match logged exercises to prescribed ones
+    prescribed_names = {px.get("exercise_catalog", {}).get("name", "").lower(): px for px in prescribed_list}
+    completed_prescribed = set()
+    off_plan_exercises = []
+    
     for ex in exercises:
-        context += f"- {ex.get('exercise_type', ex.get('name', 'Exercise'))}: {ex.get('duration_minutes', 0)} min, {ex.get('calories_burned', 0)} cal burned\n"
+        ex_type = (ex.get('exercise_type') or ex.get('name') or 'Exercise').lower()
+        matched = False
+        for name, px in prescribed_names.items():
+            if name in ex_type or ex_type in name:
+                completed_prescribed.add(name)
+                matched = True
+                form_score = ex.get('form_score', 'N/A')
+                pose_analysis = ex.get('pose_analysis')
+                form_info = ""
+                if pose_analysis and isinstance(pose_analysis, dict) and pose_analysis.get('summary'):
+                    form_info = f" | Form: {pose_analysis['summary'][:100]}"
+                context += f"- [ON-PLAN] {ex.get('exercise_type', ex.get('name', 'Exercise'))}: {ex.get('duration_minutes', 0)} min, {ex.get('calories_burned', 0)} cal{form_info}\n"
+                break
+        
+        if not matched:
+            off_plan_exercises.append(ex)
+            context += f"- [OFF-PLAN] {ex.get('exercise_type', ex.get('name', 'Exercise'))}: {ex.get('duration_minutes', 0)} min, {ex.get('calories_burned', 0)} cal (not in prescribed plan)\n"
+    
+    # Report missed prescribed exercises
+    missed_prescribed = [name for name in prescribed_names.keys() if name not in completed_prescribed]
+    if missed_prescribed:
+        context += f"\n=== MISSED PRESCRIBED EXERCISES ({len(missed_prescribed)}) ===\n"
+        for name in missed_prescribed:
+            context += f"- {name.title()}: Not completed today\n"
     
     context += f"\n=== MEDICATIONS ===\n"
     taken = sum(1 for p in pill_logs if p.get('status') == 'taken')
@@ -1299,6 +1350,8 @@ CRITICAL INSTRUCTIONS:
 - Be specific about adherence (followed plan vs. didn't follow plan)
 - Highlight gaps between prescribed targets and actual behavior
 - Include relevant numbers (calories, minutes, medications, etc.)
+- For exercises: Report which prescribed exercises were completed, which were missed, and if any off-plan exercises were done
+- If pose analysis shows form issues (asymmetry, poor angles), flag as an alert
 - Only flag genuine clinical concerns as alerts
 
 Patient Data:
@@ -1309,9 +1362,9 @@ Respond in this exact JSON format:
   "summary": "2-3 sentences summarizing the day's key highlights, comparing actual behavior to care plans where applicable. Include specific numbers.",
   "journal_summary": "Summarize WHAT the patient talked about across their journal entries - the topics, experiences, and thoughts they shared. Synthesize the content into a cohesive summary. Do NOT just count entries or list snippets. If 0 entries, say 'No journal entries recorded.'",
   "meals_summary": "2-3 sentences on nutrition. Compare actual intake to diet plan if one exists. Include specific numbers (calories, meals logged). Mention any violations of dietary restrictions. If 0 meals, say 'No meals logged.'",
-  "activity_summary": "2-3 sentences on exercise. Compare actual activity to exercise plan targets if one exists. Include specific numbers (minutes, exercises logged). If 0 exercises, say 'No exercise logged.'",
+  "activity_summary": "2-3 sentences on exercise. Compare logged exercises to PRESCRIBED exercises. State which prescribed exercises were completed and which were missed. If off-plan exercises were done, mention them. If pose analysis shows form concerns, note them. If 0 exercises, say 'No exercise logged.'",
   "alerts": [
-    {{"severity": "high|medium|low", "type": "missed_dose|low_adherence|nutrition|inactivity|mood|diet_violation|other", "message": "Specific alert describing the issue and why it matters"}}
+    {{"severity": "high|medium|low", "type": "missed_dose|low_adherence|nutrition|inactivity|mood|diet_violation|exercise_form|missed_exercise|off_plan_exercise|other", "message": "Specific alert describing the issue and why it matters"}}
   ]
 }}
 
@@ -1563,6 +1616,211 @@ async def delete_patient_plan(
     ).eq("patient_id", str(patient_id)).execute()
     
     return {"success": True}
+
+
+# ============================================
+# EXERCISE CATALOG & PRESCRIBED EXERCISES
+# ============================================
+
+@router.get("/exercise-catalog")
+async def get_exercise_catalog(
+    category: Optional[str] = None,
+    db: Client = Depends(get_db)
+):
+    """Get all exercises from the catalog, optionally filtered by category."""
+    query = db.table("exercise_catalog").select("*").order("category").order("name")
+    
+    if category:
+        query = query.eq("category", category)
+    
+    response = query.execute()
+    return {"exercises": response.data or []}
+
+
+@router.get("/patients/{patient_id}/prescribed-exercises")
+async def get_prescribed_exercises(
+    patient_id: UUID,
+    include_inactive: bool = False,
+    db: Client = Depends(get_db)
+):
+    """Get prescribed exercises for a patient with catalog details."""
+    query = db.table("prescribed_exercises").select(
+        "*, exercise_catalog(*)"
+    ).eq("patient_id", str(patient_id))
+    
+    if not include_inactive:
+        query = query.eq("is_active", True)
+    
+    response = query.order("priority").execute()
+    return {"prescribed_exercises": response.data or []}
+
+
+@router.post("/patients/{patient_id}/prescribed-exercises")
+async def prescribe_exercise(
+    patient_id: UUID,
+    exercise_id: UUID,
+    sets: Optional[int] = None,
+    reps: Optional[int] = None,
+    duration_seconds: Optional[int] = None,
+    frequency: str = "daily",
+    form_notes: Optional[str] = None,
+    priority: int = 1,
+    db: Client = Depends(get_db)
+):
+    """Prescribe an exercise to a patient."""
+    # Check if already prescribed and active
+    existing = db.table("prescribed_exercises").select("id").eq(
+        "patient_id", str(patient_id)
+    ).eq("exercise_id", str(exercise_id)).eq("is_active", True).execute()
+    
+    if existing.data:
+        raise HTTPException(status_code=400, detail="Exercise already prescribed to this patient")
+    
+    # Get defaults from catalog if not specified
+    if sets is None and reps is None and duration_seconds is None:
+        catalog = db.table("exercise_catalog").select("*").eq("id", str(exercise_id)).single().execute()
+        if catalog.data:
+            sets = catalog.data.get("default_sets")
+            reps = catalog.data.get("default_reps")
+            duration_seconds = catalog.data.get("default_duration_seconds")
+    
+    prescription_data = {
+        "patient_id": str(patient_id),
+        "exercise_id": str(exercise_id),
+        "sets": sets,
+        "reps": reps,
+        "duration_seconds": duration_seconds,
+        "frequency": frequency,
+        "form_notes": form_notes,
+        "priority": priority,
+        "is_active": True
+    }
+    
+    response = db.table("prescribed_exercises").insert(prescription_data).execute()
+    
+    # Fetch with catalog details
+    full_response = db.table("prescribed_exercises").select(
+        "*, exercise_catalog(*)"
+    ).eq("id", response.data[0]["id"]).single().execute()
+    
+    return {"prescribed_exercise": full_response.data}
+
+
+@router.patch("/patients/{patient_id}/prescribed-exercises/{prescription_id}")
+async def update_prescribed_exercise(
+    patient_id: UUID,
+    prescription_id: UUID,
+    updates: dict,
+    db: Client = Depends(get_db)
+):
+    """Update a prescribed exercise."""
+    allowed_fields = {"sets", "reps", "duration_seconds", "frequency", "form_notes", "priority", "is_active"}
+    filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+    filtered_updates["updated_at"] = "now()"
+    
+    response = db.table("prescribed_exercises").update(filtered_updates).eq(
+        "id", str(prescription_id)
+    ).eq("patient_id", str(patient_id)).execute()
+    
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+    
+    # Fetch with catalog details
+    full_response = db.table("prescribed_exercises").select(
+        "*, exercise_catalog(*)"
+    ).eq("id", str(prescription_id)).single().execute()
+    
+    return {"prescribed_exercise": full_response.data}
+
+
+@router.delete("/patients/{patient_id}/prescribed-exercises/{prescription_id}")
+async def remove_prescribed_exercise(
+    patient_id: UUID,
+    prescription_id: UUID,
+    db: Client = Depends(get_db)
+):
+    """Remove (deactivate) a prescribed exercise."""
+    response = db.table("prescribed_exercises").update({
+        "is_active": False,
+        "updated_at": "now()"
+    }).eq("id", str(prescription_id)).eq("patient_id", str(patient_id)).execute()
+    
+    return {"success": True}
+
+
+@router.get("/patients/{patient_id}/exercise-adherence")
+async def get_exercise_adherence(
+    patient_id: UUID,
+    date: Optional[str] = None,
+    db: Client = Depends(get_db)
+):
+    """Get exercise adherence summary for a patient on a given date."""
+    from datetime import datetime, timedelta
+    
+    if date:
+        target_date = datetime.fromisoformat(date).date()
+    else:
+        target_date = datetime.now().date()
+    
+    start_of_day = datetime.combine(target_date, datetime.min.time()).isoformat()
+    end_of_day = datetime.combine(target_date, datetime.max.time()).isoformat()
+    
+    # Get prescribed exercises
+    prescribed = db.table("prescribed_exercises").select(
+        "*, exercise_catalog(name, category)"
+    ).eq("patient_id", str(patient_id)).eq("is_active", True).execute()
+    
+    # Get logged exercises for the day
+    logged = db.table("exercises").select("*").eq(
+        "patient_id", str(patient_id)
+    ).gte("logged_at", start_of_day).lte("logged_at", end_of_day).execute()
+    
+    prescribed_list = prescribed.data or []
+    logged_list = logged.data or []
+    
+    # Match logged exercises to prescriptions
+    completed = []
+    missed = []
+    off_plan = []
+    
+    prescribed_names = {p["exercise_catalog"]["name"].lower(): p for p in prescribed_list}
+    
+    for log in logged_list:
+        exercise_type = (log.get("exercise_type") or log.get("name") or "").lower()
+        
+        # Check if it matches any prescribed exercise
+        matched = False
+        for name, prescription in prescribed_names.items():
+            if name in exercise_type or exercise_type in name:
+                completed.append({
+                    "prescription": prescription,
+                    "log": log,
+                    "form_score": log.get("form_score")
+                })
+                matched = True
+                break
+        
+        if not matched:
+            off_plan.append(log)
+    
+    # Find missed exercises (prescribed but not completed)
+    completed_names = {c["prescription"]["exercise_catalog"]["name"].lower() for c in completed}
+    for name, prescription in prescribed_names.items():
+        if name not in completed_names:
+            missed.append(prescription)
+    
+    return {
+        "date": str(target_date),
+        "summary": {
+            "total_prescribed": len(prescribed_list),
+            "completed": len(completed),
+            "missed": len(missed),
+            "off_plan": len(off_plan)
+        },
+        "completed": completed,
+        "missed": missed,
+        "off_plan": off_plan
+    }
 
 
 # ============================================

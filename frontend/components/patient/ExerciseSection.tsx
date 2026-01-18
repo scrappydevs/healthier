@@ -275,7 +275,7 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
               src={exercise.video_url!}
               controls
               className="w-full rounded bg-black"
-              style={{ height: "220px", objectFit: "contain" }}
+              style={{ height: "320px", objectFit: "contain" }}
               playsInline
             />
           </div>
@@ -291,7 +291,7 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
                   src={processedUrl!}
                   controls
                   className="w-full rounded bg-black"
-                  style={{ height: "220px", objectFit: "contain" }}
+                  style={{ height: "320px", objectFit: "contain" }}
                   playsInline
                 />
               ) : (
@@ -317,14 +317,26 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
         </p>
       )}
 
-      {/* Symmetry stats inline */}
+      {/* Symmetry stats inline with severity colors */}
       {analysis?.symmetry_analysis && Object.keys(analysis.symmetry_analysis).length > 0 && (
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          {Object.entries(analysis.symmetry_analysis).map(([joint, data]) => (
-            <span key={joint} className={cn(!data.symmetric && "text-amber-600")}>
-              {joint}: {Math.round(data.difference)}° diff
-            </span>
-          ))}
+        <div className="flex flex-wrap gap-2 text-xs">
+          {Object.entries(analysis.symmetry_analysis).map(([joint, data]) => {
+            // Color coding: red >= 40°, amber >= 20°, green < 20°
+            const severity = data.difference >= 40 ? "high" : data.difference >= 20 ? "medium" : "low";
+            return (
+              <span 
+                key={joint} 
+                className={cn(
+                  "px-1.5 py-0.5 rounded",
+                  severity === "high" && "bg-red-100 text-red-700",
+                  severity === "medium" && "bg-amber-100 text-amber-700",
+                  severity === "low" && "bg-green-100 text-green-700"
+                )}
+              >
+                {joint}: {Math.round(data.difference)}° diff
+              </span>
+            );
+          })}
         </div>
       )}
 
