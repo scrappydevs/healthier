@@ -129,6 +129,18 @@ struct PillVerificationResult: Codable {
 
 struct PillVerificationWarningsResult: Codable {
     let warnings: [String]
+    let detectedPillCount: Int?
+    let medicationMatch: String?
+    let confidence: Double?
+    let detectedDescription: String?
+
+    enum CodingKeys: String, CodingKey {
+        case warnings
+        case detectedPillCount = "detected_pill_count"
+        case medicationMatch = "medication_match"
+        case confidence
+        case detectedDescription = "detected_description"
+    }
 }
 
 struct NutritionAnalysis: Codable {
@@ -235,14 +247,24 @@ class ClaudeAPIService: ObservableObject {
         - Description: \(expectedMedication.pillDescription ?? "Not provided")
         - Expected pill count: \(expectedCount) pill(s) per dose
 
+        Tasks:
+        1) Estimate how many pills are visible in the image.
+        2) Indicate if the pill appears to match the expected medication.
+        3) Provide short, clear warnings suitable for an elderly person.
+
         Respond ONLY with valid JSON in this exact format:
         {
+            "detected_pill_count": 2,
+            "medication_match": "match" | "possible_mismatch" | "mismatch",
+            "confidence": 0.0-1.0,
+            "detected_description": "Short description of what you see",
             "warnings": [
                 "Short warning for the patient"
             ]
         }
 
-        If the pill cannot be confidently identified, include a warning telling the user to double-check.
+        If you are unsure about the medication, use "possible_mismatch" (not "mismatch").
+        If you cannot confidently identify the pill, include a warning telling the user to double-check.
         Keep warnings short, clear, and suitable for an elderly person.
         """
 
@@ -257,18 +279,39 @@ class ClaudeAPIService: ObservableObject {
             ? ["Pill could not be confidently identified. Please double-check before taking."]
             : warningsResult.warnings
 
+        let matchValue = (warningsResult.medicationMatch ?? "possible_mismatch").lowercased()
+        let isMatch = matchValue == "match"
+        let detectedCount = warningsResult.detectedPillCount
+        let isCorrectDose = detectedCount.map { $0 == expectedCount } ?? true
+        let dosageWarning = dosageWarningText(detected: detectedCount, expected: expectedCount)
+        let confidence = warningsResult.confidence ?? 0.0
+        let description = warningsResult.detectedDescription ?? "Pill could not be confidently identified."
+
         return PillVerificationResult(
-            isMatch: false,
-            confidence: 0.0,
-            matchedMedicationName: nil,
-            detectedDescription: "Pill could not be confidently identified.",
+            isMatch: isMatch,
+            confidence: confidence,
+            matchedMedicationName: isMatch ? expectedMedication.name : nil,
+            detectedDescription: description,
             warnings: warnings,
             recommendation: "Double-check the pill before taking it.",
-            detectedPillCount: nil,
+            detectedPillCount: detectedCount,
             expectedPillCount: expectedCount,
-            isCorrectDose: false,
-            dosageWarning: nil
+            isCorrectDose: isCorrectDose,
+            dosageWarning: dosageWarning
         )
+    }
+
+    private func dosageWarningText(detected: Int?, expected: Int) -> String? {
+        guard let detected = detected else { return nil }
+        if detected > expected {
+            let diff = detected - expected
+            return "TOO MANY PILLS: You have \(detected) pills but should only take \(expected). Please remove \(diff) pill(s)."
+        }
+        if detected < expected {
+            let diff = expected - detected
+            return "NOT ENOUGH PILLS: You have \(detected) pills but need \(expected). Please add \(diff) more pill(s)."
+        }
+        return nil
     }
     
     // MARK: - Food Analysis

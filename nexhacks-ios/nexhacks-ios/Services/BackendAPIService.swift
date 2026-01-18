@@ -11,20 +11,11 @@ import UIKit
 // MARK: - Backend Configuration
 
 struct BackendConfig {
+    private static let defaultBaseURL = "https://healthier-backend-8ddo.onrender.com"
+
     // Backend API base URL
     static var baseURL: String {
-        // Try environment variable first
-        if let url = ProcessInfo.processInfo.environment["BACKEND_BASE_URL"], !url.isEmpty {
-            return url
-        }
-        
-        // Default to localhost for development
-        #if DEBUG
-        return "http://localhost:8000"
-        #else
-        // For production, set BACKEND_BASE_URL environment variable
-        return ProcessInfo.processInfo.environment["BACKEND_BASE_URL"] ?? "http://localhost:8000"
-        #endif
+        return defaultBaseURL
     }
 }
 

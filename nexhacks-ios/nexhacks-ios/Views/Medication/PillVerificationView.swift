@@ -281,6 +281,14 @@ struct PillVerificationView: View {
             // Status Icon - based on both medication match AND dose correctness
             statusIconSection(result)
 
+            if let detected = result.detectedPillCount, !result.isCorrectDose {
+                pillCountSection(detected: detected, expected: medication.expectedPillCount, isCorrect: result.isCorrectDose)
+
+                if let warning = result.dosageWarning {
+                    dosageWarningSection(warning: warning, isOverdose: detected > medication.expectedPillCount)
+                }
+            }
+
             if isClaudeVerification {
                 claudeWarningsSection(result)
             } else {
@@ -346,7 +354,9 @@ struct PillVerificationView: View {
     }
 
     private func statusText(_ result: PillVerificationResult) -> String {
-        if !result.isMatch {
+        if isClaudeVerification && !result.isMatch {
+            return "Possible Mismatch"
+        } else if !result.isMatch {
             return "Wrong Medication"
         } else if !result.isCorrectDose {
             if let detected = result.detectedPillCount, detected > medication.expectedPillCount {
@@ -611,9 +621,12 @@ struct PillVerificationView: View {
         boundedImageUrl = nil
 
         do {
-            let bounded = try await fetchBoundedImage(from: imageData)
-            boundedImage = bounded.image
-            boundedImageUrl = bounded.url
+            if let bounded = try await fetchBoundedImage(from: imageData, timeoutSeconds: 10) {
+                boundedImage = bounded.image
+                boundedImageUrl = bounded.url
+            } else {
+                boundedImage = image
+            }
 
             let result = try await claudeService.verifyPill(
                 imageData: imageData,
@@ -628,12 +641,14 @@ struct PillVerificationView: View {
         isVerifying = false
     }
 
-    private func fetchBoundedImage(from imageData: Data) async throws -> (image: UIImage, url: String) {
-        let maxAttempts = 5
+    private func fetchBoundedImage(from imageData: Data, timeoutSeconds: TimeInterval) async throws -> (image: UIImage, url: String)? {
         let retryDelay: UInt64 = 1_000_000_000
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
         var lastError: Error?
+        var attempt = 0
 
-        for attempt in 1...maxAttempts {
+        while Date() < deadline {
+            attempt += 1
             do {
                 let response = try await backendService.detectPills(imageData: imageData)
                 let url = response.boundedImageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -650,16 +665,14 @@ struct PillVerificationView: View {
                 lastError = error
             }
 
-            if attempt < maxAttempts {
-                try await Task.sleep(nanoseconds: retryDelay)
-            }
+            try await Task.sleep(nanoseconds: retryDelay)
         }
 
-        throw lastError ?? NSError(
-            domain: "PillVerificationView",
-            code: 2,
-            userInfo: [NSLocalizedDescriptionKey: "Failed to fetch bounded image after retries"]
-        )
+        if let error = lastError {
+            print("⚠️ Bounded image timeout: \(error.localizedDescription)")
+        }
+
+        return nil
     }
     
 }
