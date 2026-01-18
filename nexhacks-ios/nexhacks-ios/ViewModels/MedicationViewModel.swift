@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import UIKit
 
 @MainActor
 class MedicationViewModel: ObservableObject {
@@ -32,16 +33,19 @@ class MedicationViewModel: ObservableObject {
     // MARK: - Dependencies
     private let medicationRepository: MedicationRepository
     private let notificationService: NotificationService
+    private let supabaseService: SupabaseService
 
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
     init(
         medicationRepository: MedicationRepository,
-        notificationService: NotificationService
+        notificationService: NotificationService,
+        supabaseService: SupabaseService
     ) {
         self.medicationRepository = medicationRepository
         self.notificationService = notificationService
+        self.supabaseService = supabaseService
 
         setupBindings()
         loadMedications()
@@ -196,6 +200,26 @@ class MedicationViewModel: ObservableObject {
         let allRates = activeMedications.map { getAdherenceRate(for: $0) }
         guard !allRates.isEmpty else { return 100 }
         return allRates.reduce(0, +) / Double(allRates.count)
+    }
+
+    func updateMedicationImage(_ medication: Medication, image: UIImage?) async {
+        do {
+            var updated = medication
+
+            if let image = image,
+               let data = image.jpegData(compressionQuality: 0.8) {
+                let url = try await supabaseService.uploadMedicationPlanImage(data: data)
+                updated.bottleImageURL = url
+                updated.planImageURL = url
+            } else {
+                updated.bottleImageURL = nil
+                updated.planImageURL = nil
+            }
+
+            updateMedication(updated)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     // MARK: - Private Methods

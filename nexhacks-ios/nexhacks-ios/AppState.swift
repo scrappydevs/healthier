@@ -86,7 +86,8 @@ class AppState: ObservableObject {
 
         self.medicationViewModel = MedicationViewModel(
             medicationRepository: medicationRepository,
-            notificationService: notificationService
+            notificationService: notificationService,
+            supabaseService: supabaseService
         )
         
         self.mealViewModel = MealViewModel(
