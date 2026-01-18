@@ -26,6 +26,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   getPatients, 
   getPatientMeals,
@@ -783,205 +790,181 @@ function PlansContent({ patient }: { patient: Patient }) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Medications */}
-      <div className="bg-white rounded-lg border p-5">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-lg border">
+        <div className="px-4 py-3 flex items-center justify-between border-b">
           <div className="flex items-center gap-2">
-            <Pill className="h-5 w-5 text-primary" />
-            <h3 className="text-base font-semibold text-foreground">Medications</h3>
+            <h3 className="text-sm font-medium text-foreground">Medications</h3>
             {medications.length > 0 && (
-              <span className="text-sm text-muted-foreground">({medications.length} active)</span>
+              <span className="text-xs text-muted-foreground">{medications.length} active</span>
             )}
           </div>
           <button 
             onClick={() => setShowMedForm(!showMedForm)}
-            className="text-sm text-primary hover:underline font-medium"
+            className="text-xs text-muted-foreground hover:text-foreground"
           >
             {showMedForm ? "Cancel" : "Assign"}
           </button>
         </div>
-        
-        {showMedForm && (
-          <MedicationAssignForm 
-            patientId={patient.id} 
-            onClose={() => { setShowMedForm(false); handlePlanSaved(); }} 
-          />
-        )}
-        
-        {!showMedForm && medications.length === 0 && (
-          <p className="text-sm text-muted-foreground">No medications assigned</p>
-        )}
-        
-        {!showMedForm && medications.length > 0 && (
-          <div className="space-y-3">
-            {medications.map((med) => (
-              <div key={med.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
-                <div>
-                  <p className="text-base font-medium text-foreground">
-                    {med.name}
-                    {med.strength && med.unit && (
-                      <span className="text-muted-foreground font-normal"> {med.strength}{med.unit}</span>
-                    )}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {med.frequency?.replace(/_/g, " ")}
-                  </p>
+        <div className="px-4 py-3">
+          {showMedForm && (
+            <MedicationAssignForm 
+              patientId={patient.id} 
+              onClose={() => { setShowMedForm(false); handlePlanSaved(); }} 
+            />
+          )}
+          
+          {!showMedForm && medications.length === 0 && (
+            <p className="text-sm text-muted-foreground">No medications assigned</p>
+          )}
+          
+          {!showMedForm && medications.length > 0 && (
+            <div className="divide-y">
+              {medications.map((med) => (
+                <div key={med.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-foreground">
+                      <span className="font-medium">{med.name}</span>
+                      {med.strength && med.unit && (
+                        <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {med.frequency?.replace(/_/g, " ")}
+                    </p>
+                  </div>
+                  {med.times_of_day && med.times_of_day.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {med.times_of_day.join(", ")}
+                    </span>
+                  )}
                 </div>
-                {med.times_of_day && med.times_of_day.length > 0 && (
-                  <span className="text-sm font-medium text-foreground bg-slate-100 px-2 py-1 rounded">
-                    {med.times_of_day.join(", ")}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Diet */}
-      <div className="bg-white rounded-lg border p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Utensils className="h-5 w-5 text-amber-600" />
-            <h3 className="text-base font-semibold text-foreground">Diet Plan</h3>
-          </div>
+      <div className="bg-white rounded-lg border">
+        <div className="px-4 py-3 flex items-center justify-between border-b">
+          <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
           <button 
             onClick={() => setShowDietForm(!showDietForm)}
-            className="text-sm text-primary hover:underline font-medium"
+            className="text-xs text-muted-foreground hover:text-foreground"
           >
             {showDietForm ? "Cancel" : dietPlan ? "Edit" : "Add"}
           </button>
         </div>
-        
-        {showDietForm && (
-          <DietInstructionForm 
-            patientId={patient.id} 
-            existingPlan={dietPlan}
-            onClose={() => { setShowDietForm(false); handlePlanSaved(); }} 
-          />
-        )}
-        
-        {!showDietForm && !dietPlan && (
-          <p className="text-sm text-muted-foreground">No diet plan set</p>
-        )}
-        
-        {!showDietForm && dietPlan && (
-          <div className="space-y-4">
-            {dietPlan.notes && (
-              <p className="text-base text-foreground">{dietPlan.notes}</p>
-            )}
-            {(dietPlan.calorie_target || dietPlan.protein_target || dietPlan.carb_target || dietPlan.fat_target) && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {dietPlan.calorie_target && (
-                  <div className="bg-amber-50 rounded-lg p-3 text-center">
-                    <p className="text-lg font-semibold text-amber-700">{dietPlan.calorie_target}</p>
-                    <p className="text-xs text-amber-600">calories</p>
-                  </div>
-                )}
-                {dietPlan.protein_target && (
-                  <div className="bg-amber-50 rounded-lg p-3 text-center">
-                    <p className="text-lg font-semibold text-amber-700">{dietPlan.protein_target}g</p>
-                    <p className="text-xs text-amber-600">protein</p>
-                  </div>
-                )}
-                {dietPlan.carb_target && (
-                  <div className="bg-amber-50 rounded-lg p-3 text-center">
-                    <p className="text-lg font-semibold text-amber-700">{dietPlan.carb_target}g</p>
-                    <p className="text-xs text-amber-600">carbs</p>
-                  </div>
-                )}
-                {dietPlan.fat_target && (
-                  <div className="bg-amber-50 rounded-lg p-3 text-center">
-                    <p className="text-lg font-semibold text-amber-700">{dietPlan.fat_target}g</p>
-                    <p className="text-xs text-amber-600">fat</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="px-4 py-3">
+          {showDietForm && (
+            <DietInstructionForm 
+              patientId={patient.id} 
+              existingPlan={dietPlan}
+              onClose={() => { setShowDietForm(false); handlePlanSaved(); }} 
+            />
+          )}
+          
+          {!showDietForm && !dietPlan && (
+            <p className="text-sm text-muted-foreground">No diet plan set</p>
+          )}
+          
+          {!showDietForm && dietPlan && (
+            <div className="space-y-2">
+              {dietPlan.notes && (
+                <p className="text-sm text-foreground">{dietPlan.notes}</p>
+              )}
+              {(dietPlan.calorie_target || dietPlan.protein_target || dietPlan.carb_target || dietPlan.fat_target) && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {dietPlan.calorie_target && (
+                    <span><span className="font-medium text-foreground">{dietPlan.calorie_target}</span> cal</span>
+                  )}
+                  {dietPlan.protein_target && (
+                    <span><span className="font-medium text-foreground">{dietPlan.protein_target}g</span> protein</span>
+                  )}
+                  {dietPlan.carb_target && (
+                    <span><span className="font-medium text-foreground">{dietPlan.carb_target}g</span> carbs</span>
+                  )}
+                  {dietPlan.fat_target && (
+                    <span><span className="font-medium text-foreground">{dietPlan.fat_target}g</span> fat</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Exercise */}
-      <div className="bg-white rounded-lg border p-5">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-lg border">
+        <div className="px-4 py-3 flex items-center justify-between border-b">
           <div className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-slate-600" />
-            <h3 className="text-base font-semibold text-foreground">Exercise Plan</h3>
+            <h3 className="text-sm font-medium text-foreground">Exercise Plan</h3>
             {prescribedExercises.length > 0 && (
-              <span className="text-sm text-slate-500">({prescribedExercises.length} exercises)</span>
+              <span className="text-xs text-muted-foreground">{prescribedExercises.length} exercises</span>
             )}
           </div>
           <button 
             onClick={() => setShowExerciseForm(!showExerciseForm)}
-            className="text-sm text-primary hover:underline font-medium"
+            className="text-xs text-muted-foreground hover:text-foreground"
           >
-            {showExerciseForm ? "Cancel" : "Add Exercise"}
+            {showExerciseForm ? "Cancel" : "Add"}
           </button>
         </div>
-        
-        {showExerciseForm && (
-          <ExercisePlanForm 
-            patientId={patient.id} 
-            existingPlan={exercisePlan}
-            existingPrescriptions={prescribedExercises}
-            onClose={() => { setShowExerciseForm(false); handlePlanSaved(); }} 
-          />
-        )}
-        
-        {!showExerciseForm && prescribedExercises.length > 0 && (
-          <div className="space-y-2">
-            {prescribedExercises.map((rx) => (
-              <div key={rx.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-900">
-                    {rx.exercise_catalog.name}
-                    <span className="ml-2 text-xs text-slate-500 capitalize">
-                      {rx.exercise_catalog.category}
-                    </span>
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {rx.sets && rx.reps && `${rx.sets} sets × ${rx.reps} reps`}
-                    {rx.sets && rx.reps && rx.duration_seconds && " · "}
-                    {rx.duration_seconds && `${Math.round(rx.duration_seconds / 60)} min`}
-                    {(rx.sets || rx.duration_seconds) && " · "}
-                    {rx.frequency.replace("_", "×")}
-                  </p>
-                  {rx.form_notes && (
-                    <p className="text-xs text-slate-400 mt-0.5">{rx.form_notes}</p>
-                  )}
+        <div className="px-4 py-3">
+          {showExerciseForm && (
+            <ExercisePlanForm 
+              patientId={patient.id} 
+              existingPlan={exercisePlan}
+              existingPrescriptions={prescribedExercises}
+              onClose={() => { setShowExerciseForm(false); handlePlanSaved(); }} 
+            />
+          )}
+          
+          {!showExerciseForm && prescribedExercises.length === 0 && (
+            <p className="text-sm text-muted-foreground">No exercises prescribed</p>
+          )}
+          
+          {!showExerciseForm && prescribedExercises.length > 0 && (
+            <div className="divide-y">
+              {prescribedExercises.map((rx) => (
+                <div key={rx.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-foreground">
+                      <span className="font-medium">{rx.exercise_catalog.name}</span>
+                      <span className="text-muted-foreground capitalize ml-1">· {rx.exercise_catalog.category}</span>
+                    </p>
+                    {rx.form_notes && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{rx.form_notes}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await removePrescribedExercise(patient.id, rx.id);
+                        handlePlanSaved();
+                      } catch (err) {
+                        console.error("Failed to remove exercise:", err);
+                      }
+                    }}
+                    className="p-1 text-muted-foreground/50 hover:text-red-500 transition-colors"
+                    title="Remove"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-                <button
-                  onClick={async () => {
-                    try {
-                      await removePrescribedExercise(patient.id, rx.id);
-                      handlePlanSaved();
-                    } catch (err) {
-                      console.error("Failed to remove exercise:", err);
-                    }
-                  }}
-                  className="p-1 text-slate-400 hover:text-red-500 transition-colors"
-                  title="Remove exercise"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        {!showExerciseForm && prescribedExercises.length === 0 && (
-          <p className="text-sm text-slate-500">No exercises prescribed. Click "Add Exercise" to assign specific exercises.</p>
-        )}
-        
-        {/* General guidelines (legacy) */}
-        {!showExerciseForm && exercisePlan?.notes && (
-          <div className="mt-3 pt-3 border-t">
-            <p className="text-xs text-slate-500 mb-1">General Guidelines:</p>
-            <p className="text-sm text-slate-600">{exercisePlan.notes}</p>
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+          
+          {/* General guidelines (if any) */}
+          {!showExerciseForm && exercisePlan?.notes && (
+            <div className={cn(prescribedExercises.length > 0 && "mt-2 pt-2 border-t")}>
+              <p className="text-xs text-muted-foreground">{exercisePlan.notes}</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1021,6 +1004,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
   }>>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [pillLogs, setPillLogs] = useState<PillLog[]>([]);
+  const [assignedMedications, setAssignedMedications] = useState<AssignedMedication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [aiSummary, setAiSummary] = useState<DailySummaryResponse | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -1103,6 +1087,19 @@ function OverviewContent({ patient }: { patient: Patient }) {
     async function fetchPatientData() {
       setIsLoading(true);
       try {
+        // Always fetch assigned medications (the plan)
+        const medsRes = await getPatientMedications(patient.id);
+        const assignedMeds = medsRes.assigned_medications || [];
+        setAssignedMedications(assignedMeds.map((m: Record<string, unknown>) => ({
+          id: m.id as string,
+          name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
+          strength: (m.pills as Record<string, unknown>)?.strength as number,
+          unit: (m.pills as Record<string, unknown>)?.unit as string,
+          dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
+          frequency: m.frequency as string,
+          times_of_day: m.times_of_day as string[],
+        })));
+        
         if (viewMode === "all") {
           // Fetch all recent data without date filter
           const [mealsRes, exercisesRes, journalRes, pillLogsRes] = await Promise.all([
@@ -1581,7 +1578,14 @@ function OverviewContent({ patient }: { patient: Patient }) {
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-foreground">Medications</h3>
               <span className="text-xs text-muted-foreground">
-                {pillLogs.filter(l => l.status === "taken" || l.status === "late").length} taken · {pillLogs.filter(l => l.status === "missed").length} missed · {pillLogs.filter(l => l.status === "pending").length} upcoming
+                {assignedMedications.length > 0 ? (
+                  <>
+                    {pillLogs.filter(l => l.status === "taken" || l.status === "late").length}/{assignedMedications.length} taken
+                    {pillLogs.filter(l => l.status === "missed").length > 0 && ` · ${pillLogs.filter(l => l.status === "missed").length} missed`}
+                  </>
+                ) : (
+                  "none assigned"
+                )}
               </span>
             </div>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", medicationsExpanded && "rotate-180")} />
@@ -1591,48 +1595,58 @@ function OverviewContent({ patient }: { patient: Patient }) {
               <div className="h-3 bg-slate-100 rounded w-3/4 animate-pulse"></div>
               <div className="h-3 bg-slate-100 rounded w-1/2 animate-pulse"></div>
             </div>
-          ) : pillLogs.length === 0 ? (
+          ) : assignedMedications.length === 0 ? (
             <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-              No medications scheduled {viewMode === "all" ? "yet" : "today"}
+              No medications assigned to this patient
             </p>
           ) : (
             <div className="mt-2">
               <p className="text-sm font-medium text-foreground leading-relaxed">
-                {pillLogs.filter(l => l.status === "taken" || l.status === "late").length} of {pillLogs.length} medications taken
+                {pillLogs.filter(l => l.status === "taken" || l.status === "late").length} of {assignedMedications.length} medications taken {viewMode === "day" ? "today" : ""}
                 {pillLogs.filter(l => l.status === "missed").length > 0 && `, ${pillLogs.filter(l => l.status === "missed").length} missed`}
               </p>
             </div>
           )}
         </div>
-        {medicationsExpanded && pillLogs.length > 0 && (
-          <div className="px-4 pb-4 border-t">
-            <div className="pt-3 space-y-2">
-              {pillLogs.map((log) => {
-                const pill = log.patient_pills?.pills;
+        {medicationsExpanded && assignedMedications.length > 0 && (
+          <div className="px-4 pb-3 border-t">
+            <div className="pt-3 divide-y">
+              {assignedMedications.map((med) => {
+                // Find pill log for this medication
+                const log = pillLogs.find(l => 
+                  l.patient_pills?.pills?.name === med.name
+                );
+                const status = log?.status || "scheduled";
                 const statusColors: Record<string, string> = {
-                  taken: "text-emerald-600 bg-emerald-50",
-                  late: "text-amber-600 bg-amber-50",
-                  missed: "text-red-600 bg-red-50",
-                  pending: "text-blue-600 bg-blue-50"
+                  taken: "text-emerald-600",
+                  late: "text-amber-600",
+                  missed: "text-red-600",
+                  pending: "text-blue-600",
+                  scheduled: "text-muted-foreground"
                 };
                 const statusLabels: Record<string, string> = {
                   taken: "taken",
                   late: "late",
                   missed: "missed",
-                  pending: "upcoming"
+                  pending: "upcoming",
+                  scheduled: "scheduled"
                 };
                 return (
-                  <div key={log.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-foreground">
-                        {pill?.name || "Unknown"} {pill?.strength}{pill?.unit}
+                  <div key={med.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-foreground">
+                        <span className="font-medium">{med.name}</span>
+                        {med.strength && med.unit && (
+                          <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
+                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Scheduled: {new Date(log.scheduled_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                        {med.frequency?.replace(/_/g, " ")}
+                        {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
                       </p>
                     </div>
-                    <span className={cn("text-xs font-medium px-2 py-1 rounded", statusColors[log.status])}>
-                      {statusLabels[log.status] || log.status}
+                    <span className={cn("text-xs", statusColors[status])}>
+                      {statusLabels[status]}
                     </span>
                   </div>
                 );
@@ -1687,53 +1701,53 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
   };
 
   return (
-    <div className="space-y-3 pt-2 border-t">
+    <div className="space-y-3 pt-3 border-t">
       <div className="flex items-center gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0">Medication</label>
-        <select
-          value={selectedMedId}
-          onChange={(e) => setSelectedMedId(e.target.value)}
-          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
-          disabled={isLoadingPills}
-        >
-          <option value="">{isLoadingPills ? "Loading..." : "Select medication"}</option>
-          {pills.map((med) => (
-            <option key={med.id} value={med.id}>
-              {med.name} {med.strength}{med.unit} ({med.dosage_form})
-            </option>
-          ))}
-        </select>
+        <label className="text-xs text-muted-foreground w-14 shrink-0">Medication</label>
+        <Select value={selectedMedId} onValueChange={setSelectedMedId} disabled={isLoadingPills}>
+          <SelectTrigger className="flex-1 h-8 text-xs">
+            <SelectValue placeholder={isLoadingPills ? "Loading..." : "Select medication"} />
+          </SelectTrigger>
+          <SelectContent>
+            {pills.map((med) => (
+              <SelectItem key={med.id} value={med.id}>
+                {med.name} {med.strength}{med.unit}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       {selectedMed && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground pl-[72px]">
-          Dosage: {selectedMed.strength}{selectedMed.unit} {selectedMed.dosage_form}
-        </div>
+        <p className="text-xs text-muted-foreground pl-[72px]">
+          {selectedMed.strength}{selectedMed.unit} {selectedMed.dosage_form}
+        </p>
       )}
       <div className="flex items-center gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0">Frequency</label>
-        <select
-          value={frequency}
-          onChange={(e) => setFrequency(e.target.value)}
-          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
-        >
-          <option value="once_daily">Once daily</option>
-          <option value="twice_daily">Twice daily</option>
-          <option value="three_times_daily">Three times daily</option>
-          <option value="as_needed">As needed</option>
-        </select>
+        <label className="text-xs text-muted-foreground w-14 shrink-0">Frequency</label>
+        <Select value={frequency} onValueChange={setFrequency}>
+          <SelectTrigger className="flex-1 h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="once_daily">Once daily</SelectItem>
+            <SelectItem value="twice_daily">Twice daily</SelectItem>
+            <SelectItem value="three_times_daily">Three times daily</SelectItem>
+            <SelectItem value="as_needed">As needed</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex items-start gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Days</label>
+        <label className="text-xs text-muted-foreground w-14 shrink-0 pt-1">Days</label>
         <div className="flex gap-1 flex-wrap">
           {DAYS_OF_WEEK.map((day) => (
             <button
               key={day}
               onClick={() => toggleDay(day)}
               className={cn(
-                "w-7 h-6 text-[10px] rounded transition-colors",
+                "w-6 h-6 text-[10px] rounded transition-colors",
                 selectedDays.includes(day) 
-                  ? "bg-primary text-white" 
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                  ? "bg-foreground text-background" 
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               {day[0]}
@@ -1742,7 +1756,7 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <label className="text-xs text-muted-foreground w-16 shrink-0">Time</label>
+        <label className="text-xs text-muted-foreground w-14 shrink-0">Time</label>
         <input
           type="time"
           value={times[0]}
@@ -1750,7 +1764,7 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
           className="h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
-      <div className="flex items-center gap-2 pt-2">
+      <div className="flex items-center gap-2 pt-1">
         <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={!selectedMedId}>
           Assign
         </Button>
@@ -1829,64 +1843,64 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
 
   return (
     <div className="space-y-3 pt-3 border-t">
-      <div>
-        <label className="block text-sm font-medium text-foreground mb-1">Dietary Guidelines</label>
+      <div className="flex items-start gap-2">
+        <label className="text-xs text-muted-foreground w-14 shrink-0 pt-1.5">Guidelines</label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="e.g., Avoid fried food, limit sodium, no processed foods, increase fiber..."
-          rows={3}
-          className="w-full px-3 py-2 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+          placeholder="e.g., Avoid fried food, limit sodium..."
+          rows={2}
+          className="flex-1 px-2 py-1.5 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-4 gap-2">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Daily Calorie Target</label>
+          <label className="block text-xs text-muted-foreground mb-1">Calories</label>
           <input
             type="number"
             value={calorieTarget}
             onChange={(e) => setCalorieTarget(e.target.value)}
-            placeholder="e.g., 2000"
-            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="2000"
+            className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Protein Target (g)</label>
+          <label className="block text-xs text-muted-foreground mb-1">Protein (g)</label>
           <input
             type="number"
             value={proteinTarget}
             onChange={(e) => setProteinTarget(e.target.value)}
-            placeholder="e.g., 150"
-            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="150"
+            className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Carb Target (g)</label>
+          <label className="block text-xs text-muted-foreground mb-1">Carbs (g)</label>
           <input
             type="number"
             value={carbTarget}
             onChange={(e) => setCarbTarget(e.target.value)}
-            placeholder="e.g., 250"
-            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="250"
+            className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Fat Target (g)</label>
+          <label className="block text-xs text-muted-foreground mb-1">Fat (g)</label>
           <input
             type="number"
             value={fatTarget}
             onChange={(e) => setFatTarget(e.target.value)}
-            placeholder="e.g., 65"
-            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="65"
+            className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSubmit} disabled={isSaving || !notes.trim()}>
-          {isSaving ? "Saving..." : existingPlan ? "Update Diet Plan" : "Save Diet Plan"}
+      <div className="flex items-center gap-2 pt-1">
+        <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={isSaving || !notes.trim()}>
+          {isSaving ? "Saving..." : existingPlan ? "Update" : "Save"}
         </Button>
-        <button onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground px-3 py-1">
+        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
           Cancel
         </button>
       </div>
@@ -1987,22 +2001,22 @@ function ExercisePlanForm({
   const selectedExerciseData = catalog.find(e => e.id === selectedExercise);
 
   return (
-    <div className="space-y-4 pt-3 border-t">
+    <div className="space-y-3 pt-3 border-t">
       {isLoadingCatalog ? (
-        <p className="text-sm text-slate-500">Loading exercises...</p>
+        <p className="text-xs text-muted-foreground">Loading exercises...</p>
       ) : (
         <>
           {/* Category Filter */}
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             {["all", "strength", "cardio", "flexibility", "balance"].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setCategoryFilter(cat)}
                 className={cn(
-                  "px-2.5 py-1 text-xs rounded-full transition-colors capitalize",
+                  "px-2 py-1 text-xs rounded transition-colors capitalize",
                   categoryFilter === cat
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {cat}
@@ -2011,99 +2025,100 @@ function ExercisePlanForm({
           </div>
 
           {/* Exercise Selection */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Select Exercise</label>
-            <select
-              value={selectedExercise}
-              onChange={(e) => setSelectedExercise(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">Choose an exercise...</option>
-              {filteredCatalog.map((exercise) => (
-                <option key={exercise.id} value={exercise.id}>
-                  {exercise.name} ({exercise.category})
-                </option>
-              ))}
-            </select>
-            {selectedExerciseData?.description && (
-              <p className="text-xs text-slate-500 mt-1">{selectedExerciseData.description}</p>
-            )}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted-foreground w-14 shrink-0">Exercise</label>
+            <Select value={selectedExercise} onValueChange={setSelectedExercise}>
+              <SelectTrigger className="flex-1 h-8 text-xs">
+                <SelectValue placeholder="Choose an exercise..." />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredCatalog.map((exercise) => (
+                  <SelectItem key={exercise.id} value={exercise.id}>
+                    {exercise.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+          {selectedExerciseData?.description && (
+            <p className="text-xs text-muted-foreground pl-[72px]">{selectedExerciseData.description}</p>
+          )}
 
           {/* Parameters */}
           {selectedExercise && (
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-2">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Sets</label>
+                <label className="block text-xs text-muted-foreground mb-1">Sets</label>
                 <input
                   type="number"
                   value={sets}
                   onChange={(e) => setSets(e.target.value ? Number(e.target.value) : "")}
                   placeholder="3"
                   min="1"
-                  className="w-full px-2 py-1.5 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Reps</label>
+                <label className="block text-xs text-muted-foreground mb-1">Reps</label>
                 <input
                   type="number"
                   value={reps}
                   onChange={(e) => setReps(e.target.value ? Number(e.target.value) : "")}
                   placeholder="10"
                   min="1"
-                  className="w-full px-2 py-1.5 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Duration (min)</label>
+                <label className="block text-xs text-muted-foreground mb-1">Duration</label>
                 <input
                   type="number"
                   value={durationMinutes}
                   onChange={(e) => setDurationMinutes(e.target.value ? Number(e.target.value) : "")}
-                  placeholder="5"
+                  placeholder="5 min"
                   min="1"
-                  className="w-full px-2 py-1.5 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Frequency</label>
-                <select
-                  value={frequency}
-                  onChange={(e) => setFrequency(e.target.value)}
-                  className="w-full px-2 py-1.5 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
-                >
-                  <option value="daily">Daily</option>
-                  <option value="3x_week">3× / week</option>
-                  <option value="2x_week">2× / week</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="as_needed">As needed</option>
-                </select>
+                <label className="block text-xs text-muted-foreground mb-1">Frequency</label>
+                <Select value={frequency} onValueChange={setFrequency}>
+                  <SelectTrigger className="w-full h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="3x_week">3× / week</SelectItem>
+                    <SelectItem value="2x_week">2× / week</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="as_needed">As needed</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           )}
 
           {/* Form Notes */}
           {selectedExercise && (
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">Special Instructions (optional)</label>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground w-14 shrink-0">Notes</label>
               <input
                 type="text"
                 value={formNotes}
                 onChange={(e) => setFormNotes(e.target.value)}
-                placeholder="e.g., Use wall for support, focus on knee alignment..."
-                className="w-full px-3 py-2 text-sm bg-white rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="e.g., Use wall for support..."
+                className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
           )}
 
           {error && <p className="text-xs text-red-600">{error}</p>}
           
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={handleSubmit} disabled={isSaving || !selectedExercise}>
-              {isSaving ? "Adding..." : "Add Exercise"}
+          <div className="flex items-center gap-2 pt-1">
+            <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={isSaving || !selectedExercise}>
+              {isSaving ? "Adding..." : "Add"}
             </Button>
-            <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-900 px-3 py-1">
+            <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
               Cancel
             </button>
           </div>

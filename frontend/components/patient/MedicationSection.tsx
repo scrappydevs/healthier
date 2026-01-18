@@ -9,6 +9,16 @@ interface MedicationSectionProps {
   patientId: string;
 }
 
+type AssignedMed = {
+  id: string;
+  name: string;
+  strength?: number;
+  unit?: string;
+  frequency?: string;
+  times_of_day?: string[];
+  is_active?: boolean;
+};
+
 // Get local date string (YYYY-MM-DD) from a date
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear();
@@ -79,6 +89,7 @@ function groupLogsByDate(medications: Medication[]): Map<string, LogWithMed[]> {
 
 export function MedicationSection({ patientId }: MedicationSectionProps) {
   const [medications, setMedications] = useState<Medication[]>([]);
+  const [assignedMeds, setAssignedMeds] = useState<AssignedMed[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
@@ -90,7 +101,19 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
       setError(null);
       try {
         const response = await getPatientMedications(patientId);
-        setMedications(response.medications);
+        setMedications(response.medications || []);
+        
+        // Parse assigned medications from the response
+        const assigned = response.assigned_medications || [];
+        setAssignedMeds(assigned.map((m: Record<string, unknown>) => ({
+          id: m.id as string,
+          name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
+          strength: (m.pills as Record<string, unknown>)?.strength as number,
+          unit: (m.pills as Record<string, unknown>)?.unit as string,
+          frequency: m.frequency as string,
+          times_of_day: m.times_of_day as string[],
+          is_active: m.is_active as boolean,
+        })));
         
         // Auto-expand today
         const today = getLocalDateString(new Date());
@@ -135,30 +158,32 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
     );
   }
 
-  if (medications.length === 0) {
+  // Show assigned medications even if no logs exist
+  const activeMeds = medications.filter((m) => m.is_active);
+  const logsByDate = groupLogsByDate(medications);
+  const activeAssigned = assignedMeds.filter((m) => m.is_active !== false);
+
+  if (medications.length === 0 && assignedMeds.length === 0) {
     return (
       <div className="h-48 flex items-center justify-center">
         <div className="text-center">
           <Pill className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">No medications recorded</p>
+          <p className="text-sm text-muted-foreground">No medications assigned</p>
         </div>
       </div>
     );
   }
-
-  const activeMeds = medications.filter((m) => m.is_active);
-  const logsByDate = groupLogsByDate(medications);
 
   return (
     <div className="max-h-[600px] overflow-y-auto space-y-4 pr-1">
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-muted/30 rounded-md p-2 text-center">
-          <p className="text-[10px] text-muted-foreground uppercase">Active Meds</p>
-          <p className="text-sm font-semibold">{activeMeds.length}</p>
+          <p className="text-[10px] text-muted-foreground uppercase">Assigned</p>
+          <p className="text-sm font-semibold">{activeAssigned.length || activeMeds.length}</p>
         </div>
         <div className="bg-muted/30 rounded-md p-2 text-center">
-          <p className="text-[10px] text-muted-foreground uppercase">Total</p>
+          <p className="text-[10px] text-muted-foreground uppercase">Logged</p>
           <p className="text-sm font-semibold">{medications.length}</p>
         </div>
         <div className="bg-muted/30 rounded-md p-2 text-center">
@@ -173,22 +198,49 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
         </div>
       </div>
 
-      {/* Active Medications List */}
-      <div className="space-y-1">
-        <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1">
-          Active Medications
-        </h4>
+      {/* Assigned Medications (from plan) */}
+      {activeAssigned.length > 0 && (
         <div className="space-y-1">
-          {activeMeds.map((med) => (
-            <MedicationCard 
-              key={med.id} 
-              medication={med} 
-              isExpanded={showMedDetails === med.id}
-              onToggle={() => setShowMedDetails(showMedDetails === med.id ? null : med.id)}
-            />
-          ))}
+          <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1">
+            Prescribed Medications
+          </h4>
+          <div className="divide-y">
+            {activeAssigned.map((med) => (
+              <div key={med.id} className="py-2 first:pt-0 last:pb-0">
+                <p className="text-sm text-foreground">
+                  <span className="font-medium">{med.name}</span>
+                  {med.strength && med.unit && (
+                    <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {med.frequency?.replace(/_/g, " ")}
+                  {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Active Medications with Logs */}
+      {activeMeds.length > 0 && (
+        <div className="space-y-1">
+          <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1">
+            Medication Details
+          </h4>
+          <div className="space-y-1">
+            {activeMeds.map((med) => (
+              <MedicationCard 
+                key={med.id} 
+                medication={med} 
+                isExpanded={showMedDetails === med.id}
+                onToggle={() => setShowMedDetails(showMedDetails === med.id ? null : med.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Logs by Day */}
       {logsByDate.size > 0 && (
