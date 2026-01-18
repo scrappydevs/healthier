@@ -172,6 +172,20 @@ class SupabaseService: ObservableObject {
             .value
         return response
     }
+
+    func fetchMedicationLogs(userId: UUID? = nil) async throws -> [SupabaseMedicationLog] {
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            return []
+        }
+
+        let response: [SupabaseMedicationLog] = try await supabase
+            .from("medication_logs")
+            .select()
+            .eq("user_id", value: currentUserId.uuidString)
+            .execute()
+            .value
+        return response
+    }
     
     // MARK: - Meal Database Operations
     

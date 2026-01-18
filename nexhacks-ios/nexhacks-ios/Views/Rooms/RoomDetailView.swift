@@ -473,7 +473,7 @@ struct Room3DViewRepresentable: UIViewRepresentable {
                         .appendingPathComponent("\(room.id.uuidString).usdz")
 
                     // Export the captured room to USDZ
-                    try await capturedRoom.export(to: tempURL)
+                    try capturedRoom.export(to: tempURL)
 
                     await MainActor.run {
                         // Load the USDZ into SceneKit

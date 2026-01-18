@@ -16,45 +16,40 @@ struct HomeView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        ZStack {
+            Color.appBackground.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // Header
-                    HStack {
-                        Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
-                            .font(AppTheme.Typography.title)
-                            .foregroundColor(.textPrimary)
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
+                        .font(AppTheme.Typography.title)
+                        .foregroundColor(.textPrimary)
 
-                        Spacer()
+                    Spacer()
+                }
+                .padding(.horizontal, AppTheme.Spacing.lg)
+                .padding(.top, AppTheme.Spacing.md)
+                .padding(.bottom, AppTheme.Spacing.md)
+
+                ScrollView {
+                    VStack(spacing: AppTheme.Spacing.lg) {
+                        // Sync Status Card
+                        syncStatusCard
+
+                        // Health Breakdown
+                        healthBreakdownSection
+
+                        // Quick Stats
+                        quickStatsSection
+
+                        // Upcoming Reminders
+                        upcomingRemindersSection
                     }
                     .padding(.horizontal, AppTheme.Spacing.lg)
-                    .padding(.top, AppTheme.Spacing.md)
-                    .padding(.bottom, AppTheme.Spacing.md)
-
-                    ScrollView {
-                        VStack(spacing: AppTheme.Spacing.lg) {
-                            // Sync Status Card
-                            syncStatusCard
-
-                            // Health Breakdown
-                            healthBreakdownSection
-
-                            // Quick Stats
-                            quickStatsSection
-
-                            // Upcoming Reminders
-                            upcomingRemindersSection
-                        }
-                        .padding(.horizontal, AppTheme.Spacing.lg)
-                        .padding(.vertical, AppTheme.Spacing.lg)
-                    }
+                    .padding(.vertical, AppTheme.Spacing.lg)
                 }
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarHidden(true)
         }
     }
 

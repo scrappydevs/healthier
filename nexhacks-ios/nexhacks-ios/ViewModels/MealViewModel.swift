@@ -83,7 +83,7 @@ class MealViewModel: ObservableObject {
         }
     }
     
-    /// Capture and analyze a meal from an image
+    /// Capture and analyze a meal from an image (does not persist)
     func captureAndAnalyzeMeal(image: UIImage, mealType: MealType) async throws -> Meal {
         isAnalyzing = true
         defer { isAnalyzing = false }
@@ -124,9 +124,6 @@ class MealViewModel: ObservableObject {
             aiAnalysis: analysis.analysis,
             imageURL: imageURL
         )
-        
-        // Save the meal
-        addMeal(meal)
         
         return meal
     }

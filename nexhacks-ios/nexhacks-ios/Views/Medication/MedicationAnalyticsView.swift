@@ -42,6 +42,8 @@ struct MedicationAnalyticsView: View {
         getMostMissed()
     }
 
+    @State private var selectedMedicationForDetail: Medication?
+
     var body: some View {
         ScrollView {
             VStack(spacing: AppTheme.Spacing.lg) {
@@ -53,6 +55,9 @@ struct MedicationAnalyticsView: View {
 
                 // Weekly Trend
                 weeklyTrendSection
+                
+                // Active Medications
+                activeMedicationsSection
 
                 // Most Missed Medications
                 if !mostMissedMedications.isEmpty {
@@ -65,6 +70,9 @@ struct MedicationAnalyticsView: View {
             .padding(AppTheme.Spacing.md)
         }
         .background(Color.appBackground)
+        .sheet(item: $selectedMedicationForDetail) { medication in
+            MedicationAdherenceDetailView(medication: medication, viewModel: viewModel)
+        }
     }
 
     // MARK: - Overall Adherence Card
@@ -143,7 +151,7 @@ struct MedicationAnalyticsView: View {
     }
 
     // MARK: - Weekly Trend Section
-
+    
     private var weeklyTrendSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             Text("WEEKLY TREND")
@@ -176,6 +184,49 @@ struct MedicationAnalyticsView: View {
         .padding(AppTheme.Spacing.md)
         .background(Color.cardBackground)
         .cornerRadius(AppTheme.CornerRadius.md)
+    }
+    
+    // MARK: - Active Medications Section
+    
+    private var activeMedicationsSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            Text("ACTIVE MEDICATIONS")
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
+                .tracking(1)
+            
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppTheme.Spacing.md) {
+                ForEach(viewModel.activeMedications) { medication in
+                    Button {
+                        selectedMedicationForDetail = medication
+                    } label: {
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                            HStack {
+                                Image(systemName: "pills.fill")
+                                    .foregroundColor(.appPrimary)
+                                Spacer()
+                                Text("\(Int(viewModel.getAdherenceRate(for: medication)))%")
+                                    .font(AppTheme.Typography.headline)
+                                    .foregroundColor(adherenceColor(viewModel.getAdherenceRate(for: medication) / 100))
+                            }
+                            
+                            Text(medication.name)
+                                .font(AppTheme.Typography.body)
+                                .foregroundColor(.textPrimary)
+                                .lineLimit(1)
+                            
+                            Text(medication.dosage)
+                                .font(AppTheme.Typography.caption)
+                                .foregroundColor(.textSecondary)
+                        }
+                        .padding(AppTheme.Spacing.md)
+                        .background(Color.cardBackground)
+                        .cornerRadius(AppTheme.CornerRadius.md)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Streak Section
@@ -470,5 +521,139 @@ struct TimeOfDayCard: View {
         .padding(AppTheme.Spacing.sm)
         .background(Color.appBackground)
         .cornerRadius(AppTheme.CornerRadius.sm)
+    }
+}
+
+struct MedicationAdherenceDetailView: View {
+    let medication: Medication
+    let viewModel: MedicationViewModel
+    @Environment(\.dismiss) private var dismiss
+    
+    private var adherenceRate: Double {
+        viewModel.getAdherenceRate(for: medication)
+    }
+    
+    private var daysTaken: Int {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: medication.startDate)
+        let end = calendar.startOfDay(for: Date())
+        let components = calendar.dateComponents([.day], from: start, to: end)
+        return max(1, (components.day ?? 0) + 1)
+    }
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: AppTheme.Spacing.lg) {
+                    // Header Card
+                    VStack(spacing: AppTheme.Spacing.md) {
+                        Image(systemName: "pills.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.appPrimary)
+                        
+                        Text(medication.name)
+                            .font(AppTheme.Typography.title2)
+                            .foregroundColor(.textPrimary)
+                        
+                        Text(medication.dosage)
+                            .font(AppTheme.Typography.body)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(AppTheme.Spacing.xl)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppTheme.CornerRadius.lg)
+                    
+                    // Adherence Stat
+                    HStack(spacing: AppTheme.Spacing.md) {
+                        StatDetailCard(
+                            title: "Consistency",
+                            value: "\(Int(adherenceRate))%",
+                            icon: "chart.bar.fill",
+                            color: adherenceRate > 80 ? .success : (adherenceRate > 50 ? .warning : .error)
+                        )
+                        
+                        StatDetailCard(
+                            title: "Days Taken",
+                            value: "\(daysTaken)",
+                            icon: "calendar",
+                            color: .appPrimary
+                        )
+                    }
+                    
+                    // Details
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                        Text("DETAILS")
+                            .font(AppTheme.Typography.caption)
+                            .foregroundColor(.textSecondary)
+                            .tracking(1)
+                        
+                        DetailRow(label: "Frequency", value: medication.frequency.rawValue)
+                        DetailRow(label: "Times per day", value: "\(medication.reminderTimes.count)")
+                        DetailRow(label: "Total Doses Taken", value: "\(medication.takenLog.count)")
+                        DetailRow(label: "Start Date", value: medication.startDate.formatted(date: .long, time: .omitted))
+                    }
+                    .padding(AppTheme.Spacing.lg)
+                    .background(Color.cardBackground)
+                    .cornerRadius(AppTheme.CornerRadius.lg)
+                }
+                .padding(AppTheme.Spacing.md)
+            }
+            .background(Color.appBackground)
+            .navigationTitle("Medication Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct StatDetailCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(AppTheme.Typography.title2)
+                .foregroundColor(.textPrimary)
+            
+            Text(title)
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppTheme.Spacing.lg)
+        .background(Color.cardBackground)
+        .cornerRadius(AppTheme.CornerRadius.md)
+    }
+}
+
+struct DetailRow: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundColor(.textSecondary)
+            Spacer()
+            Text(value)
+                .fontWeight(.medium)
+                .foregroundColor(.textPrimary)
+        }
+        .padding(.vertical, 4)
+        Divider()
     }
 }

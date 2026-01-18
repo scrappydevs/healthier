@@ -250,13 +250,15 @@ struct NutrientCard: View {
     
     var body: some View {
         VStack(spacing: AppTheme.Spacing.xs) {
-            Text("\(Int(value))")
-                .font(AppTheme.Typography.title2)
-                .foregroundColor(color)
-            
-            Text(unit)
-                .font(AppTheme.Typography.caption)
-                .foregroundColor(.textSecondary)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text("\(Int(value))")
+                    .font(AppTheme.Typography.title2)
+                    .foregroundColor(color)
+                
+                Text(unit)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundColor(.textSecondary)
+            }
             
             Text(name)
                 .font(AppTheme.Typography.caption)

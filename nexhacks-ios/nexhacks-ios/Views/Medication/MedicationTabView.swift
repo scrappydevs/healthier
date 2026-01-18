@@ -12,6 +12,7 @@ struct MedicationTabView: View {
     @State private var showingAddMedication = false
     @State private var showingScanMedication = false
     @State private var selectedMedication: Medication?
+    @State private var showingHistory = false
     @State private var showingAnalytics = false
 
     var body: some View {
@@ -23,10 +24,22 @@ struct MedicationTabView: View {
                 .background(Color.appBackground)
                 .navigationBarHidden(true)
                 
-                // Floating action button for analytics
+                // Floating action buttons
                 VStack {
                     Spacer()
                     HStack {
+                        Button {
+                            showingHistory = true
+                        } label: {
+                            Image(systemName: "list.bullet.clipboard.fill")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .frame(width: 56, height: 56)
+                                .background(Color.appPrimary)
+                                .clipShape(Circle())
+                                .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 6)
+                        }
+                        
                         Spacer()
                         
                         Button {
@@ -40,9 +53,9 @@ struct MedicationTabView: View {
                                 .clipShape(Circle())
                                 .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 6)
                         }
-                        .padding(.trailing, AppTheme.Spacing.lg)
-                        .padding(.bottom, AppTheme.Spacing.xl)
                     }
+                    .padding(.horizontal, AppTheme.Spacing.lg)
+                    .padding(.bottom, AppTheme.Spacing.xl)
                 }
             }
             .navigationTitle("")
@@ -56,6 +69,9 @@ struct MedicationTabView: View {
             }
             .sheet(item: $selectedMedication) { medication in
                 MedicationDetailView(viewModel: viewModel, medication: medication)
+            }
+            .sheet(isPresented: $showingHistory) {
+                MedicationHistoryView(viewModel: viewModel)
             }
             .sheet(isPresented: $showingAnalytics) {
                 NavigationView {
@@ -74,4 +90,3 @@ struct MedicationTabView: View {
         }
     }
 }
-

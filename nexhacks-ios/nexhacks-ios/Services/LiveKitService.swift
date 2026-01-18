@@ -173,7 +173,11 @@ class LiveKitService: NSObject, ObservableObject {
 
     func disableMicrophone() async {
         guard let room = liveKitRoom else { return }
-        try? await room.localParticipant.setMicrophone(enabled: false)
+        do {
+            try await room.localParticipant.setMicrophone(enabled: false)
+        } catch {
+            print("Failed to disable microphone: \(error)")
+        }
         stopTranscriptionSession()
     }
 
@@ -213,19 +217,32 @@ class LiveKitService: NSObject, ObservableObject {
 
     private func requestMicrophonePermissionIfNeeded() async -> Bool {
         let session = AVAudioSession.sharedInstance()
-        switch session.recordPermission {
-        case .granted:
-            return true
-        case .denied:
-            return false
-        case .undetermined:
-            return await withCheckedContinuation { continuation in
-                session.requestRecordPermission { granted in
-                    continuation.resume(returning: granted)
-                }
+        if #available(iOS 17.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted:
+                return true
+            case .denied:
+                return false
+            case .undetermined:
+                return await AVAudioApplication.requestRecordPermission()
+            @unknown default:
+                return false
             }
-        @unknown default:
-            return false
+        } else {
+            switch session.recordPermission {
+            case .granted:
+                return true
+            case .denied:
+                return false
+            case .undetermined:
+                return await withCheckedContinuation { continuation in
+                    session.requestRecordPermission { granted in
+                        continuation.resume(returning: granted)
+                    }
+                }
+            @unknown default:
+                return false
+            }
         }
     }
 
@@ -349,7 +366,7 @@ class LiveKitService: NSObject, ObservableObject {
     private func configureAudioSessionForLiveKit() throws {
         // LiveKit manages audio session, but we need playAndRecord for agent audio playback
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth])
+        try audioSession.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
         try audioSession.setActive(true)
     }
 
@@ -515,13 +532,14 @@ extension LiveKitService: RoomDelegate {
         }
     }
 
-    nonisolated func room(_ room: LiveKit.Room, didDisconnectWithError error: LiveKitError?) {
+    nonisolated func room(_ room: LiveKit.Room, didUpdateConnectionState connectionState: ConnectionState, from oldConnectionState: ConnectionState) {
         Task { @MainActor in
-            connectionState = .disconnected
-            isConnected = false
-            if let error = error {
-                errorMessage = error.localizedDescription
-                connectionState = .error(error.localizedDescription)
+            if case .disconnected = connectionState {
+                self.connectionState = .disconnected
+                self.isConnected = false
+            } else if case .connected = connectionState {
+                self.connectionState = .connected
+                self.isConnected = true
             }
         }
     }

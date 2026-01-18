@@ -11,17 +11,17 @@ struct JournalListView: View {
     @StateObject var viewModel: JournalViewModel
     @State private var searchText: String = ""
     @State private var showingVoiceJournal: Bool = false
+    @Environment(\.dismiss) private var dismiss
 
     init(viewModel: JournalViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        ZStack {
+            Color.appBackground.ignoresSafeArea()
 
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
                     // Header
                     HStack {
                         Text("Journal")
@@ -100,16 +100,14 @@ struct JournalListView: View {
                     }
                 }
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarHidden(true)
             .onChange(of: searchText) { _, newValue in
                 viewModel.searchEntries(query: newValue)
             }
             .sheet(isPresented: $showingVoiceJournal) {
                 VoiceJournalView(viewModel: viewModel)
             }
-        }
+            .navigationBarHidden(true)
+            .navigationBarBackButtonHidden(true)
     }
 
     private var emptyStateView: some View {
