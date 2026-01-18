@@ -21,6 +21,7 @@ class PillBase(BaseModel):
     warnings: Optional[str] = None
     side_effects: Optional[List[str]] = None
     interactions: Optional[List[str]] = None
+    contraindications: Optional[List[str]] = None
     image_url: Optional[str] = None
     ndc_code: Optional[str] = None
 
@@ -45,6 +46,7 @@ class PillUpdate(BaseModel):
     warnings: Optional[str] = None
     side_effects: Optional[List[str]] = None
     interactions: Optional[List[str]] = None
+    contraindications: Optional[List[str]] = None
     image_url: Optional[str] = None
     ndc_code: Optional[str] = None
 

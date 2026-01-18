@@ -3,11 +3,23 @@
 import { useState, useEffect } from "react";
 import { Pill, AlertCircle, Check, X, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { getPatientMedications, type Medication, type MedicationLog } from "@/lib/api";
+import { getPatientMedications, getPills, type Medication, type MedicationLog, type Pill as PillType } from "@/lib/api";
+import { MedicationDetailsModal } from "@/components/medications/MedicationDetailsModal";
 
 interface MedicationSectionProps {
   patientId: string;
 }
+
+type AssignedMed = {
+  id: string;
+  name: string;
+  strength?: number;
+  unit?: string;
+  image_url?: string | null;
+  frequency?: string;
+  times_of_day?: string[];
+  is_active?: boolean;
+};
 
 // Get local date string (YYYY-MM-DD) from a date
 function getLocalDateString(date: Date): string {
@@ -49,7 +61,7 @@ function groupLogsByDate(medications: Medication[]): Map<string, LogWithMed[]> {
   for (const med of medications) {
     if (med.recent_logs) {
       for (const log of med.recent_logs) {
-        const timestamp = log.taken_at || log.scheduled_time || "";
+        const timestamp = log.taken_at || log.created_at || "";
         if (timestamp) {
           allLogs.push({ ...log, medication: med });
         }
@@ -59,14 +71,14 @@ function groupLogsByDate(medications: Medication[]): Map<string, LogWithMed[]> {
   
   // Sort by date descending
   allLogs.sort((a, b) => {
-    const dateA = a.taken_at || a.scheduled_time || "";
-    const dateB = b.taken_at || b.scheduled_time || "";
+    const dateA = a.taken_at || a.created_at || "";
+    const dateB = b.taken_at || b.created_at || "";
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
   
   // Group by local date
   for (const log of allLogs) {
-    const timestamp = log.taken_at || log.scheduled_time || "";
+    const timestamp = log.taken_at || log.created_at || "";
     const dateKey = getLocalDateFromTimestamp(timestamp);
     if (!grouped.has(dateKey)) {
       grouped.set(dateKey, []);
@@ -79,10 +91,16 @@ function groupLogsByDate(medications: Medication[]): Map<string, LogWithMed[]> {
 
 export function MedicationSection({ patientId }: MedicationSectionProps) {
   const [medications, setMedications] = useState<Medication[]>([]);
+  const [assignedMeds, setAssignedMeds] = useState<AssignedMed[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [showMedDetails, setShowMedDetails] = useState<string | null>(null);
+  
+  // Gallery state
+  const [allPills, setAllPills] = useState<PillType[]>([]);
+  const [selectedPill, setSelectedPill] = useState<PillType | null>(null);
+  const [isLoadingPills, setIsLoadingPills] = useState(false);
 
   useEffect(() => {
     async function fetchMedications() {
@@ -90,7 +108,20 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
       setError(null);
       try {
         const response = await getPatientMedications(patientId);
-        setMedications(response.medications);
+        setMedications(response.medications || []);
+        
+        // Parse assigned medications from the response
+        const assigned = response.assigned_medications || [];
+        setAssignedMeds(assigned.map((m: Record<string, unknown>) => ({
+          id: m.id as string,
+          name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
+          strength: (m.pills as Record<string, unknown>)?.strength as number,
+          unit: (m.pills as Record<string, unknown>)?.unit as string,
+          image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
+          frequency: m.frequency as string,
+          times_of_day: m.times_of_day as string[],
+          is_active: m.is_active as boolean,
+        })));
         
         // Auto-expand today
         const today = getLocalDateString(new Date());
@@ -103,6 +134,22 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
     }
     fetchMedications();
   }, [patientId]);
+
+  // Fetch all available pills for the gallery
+  useEffect(() => {
+    async function fetchAllPills() {
+      setIsLoadingPills(true);
+      try {
+        const response = await getPills();
+        setAllPills(response.pills || []);
+      } catch (err) {
+        console.error("Failed to load medication gallery:", err);
+      } finally {
+        setIsLoadingPills(false);
+      }
+    }
+    fetchAllPills();
+  }, []);
 
   const toggleDay = (dateKey: string) => {
     setExpandedDays(prev => {
@@ -135,106 +182,167 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
     );
   }
 
-  if (medications.length === 0) {
+  // Show assigned medications even if no logs exist
+  const activeMeds = medications.filter((m) => m.is_active);
+  const logsByDate = groupLogsByDate(medications);
+  const activeAssigned = assignedMeds.filter((m) => m.is_active !== false);
+
+  if (medications.length === 0 && assignedMeds.length === 0) {
     return (
       <div className="h-48 flex items-center justify-center">
         <div className="text-center">
           <Pill className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">No medications recorded</p>
+          <p className="text-sm text-muted-foreground">No medications assigned</p>
         </div>
       </div>
     );
   }
 
-  const activeMeds = medications.filter((m) => m.is_active);
-  const logsByDate = groupLogsByDate(medications);
-
   return (
-    <div className="max-h-[600px] overflow-y-auto space-y-4 pr-1">
-      {/* Summary Stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-muted/30 rounded-md p-2 text-center">
-          <p className="text-[10px] text-muted-foreground uppercase">Active Meds</p>
-          <p className="text-sm font-semibold">{activeMeds.length}</p>
+    <div className="space-y-4">
+      {/* Card 1: Prescribed Medications & Stats */}
+      <div className="bg-white rounded-lg border">
+        {/* Summary Stats */}
+        <div className="px-4 py-3 border-b">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-muted/30 rounded-md p-3 text-center">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Assigned</p>
+              <p className="text-lg font-semibold">{activeAssigned.length || activeMeds.length}</p>
+            </div>
+            <div className="bg-muted/30 rounded-md p-3 text-center">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Logged</p>
+              <p className="text-lg font-semibold">{medications.length}</p>
+            </div>
+            <div className="bg-muted/30 rounded-md p-3 text-center">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Avg Adherence</p>
+              <p className="text-lg font-semibold">
+                {activeMeds.length > 0
+                  ? Math.round(
+                      activeMeds.reduce((acc, m) => acc + m.adherence_rate, 0) / activeMeds.length
+                    )
+                  : 0}%
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="bg-muted/30 rounded-md p-2 text-center">
-          <p className="text-[10px] text-muted-foreground uppercase">Total</p>
-          <p className="text-sm font-semibold">{medications.length}</p>
-        </div>
-        <div className="bg-muted/30 rounded-md p-2 text-center">
-          <p className="text-[10px] text-muted-foreground uppercase">Avg Adherence</p>
-          <p className="text-sm font-semibold">
-            {activeMeds.length > 0
-              ? Math.round(
-                  activeMeds.reduce((acc, m) => acc + m.adherence_rate, 0) / activeMeds.length
-                )
-              : 0}%
-          </p>
-        </div>
-      </div>
 
-      {/* Active Medications List */}
-      <div className="space-y-1">
-        <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1">
-          Active Medications
-        </h4>
-        <div className="space-y-1">
-          {activeMeds.map((med) => (
-            <MedicationCard 
-              key={med.id} 
-              medication={med} 
-              isExpanded={showMedDetails === med.id}
-              onToggle={() => setShowMedDetails(showMedDetails === med.id ? null : med.id)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Logs by Day */}
-      {logsByDate.size > 0 && (
-        <div className="space-y-1">
-          <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-1">
-            Activity History
-          </h4>
-          {Array.from(logsByDate.entries()).map(([dateKey, dateLogs]) => {
-            const isExpanded = expandedDays.has(dateKey);
-            const takenCount = dateLogs.filter(l => l.taken_at).length;
-            const missedCount = dateLogs.length - takenCount;
-
-            return (
-              <div key={dateKey} className="border-b last:border-b-0">
-                {/* Day Header */}
-                <button
-                  onClick={() => toggleDay(dateKey)}
-                  className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-foreground">
-                      {formatDateLabel(dateKey)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {takenCount} taken{missedCount > 0 && ` · ${missedCount} missed`}
-                    </span>
+        {/* Prescribed Medications */}
+        <div className="p-4">
+          {activeAssigned.length > 0 ? (
+            <div className="space-y-1">
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                Prescribed Medications
+              </h4>
+              <div className="divide-y">
+                {activeAssigned.map((med) => (
+                  <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start gap-4">
+                    {med.image_url ? (
+                      <img
+                        src={med.image_url}
+                        alt={med.name}
+                        className="w-20 h-20 rounded object-cover shrink-0"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                        }}
+                      />
+                    ) : null}
+                    <div className={cn("w-20 h-20 rounded bg-muted/50 flex items-center justify-center shrink-0", med.image_url && "hidden")}>
+                      <Pill className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base text-foreground mb-1">
+                        <span className="font-medium">{med.name}</span>
+                        {med.strength && med.unit && (
+                          <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
+                        )}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {med.frequency?.replace(/_/g, " ")}
+                        {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
+                      </p>
+                    </div>
                   </div>
-                  {isExpanded ? (
-                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </button>
-
-                {/* Day Content */}
-                {isExpanded && (
-                  <div className="px-3 pb-3 space-y-1">
-                    {dateLogs.map((log) => (
-                      <LogEntry key={log.id} log={log} />
-                    ))}
-                  </div>
-                )}
+                ))}
               </div>
-            );
-          })}
+            </div>
+          ) : (
+            <div className="h-32 flex items-center justify-center">
+              <div className="text-center">
+                <Pill className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No medications prescribed</p>
+              </div>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Card 2: Medication Gallery - Extended Height */}
+      <div className="bg-white rounded-lg border flex flex-col" style={{ height: 'calc(100vh - 400px)', minHeight: '500px' }}>
+        <div className="px-4 py-3 border-b">
+          <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Available Medications
+          </h4>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-4">
+          {isLoadingPills ? (
+            <div className="h-full flex items-center justify-center">
+              <p className="text-sm text-muted-foreground">Loading medications...</p>
+            </div>
+          ) : allPills.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <Pill className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No medications available</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-5 gap-4 auto-rows-min">
+              {allPills.map((pill) => (
+                <button
+                  key={pill.id}
+                  onClick={() => setSelectedPill(pill)}
+                  className="flex flex-col items-center gap-2 p-4 bg-white border-2 rounded-lg hover:border-primary hover:shadow-md transition-all group"
+                >
+                  {pill.image_url ? (
+                    <div className="w-full aspect-square rounded overflow-hidden bg-muted/30">
+                      <img
+                        src={pill.image_url}
+                        alt={pill.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          console.error('Image failed to load:', pill.image_url);
+                          e.currentTarget.style.display = 'none';
+                          const placeholder = e.currentTarget.parentElement?.nextElementSibling;
+                          if (placeholder) {
+                            placeholder.classList.remove('hidden');
+                          }
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  <div className={cn("w-full aspect-square rounded bg-muted/50 flex items-center justify-center", pill.image_url && "hidden")}>
+                    <Pill className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <div className="text-center w-full">
+                    <p className="text-xs font-medium text-foreground line-clamp-2 group-hover:text-primary transition-colors leading-tight">
+                      {pill.name}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Medication Details Modal */}
+      {selectedPill && (
+        <MedicationDetailsModal
+          pill={selectedPill}
+          onClose={() => setSelectedPill(null)}
+        />
       )}
     </div>
   );
@@ -342,8 +450,8 @@ function LogEntry({ log }: { log: LogWithMed }) {
         hour: "2-digit",
         minute: "2-digit",
       })
-    : log.scheduled_time
-    ? new Date(log.scheduled_time).toLocaleTimeString([], {
+    : log.created_at
+    ? new Date(log.created_at).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       }) + " (missed)"

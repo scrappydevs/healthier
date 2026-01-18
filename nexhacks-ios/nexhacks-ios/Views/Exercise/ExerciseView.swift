@@ -43,6 +43,9 @@ struct ExerciseView: View {
                             // Today's Summary
                             todaySummaryCard
                             
+                            // Clinician-assigned plan
+                            planSection
+                            
                             // Quick Log Section
                             quickLogSection
                             
@@ -178,6 +181,51 @@ struct ExerciseView: View {
         .cornerRadius(AppTheme.CornerRadius.md)
     }
     
+    // MARK: - Clinician Plan Section
+    
+    private var planSection: some View {
+        let activePlan = viewModel.exercisePlanItems
+            .filter { $0.isActive }
+            .sorted { $0.priority < $1.priority }
+        
+        return VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            HStack {
+                Text("Your Plan")
+                    .font(AppTheme.Typography.headline)
+                    .foregroundColor(.textPrimary)
+                
+                Spacer()
+            }
+            
+            if activePlan.isEmpty {
+                Text("No assigned exercises yet")
+                    .font(AppTheme.Typography.subheadline)
+                    .foregroundColor(.textSecondary)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(activePlan.enumerated()), id: \.element.id) { idx, item in
+                        ExercisePlanRow(item: item)
+                            .padding(.vertical, AppTheme.Spacing.sm)
+                        
+                        if idx < activePlan.count - 1 {
+                            Divider().background(Color.divider.opacity(0.6))
+                        }
+                    }
+                }
+                
+                if activePlan.contains(where: { !$0.reminderTimes.isEmpty }) {
+                    Text("Tip: Turn on Announce Notifications in iPhone Settings for spoken reminders.")
+                        .font(AppTheme.Typography.caption)
+                        .foregroundColor(.textSecondary)
+                        .padding(.top, 4)
+                }
+            }
+        }
+        .padding(AppTheme.Spacing.md)
+        .background(Color.cardBackground)
+        .cornerRadius(AppTheme.CornerRadius.md)
+    }
+    
     // MARK: - Quick Log Section
     
     private var quickLogSection: some View {
@@ -298,6 +346,65 @@ struct ExerciseView: View {
         if score >= 50 { return "Good progress" }
         if score > 0 { return "Keep moving" }
         return "Start exercising"
+    }
+}
+
+struct ExercisePlanRow: View {
+    let item: ExercisePlanItem
+    
+    private let dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    
+    private var scheduleLabel: String {
+        let days: String
+        if item.daysOfWeek.isEmpty {
+            days = "Daily"
+        } else {
+            let labels = item.daysOfWeek.compactMap { idx -> String? in
+                guard idx >= 0 && idx < dayLabels.count else { return nil }
+                return dayLabels[idx]
+            }
+            days = labels.isEmpty ? "Scheduled" : labels.joined(separator: ", ")
+        }
+        
+        if item.reminderTimes.isEmpty {
+            return days
+        }
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let times = item.reminderTimes.map { formatter.string(from: $0) }.joined(separator: ", ")
+        return "\(days) · \(times)"
+    }
+    
+    private var detailsLabel: String? {
+        if let sets = item.sets, let reps = item.reps {
+            return "\(sets) sets · \(reps) reps"
+        }
+        if let durationSeconds = item.durationSeconds, durationSeconds > 0 {
+            let minutes = max(Int(round(Double(durationSeconds) / 60.0)), 1)
+            return "\(minutes) min"
+        }
+        return nil
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(item.name)
+                .font(AppTheme.Typography.headline)
+                .foregroundColor(.textPrimary)
+            
+            Text(scheduleLabel)
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
+            
+            if let detailsLabel {
+                Text(detailsLabel)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundColor(.textSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

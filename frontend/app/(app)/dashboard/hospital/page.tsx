@@ -2,184 +2,484 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { SpaceViewer } from '@/components/hospital/SpaceViewer';
-import { roomStatusColors, roomTypeLabels, type Room, type RoomStatus } from '@/components/hospital/rooms';
-import { hazardTypeLabels, type Hazard } from '@/components/hospital/hazards';
-import { ActivityFeed, type ActivityEvent } from '@/components/hospital/ActivityFeed';
-import { generateMockEvents, generateVitalCheckEvent, generateAlertEvent, generateMedicationEvent } from '@/components/hospital/events';
 
-type ViewMode = 'map' | 'heatmap' | 'hazards';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+// Room interface matching SpaceViewer
+interface Room {
+  id: string;
+  name: string;
+  type:
+    | 'patient'
+    | 'nurse_station'
+    | 'critical'
+    | 'reception'
+    | 'waiting'
+    | 'hallway'
+    | 'pantry'
+    | 'restroom'
+    | 'storage'
+    | 'other';
+  status?: string;
+  position: {
+    levelIndex: number;
+    x: number;
+    z: number;
+    polygon?: Array<{ x: number; z: number }>;
+  };
+  patient?: {
+    id: string;
+    name: string;
+    age?: number;
+    condition?: string;
+    status?: string;
+  } | null;
+}
+
+// Room details from API
+interface RoomDetails {
+  room: {
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+  };
+  patient: {
+    id: string;
+    name: string;
+    age: number;
+    conditions: string[];
+    status: string;
+    assigned_at: string;
+  } | null;
+  tasks: Array<{
+    id: string;
+    type: string;
+    title: string;
+    description: string;
+    priority: string;
+    due_at: string | null;
+  }>;
+  hazards: Array<{
+    id: string;
+    type: string;
+    description: string;
+    severity: string;
+    status: string;
+  }>;
+  alerts: Array<{
+    id: string;
+    title: string;
+    message: string;
+    severity: string;
+  }>;
+  medications: Array<{
+    id: string;
+    name: string;
+    dosage: string;
+    scheduled_time: string;
+    status: string;
+  }>;
+}
+
+// Priority colors
+const priorityColors: Record<string, string> = {
+  urgent: '#ef4444',
+  high: '#f97316',
+  normal: '#3b82f6',
+  low: '#6b7280',
+};
+
+// Severity colors
+const severityColors: Record<string, string> = {
+  critical: '#ef4444',
+  high: '#f97316',
+  medium: '#eab308',
+  low: '#22c55e',
+};
+
+// Status colors for badges
+const statusColors: Record<string, string> = {
+  normal: '#22c55e',
+  critical: '#ef4444',
+  vacant: '#94a3b8',
+  maintenance: '#f59e0b',
+};
+
+// Room type labels
+const typeLabels: Record<string, string> = {
+  patient: 'Patient Room',
+  nurse_station: 'Nurse Station',
+  critical: 'Critical Room',
+  reception: 'Reception / Check-in',
+  waiting: 'Waiting Area',
+  hallway: 'Hallway / Entrance',
+  pantry: 'Pantry',
+  restroom: 'Restroom',
+  storage: 'Storage',
+  other: 'Other',
+};
 
 export default function HospitalViewPage() {
-  // View mode state
-  const [viewMode, setViewMode] = useState<ViewMode>('map');
-
-  // Selected item for detail panel
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
-  const [selectedHazard, setSelectedHazard] = useState<Hazard | null>(null);
+  const [roomDetails, setRoomDetails] = useState<RoomDetails | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [viewerMode, setViewerMode] = useState<'2d' | '3d'>('3d');
+  const [viewerState, setViewerState] = useState({
+    viewerMode: '3d' as '2d' | '3d',
+    roomCount: 0,
+    alertCount: 0,
+    criticalAlertCount: 0,
+  });
 
-  // Activity events
-  const [events, setEvents] = useState<ActivityEvent[]>([]);
-
-  // Initialize mock events
+  // Fetch room details when a room is selected
   useEffect(() => {
-    setEvents(generateMockEvents());
-  }, []);
+    if (!selectedRoom) {
+      setRoomDetails(null);
+      return;
+    }
 
-  // Simulate live events every 15-30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const eventGenerators = [generateVitalCheckEvent, generateAlertEvent, generateMedicationEvent];
-      const generator = eventGenerators[Math.floor(Math.random() * eventGenerators.length)];
-      const newEvent = generator();
-      
-      setEvents(prev => [newEvent, ...prev].slice(0, 50)); // Keep last 50 events
-    }, 15000 + Math.random() * 15000);
+    const fetchRoomDetails = async () => {
+      setLoadingDetails(true);
+      try {
+        const res = await fetch(`${API_URL}/api/v1/hospital/rooms/${selectedRoom.id}/details`);
+        const data = await res.json();
+        if (!data.error) {
+          setRoomDetails(data);
+        }
+      } catch (error) {
+        console.error('Error fetching room details:', error);
+      } finally {
+        setLoadingDetails(false);
+      }
+    };
 
-    return () => clearInterval(interval);
-  }, []);
+    // Initial fetch
+    fetchRoomDetails();
+
+    // Auto-refresh every 10 seconds to keep room details updated
+    const refreshInterval = setInterval(() => {
+      fetchRoomDetails();
+    }, 10000);
+
+    return () => {
+      clearInterval(refreshInterval);
+    };
+  }, [selectedRoom]);
 
   const handleRoomClick = useCallback((room: Room) => {
     setSelectedRoom(room);
-    setSelectedHazard(null);
-  }, []);
-
-  const handleHazardClick = useCallback((hazard: Hazard) => {
-    setSelectedHazard(hazard);
-    setSelectedRoom(null);
   }, []);
 
   const closeDetailPanel = useCallback(() => {
     setSelectedRoom(null);
-    setSelectedHazard(null);
+    setRoomDetails(null);
   }, []);
 
-  // Determine which layers to show based on view mode
-  const showHeatmap = viewMode === 'heatmap';
-  const showHazards = viewMode === 'hazards';
-  const showRoomStatus = viewMode === 'map' || viewMode === 'hazards';
+  const handleStateChange = useCallback((state: typeof viewerState) => {
+    setViewerState(state);
+  }, []);
+
+  const handleModeToggle = useCallback((mode: '2d' | '3d') => {
+    setViewerMode(mode);
+  }, []);
 
   return (
-    <div className="flex gap-3 h-[calc(100vh-112px)]">
+    <div className="h-full flex flex-col gap-4">
       {/* Main Content */}
-      <div className="flex-1 flex gap-3 min-h-0 overflow-hidden">
-        {/* Left: Floor Plan Viewer */}
-        <div className="flex-1 bg-white overflow-hidden flex flex-col rounded-lg border">
-          {/* View Mode Tabs */}
-          <div className="px-4 py-2 border-b flex items-center justify-between">
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* Floor Plan Viewer */}
+        <div className="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
+          {/* Control Bar - 2D/3D Toggle and Active Alerts */}
+          <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
+            {/* 2D/3D Toggle */}
             <div className="flex items-center gap-1">
-              {(['map', 'heatmap', 'hazards'] as ViewMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setViewMode(mode)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                    viewMode === mode
-                      ? 'bg-primary text-white'
-                      : 'text-muted-foreground hover:bg-muted/50'
-                  }`}
-                >
-                  {mode === 'map' && 'Map'}
-                  {mode === 'heatmap' && 'Heatmap'}
-                  {mode === 'hazards' && 'Hazards'}
-                </button>
-              ))}
+              <button
+                onClick={() => handleModeToggle('2d')}
+                className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                  viewerMode === '2d'
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-600 hover:bg-neutral-100'
+                }`}
+              >
+                2D
+              </button>
+              <button
+                onClick={() => handleModeToggle('3d')}
+                className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                  viewerMode === '3d'
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-600 hover:bg-neutral-100'
+                }`}
+              >
+                3D
+              </button>
             </div>
 
-            {/* Quick room status indicators */}
-            <div className="flex items-center gap-3">
-              {(['normal', 'attention', 'critical', 'vacant'] as RoomStatus[]).map((status) => (
-                <div key={status} className="flex items-center gap-1.5">
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: roomStatusColors[status] }}
-                  />
-                  <span className="text-xs text-muted-foreground capitalize">{status}</span>
+            {/* Active Alerts Indicator */}
+            {viewerState.alertCount > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  {viewerState.criticalAlertCount > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  )}
+                  <span className="text-xs text-neutral-600">
+                    {viewerState.alertCount} Active Alert{viewerState.alertCount !== 1 ? 's' : ''}
+                    {viewerState.criticalAlertCount > 0 && (
+                      <span className="text-red-600 font-medium ml-1">
+                        ({viewerState.criticalAlertCount} critical)
+                      </span>
+                    )}
+                  </span>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* 3D Viewer */}
-          <div className="flex-1 min-h-0">
+          <div className="flex-1">
             <SpaceViewer
-              viewMode={viewMode}
-              showHeatmap={showHeatmap}
-              showHazards={showHazards}
-              showRoomStatus={showRoomStatus}
+              viewMode="map"
+              showHeatmap={false}
               onRoomClick={handleRoomClick}
-              onHazardClick={handleHazardClick}
+              onStateChange={handleStateChange}
+              onModeToggle={handleModeToggle}
+              initialViewerMode={viewerMode}
             />
           </div>
         </div>
 
-        {/* Right: Activity Feed + Details */}
-        <div className="w-72 flex flex-col border rounded-lg bg-white shrink-0 overflow-hidden">
-          {/* Detail Panel (shows when room/hazard selected) */}
-          {(selectedRoom || selectedHazard) && (
-            <div className="p-3 border-b shrink-0">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                  {selectedRoom ? 'Room' : 'Hazard'}
-                </p>
-                <button
-                  onClick={closeDetailPanel}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+        {/* Room Detail Card - Shows below map when room is selected */}
+        {selectedRoom && (
+          <div className="mt-4 bg-white rounded-lg shadow-sm border border-neutral-200">
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="text-base font-semibold text-neutral-950">{selectedRoom.name}</h2>
+                <span className="text-xs text-neutral-500">{typeLabels[selectedRoom.type] || selectedRoom.type}</span>
+                {(roomDetails?.room.status || selectedRoom.status) && (
+                  <span
+                    className="px-2 py-0.5 text-xs font-medium rounded text-white"
+                    style={{ backgroundColor: statusColors[roomDetails?.room.status || selectedRoom.status || 'normal'] || '#6b7280' }}
+                  >
+                    {roomDetails?.room.status || selectedRoom.status}
+                  </span>
+                )}
               </div>
+              <button
+                onClick={closeDetailPanel}
+                className="p-1 rounded hover:bg-neutral-100 text-neutral-400 hover:text-neutral-600 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-              {selectedRoom && (
-                <div className="space-y-2">
+            {loadingDetails ? (
+              <div className="p-4">
+                <div className="animate-pulse space-y-3">
+                  <div className="h-4 bg-neutral-100 rounded w-1/3"></div>
+                  <div className="h-3 bg-neutral-100 rounded w-1/2"></div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4">
+                {/* Room Summary Row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  {/* Patient Summary */}
                   <div>
-                    <p className="text-sm font-medium text-foreground">{selectedRoom.name}</p>
-                    <p className="text-xs text-muted-foreground">{roomTypeLabels[selectedRoom.type]}</p>
+                    <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">Patient</p>
+                    {roomDetails?.patient ? (
+                      <div>
+                        <p className="text-sm font-medium text-neutral-900">{roomDetails.patient.name}</p>
+                        <p className="text-xs text-neutral-500">
+                          Age {roomDetails.patient.age} · {roomDetails.patient.status}
+                        </p>
+                      </div>
+                    ) : selectedRoom.patient ? (
+                      <div>
+                        <p className="text-sm font-medium text-neutral-900">{selectedRoom.patient.name}</p>
+                        <p className="text-xs text-neutral-500">
+                          {selectedRoom.patient.age ? `Age ${selectedRoom.patient.age}` : ''}
+                          {selectedRoom.patient.status ? ` · ${selectedRoom.patient.status}` : ''}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-neutral-400">No patient assigned</p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: roomStatusColors[selectedRoom.status] }}
-                    />
-                    <span className="text-xs text-foreground capitalize">{selectedRoom.status}</span>
-                    {selectedRoom.patientCount !== undefined && (
-                      <span className="text-xs text-muted-foreground">· {selectedRoom.patientCount} patients</span>
+
+                  {/* Tasks Summary */}
+                  <div>
+                    <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">Tasks</p>
+                    {roomDetails ? (
+                      <p className="text-sm text-neutral-700">
+                        {roomDetails.tasks.length > 0 ? (
+                          <span>
+                            <span className="font-medium text-neutral-900">{roomDetails.tasks.length}</span>
+                            {' pending'}
+                            {roomDetails.tasks.some(t => t.priority === 'urgent') && (
+                              <span className="text-red-600 ml-1">(urgent)</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-neutral-400">None pending</span>
+                        )}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-neutral-400">-</p>
+                    )}
+                  </div>
+
+                  {/* Medications Summary */}
+                  <div>
+                    <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">Medications</p>
+                    {roomDetails ? (
+                      <p className="text-sm text-neutral-700">
+                        {roomDetails.medications.length > 0 ? (
+                          <span>
+                            <span className="font-medium text-neutral-900">{roomDetails.medications.length}</span>
+                            {' scheduled'}
+                          </span>
+                        ) : (
+                          <span className="text-neutral-400">None scheduled</span>
+                        )}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-neutral-400">-</p>
+                    )}
+                  </div>
+
+                  {/* Alerts Summary */}
+                  <div>
+                    <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">Alerts</p>
+                    {roomDetails ? (
+                      <p className="text-sm text-neutral-700">
+                        {roomDetails.alerts.length + roomDetails.hazards.length > 0 ? (
+                          <span className="text-red-600 font-medium">
+                            {roomDetails.alerts.length + roomDetails.hazards.length} active
+                          </span>
+                        ) : (
+                          <span className="text-green-600">All clear</span>
+                        )}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-neutral-400">-</p>
                     )}
                   </div>
                 </div>
-              )}
 
-              {selectedHazard && (
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {hazardTypeLabels[selectedHazard.type]}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{selectedHazard.location}</p>
-                  </div>
-                  <p className="text-xs text-foreground">{selectedHazard.description}</p>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                      selectedHazard.status === 'active' 
-                        ? 'bg-red-50 text-red-700' 
-                        : selectedHazard.status === 'responding'
-                        ? 'bg-amber-50 text-amber-700'
-                        : 'bg-slate-50 text-slate-900'
-                    }`}>
-                      {selectedHazard.status === 'active' ? 'Active' : 
-                       selectedHazard.status === 'responding' ? 'Responding' : 'Resolved'}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+                {/* Detailed Sections - Only show if we have details */}
+                {roomDetails && (roomDetails.tasks.length > 0 || roomDetails.medications.length > 0 || roomDetails.alerts.length > 0 || roomDetails.hazards.length > 0 || (roomDetails.patient?.conditions?.length ?? 0) > 0) && (
+                  <div className="border-t border-neutral-100 pt-4 mt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Patient Conditions */}
+                    {roomDetails.patient && roomDetails.patient.conditions.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">Conditions</p>
+                        <div className="flex flex-wrap gap-1">
+                          {roomDetails.patient.conditions.map((condition, i) => (
+                            <span key={i} className="text-xs px-2 py-0.5 bg-neutral-100 text-neutral-700 rounded">
+                              {condition}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-          {/* Activity Feed */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <ActivityFeed events={events} />
+                    {/* Tasks List */}
+                    {roomDetails.tasks.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">
+                          Pending Tasks
+                        </p>
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1 scrollbar-thin">
+                          {roomDetails.tasks.map((task) => (
+                            <div 
+                              key={task.id} 
+                              className="flex items-start gap-2 text-xs p-2 rounded bg-neutral-50 border border-neutral-100"
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                                style={{ backgroundColor: priorityColors[task.priority] || '#6b7280' }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-neutral-900 leading-snug mb-0.5">{task.title}</p>
+                                {task.description && (
+                                  <p className="text-neutral-500 whitespace-pre-wrap break-words leading-relaxed">{task.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Medications List */}
+                    {roomDetails.medications.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">
+                          Scheduled Medications
+                        </p>
+                        <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                          {roomDetails.medications.map((med) => (
+                            <div key={med.id} className="text-xs">
+                              <p className="font-medium text-neutral-900">{med.name}</p>
+                              <p className="text-neutral-500">{med.dosage}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Alerts & Hazards List */}
+                    {(roomDetails.alerts.length > 0 || roomDetails.hazards.length > 0) && (
+                      <div>
+                        <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">
+                          Active Alerts
+                        </p>
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1 scrollbar-thin">
+                          {roomDetails.alerts.map((alert) => (
+                            <div 
+                              key={alert.id} 
+                              className="flex items-start gap-2 text-xs p-2 rounded bg-red-50 border border-red-100"
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                                style={{ backgroundColor: severityColors[alert.severity] || '#ef4444' }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-red-800 leading-snug mb-0.5">{alert.title}</p>
+                                {alert.message && (
+                                  <p className="text-red-600 whitespace-pre-wrap break-words leading-relaxed">{alert.message}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {roomDetails.hazards.map((hazard) => (
+                            <div 
+                              key={hazard.id} 
+                              className="flex items-start gap-2 text-xs p-2 rounded bg-amber-50 border border-amber-100"
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                                style={{ backgroundColor: severityColors[hazard.severity] || '#f59e0b' }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-amber-800 leading-snug mb-0.5">{hazard.type}</p>
+                                <p className="text-amber-600 whitespace-pre-wrap break-words leading-relaxed">{hazard.description}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

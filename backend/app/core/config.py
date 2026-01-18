@@ -35,8 +35,14 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_key: str | None = None
 
-    # AI configuration (Cerebras)
+    # AI configuration
     cerebras_key: str | None = None
+    claude_api_key: str | None = None
+
+    # Smplrspace configuration
+    smplr_org_id: str | None = None
+    smplr_client_token: str | None = None
+    smplr_space_id: str | None = None
 
     @property
     def cors_origins(self) -> list[str]:

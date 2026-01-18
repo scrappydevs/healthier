@@ -3,7 +3,7 @@ Chat context and session management for PillPal AI.
 Handles conversation history, context building, and session persistence.
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 import uuid
@@ -23,14 +23,40 @@ class ChatContext:
 # In-memory session storage (for demo without database)
 _sessions: Dict[str, ChatContext] = {}
 
+# Title generator function (set by main.py)
+_title_generator: Optional[Callable[[str], str]] = None
+
+
+def set_title_generator(generator: Callable[[str], str]) -> None:
+    """Set the title generator function (uses Cerebras)"""
+    global _title_generator
+    _title_generator = generator
+
+
+async def generate_smart_title(message: str) -> str:
+    """Generate a smart, concise title for the chat session using AI"""
+    global _title_generator
+    
+    if _title_generator is None:
+        # Fallback to simple truncation
+        return message[:40] + "..." if len(message) > 40 else message
+    
+    try:
+        title = _title_generator(message)
+        return title
+    except Exception as e:
+        print(f"⚠️ Title generation failed: {e}")
+        return message[:40] + "..." if len(message) > 40 else message
+
 
 async def create_session(user_id: str, initial_message: str = "") -> Dict[str, Any]:
     """Create a new chat session"""
     session_id = str(uuid.uuid4())
     
-    # Generate title from initial message
-    title = initial_message[:50] + "..." if len(initial_message) > 50 else initial_message
-    if not title:
+    # Generate smart title from initial message using AI
+    if initial_message:
+        title = await generate_smart_title(initial_message)
+    else:
         title = "New Chat"
     
     context = ChatContext(
@@ -94,78 +120,178 @@ async def delete_session(session_id: str) -> bool:
     return False
 
 
-def build_system_prompt(context: ChatContext) -> str:
-    """Build context-aware system prompt for the AI"""
+def build_system_prompt(context: ChatContext, hospital_state: Optional[Dict[str, Any]] = None) -> str:
+    """Build context-aware system prompt for the AI
+    
+    Args:
+        context: The chat context with page info and session data
+        hospital_state: Optional real-time hospital state including:
+            - rooms: List of rooms with occupancy
+            - patients: List of patients with locations
+            - alerts: Active alerts
+            - hazards: Active hazards
+            - stats: Occupancy statistics
+    """
     
     current_page = context.state.get("current_page", "/")
     tagged_context = context.state.get("tagged_context")
     
-    # Base system prompt
-    system_prompt = """You are PillPal AI, a helpful assistant for hospital staff managing patient care, room assignments, medication adherence, and safety.
+    # Base system prompt - focused and concise
+    system_prompt = """You are PillPal AI, a hospital floor plan assistant. Help clinical staff manage rooms, patients, hazards, and alerts.
 
-CAPABILITIES:
-- View and manage hospital rooms (patient rooms, ICU, wards, pharmacy, lab, etc.)
-- Track patient information, vitals, and medications
-- Monitor and respond to hazards and alerts
-- Provide hospital statistics and occupancy information
+AVAILABLE TOOLS:
 
-ROOM TYPES:
-- patient: Individual patient rooms (Cardiac Care, Respiratory, Neuro, Ortho)
-- icu: Intensive Care Units (ICU Pod Alpha, ICU Pod Beta)
-- ward: Multi-bed wards (General Ward A, General Ward B)
-- pharmacy: Main Pharmacy
-- lab: Clinical Lab
-- nurses_station: Central Nurses Station
-- reception: Main Reception
-- hallway: Corridors (North, South, East, West)
-- storage: Medical Supplies, Pharmacy Storage
+ROOMS:
+- list_all_rooms: All rooms with status and occupancy
+- get_room_status: Specific room details (patient, tasks, hazards)
+- list_available_rooms / list_occupied_rooms: Filter by availability
+- update_room_status: Change status (normal/critical/vacant/maintenance)
 
-ROOM STATUSES:
-- normal: Operating normally (green)
-- attention: Needs monitoring (amber)  
-- critical: Urgent attention required (red)
-- vacant: Unoccupied/available (gray)
+PATIENT ASSIGNMENT:
+- list_unassigned_patients: Show patients who need a room
+- assign_patient_to_room: Assign EXISTING patient to room (if patient not specified, shows available options)
+- admit_new_patient: Create NEW patient and assign to room in one step
+- remove_patient_from_room: Discharge patient from room
+- transfer_patient: Move patient between rooms
 
-COMMUNICATION STYLE:
-- Be concise and professional
-- Use medical terminology appropriately
-- Always confirm actions before making changes
-- Prioritize patient safety
+PATIENTS:
+- list_all_patients / search_patients / get_patient_details
+- get_patient_medications / update_patient_status
+- add_food_instructions: Assign dietary instructions to patient
 
-IMPORTANT RULES:
-1. ALWAYS use tools to fetch real data - never make up information
-2. For any question about patients, rooms, or hospital data, call the appropriate tool first
-3. When modifying data (assignments, status changes), confirm the action with the user
-4. Format responses clearly with bullet points when listing multiple items
-5. ALWAYS use patient names (e.g., 'John Smith') instead of patient IDs (e.g., 'P-001') in your responses. Only use IDs internally when calling tools - tools accept both names and IDs.
-6. When discussing patients, always refer to them by their full name, not by ID"""
+HAZARDS & ALERTS:
+- list_active_hazards / report_hazard / update_hazard_status
+- create_alert / get_active_alerts / acknowledge_alert / resolve_alert
+
+STATS:
+- get_hospital_stats: Occupancy, alerts, hazards overview
+- get_occupancy_rate / get_critical_summary
+
+ROOM STATUS VALUES:
+- normal (green): Occupied, stable patient
+- critical (red): Patient needs urgent attention
+- vacant (no highlight): Available/empty
+- maintenance (amber): Under maintenance
+
+COMMON WORKFLOWS:
+
+1. "Add a patient to Room X":
+   - If user specifies patient name that exists: use assign_patient_to_room
+   - If patient is new/unknown: use admit_new_patient to create and assign
+   - If unclear which patient: call list_unassigned_patients first and ask
+
+2. "Discharge patient from Room X":
+   - Use remove_patient_from_room with the room_id
+   - Room will become vacant (no highlight on floor plan)
+
+3. "What patients need rooms?":
+   - Use list_unassigned_patients
+
+4. "Room X is critical" or "Patient in Room X is critical":
+   - Use update_patient_status to set patient status to critical
+   - Room will turn red on the floor plan
+
+RESPONSE FORMAT:
+- Be direct and concise - clinical staff are busy
+- Use bullet lists, not tables
+- Structure: Status first, then details, then actions taken
+- After actions, confirm what changed
+
+RULES:
+1. ALWAYS call tools first - never guess data
+2. Ask clarifying questions when patient identity is unclear
+3. The floor plan auto-refreshes after changes - occupied rooms show colors, empty rooms don't
+4. When assigning tasks, they appear in the room detail panel"""
 
     # Add page-specific context
     if "hospital" in current_page or "floorplan" in current_page:
         system_prompt += """
 
-CURRENT CONTEXT: Hospital Floor Plan View
-- User is viewing the hospital floor plan
-- Focus on room-related queries and visual context
-- Suggest relevant actions for room management"""
+CURRENT CONTEXT: Hospital Floor Plan Visualization
+You are viewing an interactive 3D floor plan with these areas:
+- **Patient Rooms**: Room 1-6 (individual patient rooms)
+- **Critical Room**: Emergency care area
+- **Waiting Space**: Patient waiting area
+- **Check In Space**: Reception/check-in
+- **Pantry**: Staff pantry
+- **WCs**: Restrooms (2)
+- **Storage**: Supply storage
+- **Entrance**: Main entrance
+
+The map responds to your changes in real-time:
+- When you mark a room as "critical", it turns red on the map
+- Occupied rooms with stable patients show green
+- Rooms with declining patients show yellow
+- Empty patient rooms are not highlighted
+- Critical Room is always red when occupied
+
+Focus on spatial commands like:
+- "Show me which rooms are occupied"
+- "Mark Room 3 as critical" 
+- "Transfer patient to Room 5"
+- "What's the status of the Critical Room?"
+"""
     
     elif "dashboard" in current_page:
         system_prompt += """
 
-CURRENT CONTEXT: Dashboard
-- User is on the main dashboard
-- Provide overview statistics and summaries
-- Highlight critical issues requiring attention"""
+CURRENT CONTEXT: Dashboard View
+- User is viewing summary statistics
+- Provide overviews and highlight issues needing attention
+"""
+    
+    # Add real-time hospital state if provided
+    if hospital_state:
+        system_prompt += "\n\n--- CURRENT HOSPITAL STATE (REAL-TIME) ---\n"
+        
+        # Room occupancy summary
+        rooms = hospital_state.get("rooms", [])
+        if rooms:
+            occupied_rooms = [r for r in rooms if r.get("patient")]
+            vacant_rooms = [r for r in rooms if not r.get("patient") and r.get("type") == "patient"]
+            
+            system_prompt += f"\nROOM OCCUPANCY ({len(occupied_rooms)} occupied, {len(vacant_rooms)} vacant):\n"
+            for room in rooms:
+                if room.get("type") in ["patient", "critical"]:
+                    patient = room.get("patient")
+                    if patient:
+                        status_indicator = "🔴" if patient.get("status") == "critical" else "🟡" if patient.get("status") == "declining" else "🟢"
+                        system_prompt += f"- {room['name']}: {status_indicator} {patient['name']} ({patient.get('status', 'stable')})\n"
+                    else:
+                        system_prompt += f"- {room['name']}: Empty\n"
+        
+        # Active alerts
+        alerts = hospital_state.get("alerts", [])
+        if alerts:
+            system_prompt += f"\nACTIVE ALERTS ({len(alerts)}):\n"
+            for alert in alerts[:5]:  # Show max 5
+                system_prompt += f"- [{alert.get('severity', 'info').upper()}] {alert.get('title', 'Alert')}\n"
+        
+        # Active hazards
+        hazards = hospital_state.get("hazards", [])
+        if hazards:
+            system_prompt += f"\nACTIVE HAZARDS ({len(hazards)}):\n"
+            for hazard in hazards[:5]:  # Show max 5
+                system_prompt += f"- [{hazard.get('severity', 'low').upper()}] {hazard.get('type', 'Unknown')} at {hazard.get('location', 'Unknown')}\n"
+        
+        # Quick stats
+        stats = hospital_state.get("stats", {})
+        if stats:
+            system_prompt += f"\nQUICK STATS:\n"
+            system_prompt += f"- Occupancy: {stats.get('occupancy_rate', 0)}%\n"
+            system_prompt += f"- Critical rooms: {stats.get('critical_rooms', 0)}\n"
+            system_prompt += f"- Active alerts: {stats.get('active_alerts', 0)}\n"
+            system_prompt += f"- Active hazards: {stats.get('active_hazards', 0)}\n"
+        
+        system_prompt += "\n--- END HOSPITAL STATE ---"
     
     # Add tagged context if available
     if tagged_context:
         system_prompt += f"""
 
 TAGGED CONTEXT:
-The user has tagged specific items in their message:
 {tagged_context}
-
-Use this information to provide more relevant responses."""
+"""
     
     return system_prompt
 

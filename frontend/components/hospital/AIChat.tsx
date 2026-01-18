@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import Fuse from 'fuse.js';
 import {
   ToolUseIndicator,
   FollowUpQuestions,
@@ -14,7 +13,6 @@ import {
   QuickSuggestions,
   TypingIndicator,
 } from './ChatEnhancements';
-import { rooms, type Room } from './rooms';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -44,29 +42,16 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
-  const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   const [showToolIndicator, setShowToolIndicator] = useState(false);
   const [toolCallCount, setToolCallCount] = useState(0);
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [autocompleteItems, setAutocompleteItems] = useState<Room[]>([]);
-  const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
-  const [currentTime, setCurrentTime] = useState(new Date());
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
-
-  // Update time every minute
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -108,7 +93,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingText, scrollToBottom]);
+  }, [messages, scrollToBottom]);
 
   // Fetch sessions
   const fetchSessions = useCallback(async () => {
@@ -133,10 +118,10 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
   const getSmartSuggestions = useCallback(() => {
     if (pathname?.includes('hospital') || pathname?.includes('floorplan')) {
       return [
-        'Show room occupancy',
-        'List available rooms',
-        'Show critical rooms',
-        'Active hazards',
+        'Show all rooms',
+        'Which rooms are available?',
+        'Any active alerts?',
+        'Hospital statistics',
       ];
     }
     return ['Room status', 'Active alerts', 'Hospital statistics'];
@@ -149,27 +134,52 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
       const queryLower = userQuery.toLowerCase();
       const responseLower = response.toLowerCase();
 
-      if (responseLower.includes('success') || responseLower.includes('✅')) {
+      // After successful operations
+      if (responseLower.includes('success') || responseLower.includes('✅') || responseLower.includes('completed')) {
         if (responseLower.includes('transferred') || responseLower.includes('moved')) {
-          questions.push('Show room status');
+          questions.push('Show all rooms');
+          questions.push('Any available rooms?');
         }
-        if (responseLower.includes('assigned')) {
+        if (responseLower.includes('assigned') || responseLower.includes('admitted')) {
+          questions.push('Show available rooms');
+        }
+        if (responseLower.includes('status') && responseLower.includes('critical')) {
+          questions.push('Show all critical rooms');
+        }
+        if (responseLower.includes('removed') || responseLower.includes('discharged')) {
           questions.push('Show available rooms');
         }
         return questions.slice(0, 2);
       }
 
-      if (queryLower.includes('room') && !queryLower.includes('all')) {
-        questions.push('Show all rooms');
+      // Room-related queries
+      if (queryLower.includes('room')) {
+        if (!queryLower.includes('all') && !queryLower.includes('available')) {
+          questions.push('Show all rooms');
+        }
+        if (!queryLower.includes('available')) {
+          questions.push('Which rooms are available?');
+        }
       }
-      if (queryLower.includes('patient') && !queryLower.includes('all')) {
-        questions.push('List all patients');
+      
+      // Patient-related queries
+      if (queryLower.includes('patient')) {
+        if (!queryLower.includes('all')) {
+          questions.push('List all patients');
+        }
+        questions.push('Any critical patients?');
       }
-      if (queryLower.includes('hazard')) {
-        questions.push('Show hazards by type');
+      
+      // Alert queries
+      if (queryLower.includes('alert') || queryLower.includes('hazard')) {
+        questions.push('Show critical alerts');
+        questions.push('Hospital statistics');
       }
-      if (queryLower.includes('alert')) {
-        questions.push('Critical alerts only');
+      
+      // Statistics queries
+      if (queryLower.includes('statistic') || queryLower.includes('overview')) {
+        questions.push('Show occupied rooms');
+        questions.push('Any active alerts?');
       }
 
       return questions.slice(0, 2);
@@ -180,7 +190,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
   // Stream text response
   const streamText = useCallback(async (text: string) => {
     setIsStreaming(true);
-    setStreamingText('');
 
     const placeholderMsg: Message = {
       role: 'assistant',
@@ -194,7 +203,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
 
     for (let i = 0; i < words.length; i++) {
       currentText += (i > 0 ? ' ' : '') + words[i];
-      setStreamingText(currentText);
 
       setMessages((prev) => {
         const updated = [...prev];
@@ -220,7 +228,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     });
 
     setIsStreaming(false);
-    setStreamingText('');
   }, []);
 
   // Send message
@@ -274,9 +281,27 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
       const responseText = data.response || 'Sorry, I encountered an error.';
       await streamText(responseText);
 
-      // Invalidate cache if needed
-      if (data.invalidate_cache && onCacheInvalidate) {
-        onCacheInvalidate(data.cache_keys || ['rooms', 'patients']);
+      // Invalidate cache if AI made changes (tool calls mean data might have changed)
+      if (data.invalidate_cache || data.tool_calls > 0) {
+        console.log('🔄 AI made changes - invalidating cache');
+        console.log('   Tool calls:', data.tool_calls);
+        if (data.flash_room_id) {
+          console.log('   Flash room:', data.flash_room_id);
+        }
+        
+        // Dispatch custom event to notify SpaceViewer to refresh
+        window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
+          detail: { 
+            keys: data.cache_keys || ['rooms', 'alerts'], 
+            flash_room_id: data.flash_room_id,
+            timestamp: Date.now() 
+          }
+        }));
+        
+        // Also call the prop callback if provided
+        if (onCacheInvalidate) {
+          onCacheInvalidate(data.cache_keys || ['rooms', 'patients']);
+        }
       }
 
       // Generate follow-ups
@@ -342,8 +367,27 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
         setIsLoading(false);
         await streamText(data.response || 'Sorry, I encountered an error.');
 
-        if (data.invalidate_cache && onCacheInvalidate) {
-          onCacheInvalidate(data.cache_keys || ['rooms', 'patients']);
+        // Invalidate cache if AI made changes
+        if (data.invalidate_cache || data.tool_calls > 0) {
+          console.log('🔄 AI made changes (suggestion) - invalidating cache');
+          if (data.flash_room_id) {
+            console.log('   Flash room:', data.flash_room_id);
+          }
+          
+          // Dispatch custom event to notify SpaceViewer to refresh
+          window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
+            detail: { 
+              keys: data.cache_keys || ['rooms', 'patients'], 
+              flash_room_id: data.flash_room_id,
+              timestamp: Date.now() 
+            }
+          }));
+          
+          console.log('   ✅ Cache invalidation events dispatched');
+          
+          if (onCacheInvalidate) {
+            onCacheInvalidate(data.cache_keys || ['rooms', 'patients']);
+          }
         }
 
         const followUps = generateFollowUpQuestions(prompt, data.response);
@@ -371,7 +415,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     setMessages([]);
     setSessionId(null);
     setSessionTitle(null);
-    setStreamingText('');
     setIsStreaming(false);
     setFollowUpQuestions([]);
     localStorage.removeItem('pillpal_chat_session_id');
@@ -411,79 +454,15 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     []
   );
 
-  // Handle @ autocomplete
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setInput(value);
-
-      const lastWord = value.split(' ').pop() || '';
-      if (lastWord.startsWith('@')) {
-        const query = lastWord.substring(1).toLowerCase();
-
-        if (query) {
-          const fuse = new Fuse(rooms, {
-            keys: ['name', 'type'],
-            threshold: 0.4,
-          });
-          const results = fuse.search(query);
-          setAutocompleteItems(results.map((r) => r.item).slice(0, 6));
-        } else {
-          setAutocompleteItems(rooms.slice(0, 6));
-        }
-        setShowAutocomplete(true);
-        setSelectedAutocompleteIndex(0);
-      } else {
-        setShowAutocomplete(false);
-      }
-    },
-    []
-  );
-
-  // Select autocomplete item
-  const selectAutocompleteItem = useCallback(
-    (room: Room) => {
-      const words = input.split(' ');
-      words[words.length - 1] = `@${room.name}`;
-      setInput(words.join(' ') + ' ');
-      setShowAutocomplete(false);
-    },
-    [input]
-  );
-
   // Handle key down
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (showAutocomplete && autocompleteItems.length > 0) {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          setSelectedAutocompleteIndex((prev) =>
-            (prev + 1) % autocompleteItems.length
-          );
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          setSelectedAutocompleteIndex((prev) =>
-            prev === 0 ? autocompleteItems.length - 1 : prev - 1
-          );
-        } else if (e.key === 'Tab' || e.key === 'Enter') {
-          e.preventDefault();
-          selectAutocompleteItem(autocompleteItems[selectedAutocompleteIndex]);
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          setShowAutocomplete(false);
-        }
-      } else if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSendMessage();
       }
     },
-    [
-      showAutocomplete,
-      autocompleteItems,
-      selectedAutocompleteIndex,
-      selectAutocompleteItem,
-      handleSendMessage,
-    ]
+    [handleSendMessage]
   );
 
   return (
@@ -607,7 +586,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                         onClick={() => loadSession(session)}
                         className={`w-full text-left px-4 py-2.5 border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50 transition-colors ${
                           sessionId === session.id
-                            ? 'bg-slate-50 border-l-2 border-l-slate-900'
+                            ? 'bg-emerald-50 border-l-2 border-l-emerald-600'
                             : ''
                         }`}
                       >
@@ -637,19 +616,12 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                   transition={{ duration: 0.4, delay: 0.1 }}
                 >
                   <p className="text-sm font-light text-neutral-600 mb-4">
-                    Ask about rooms, patients, hazards, or hospital status.
+                    Ask about rooms, patients, or hospital status.
                   </p>
                   <QuickSuggestions
                     suggestions={getSmartSuggestions()}
                     onSelect={handleSuggestionClick}
                   />
-                  <p className="text-xs text-neutral-400 mt-4 pt-3 border-t border-neutral-100">
-                    Type{' '}
-                    <code className="bg-neutral-100 px-1 py-0.5 rounded text-blue-700 text-[11px]">
-                      @
-                    </code>{' '}
-                    to reference rooms
-                  </p>
                 </motion.div>
               ) : (
                 <>
@@ -666,7 +638,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                       <div
                         className={`max-w-[80%] px-4 py-3 text-sm font-light leading-relaxed ${
                           msg.role === 'user'
-                            ? 'bg-slate-900 text-white'
+                            ? 'bg-emerald-600 text-white'
                             : 'bg-neutral-100 text-neutral-900'
                         }`}
                         style={{
@@ -725,7 +697,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                           </ReactMarkdown>
                         </div>
                         {msg.isStreaming && (
-                          <span className="inline-block w-1.5 h-3.5 bg-blue-600 ml-0.5 animate-pulse" />
+                          <span className="inline-block w-1.5 h-3.5 bg-emerald-600 ml-0.5 animate-pulse" />
                         )}
                       </div>
                     </motion.div>
@@ -769,48 +741,27 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
             </div>
 
             {/* Input Area */}
-            <div className="border-t border-neutral-200 p-4">
-              {showAutocomplete && autocompleteItems.length > 0 && (
-                <div className="mb-2 bg-white border border-neutral-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                  {autocompleteItems.map((room, idx) => (
-                    <button
-                      key={room.id}
-                      onClick={() => selectAutocompleteItem(room)}
-                      className={`w-full text-left px-3 py-2 text-xs font-light transition-colors ${
-                        idx === selectedAutocompleteIndex
-                          ? 'bg-slate-100 text-slate-900 border-l-2 border-slate-900'
-                          : 'text-neutral-900 hover:bg-neutral-50'
-                      }`}
-                    >
-                      <span className="font-medium">{room.name}</span>
-                      <span className="text-neutral-400 ml-2">
-                        ({room.type})
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex gap-2">
+            <div className="border-t border-neutral-200 p-3">
+              <div className="flex gap-2 items-center">
                 <input
                   type="text"
                   value={input}
-                  onChange={handleInputChange}
+                  onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={
                     isLoading
                       ? 'Thinking...'
                       : isStreaming
                       ? 'Responding...'
-                      : 'Ask me anything... (@ to tag rooms)'
+                      : 'Ask a question...'
                   }
                   disabled={isLoading || isStreaming}
-                  className="flex-1 px-3 py-2 text-sm font-light text-neutral-900 placeholder:text-neutral-500 border border-neutral-200 rounded-lg focus:outline-none focus:border-blue-600 transition-colors disabled:opacity-50 disabled:bg-neutral-50"
+                  className="flex-1 px-3 py-2 text-sm font-light text-neutral-900 placeholder:text-neutral-400 bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all disabled:opacity-50 disabled:bg-neutral-100"
                 />
                 <button
                   onClick={handleSendMessage}
                   disabled={isLoading || isStreaming || input.trim() === ''}
-                  className="px-4 py-2 bg-slate-900 text-white text-sm font-light rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-[38px] w-[38px] flex items-center justify-center bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <svg
                     className="w-4 h-4"
@@ -822,40 +773,13 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                      d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
                     />
                   </svg>
                 </button>
               </div>
             </div>
 
-            {/* Footer */}
-            <div
-              className="px-4 py-2 border-t border-neutral-200 bg-neutral-50"
-              style={{ borderRadius: '0 0 12px 12px' }}
-            >
-              <div className="flex items-center justify-between text-xs font-light text-neutral-500">
-                <span className="uppercase tracking-wider flex items-center gap-2">
-                  {pathname?.includes('hospital') ? (
-                    <>
-                      <span>🏥</span>
-                      <span>Hospital View</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>💊</span>
-                      <span>PillPal</span>
-                    </>
-                  )}
-                </span>
-                <span className="font-mono text-[10px]">
-                  {currentTime.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              </div>
-            </div>
           </motion.div>
         ) : (
           <div className="fixed bottom-6 right-6 z-50 group">
@@ -867,7 +791,7 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
               whileTap={{ scale: 0.95 }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
               onClick={() => setIsOpen(true)}
-              className="w-14 h-14 bg-slate-900 hover:bg-slate-800 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center rounded-full"
+              className="w-14 h-14 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center rounded-full"
               title="PillPal AI Assistant"
             >
               <svg

@@ -24,6 +24,7 @@ class PatientCreate(PatientBase):
 class PatientUpdate(PatientBase):
     """Fields that can be updated on a patient."""
     status: Optional[str] = None
+    care_setting: Optional[str] = None  # 'in_clinic' or 'at_home'
 
 
 class PatientResponse(PatientBase):
@@ -33,6 +34,7 @@ class PatientResponse(PatientBase):
     clinician_id: Optional[UUID] = None
     age: Optional[int] = None
     status: str = "active"
+    care_setting: str = "at_home"  # 'in_clinic' or 'at_home'
     created_at: datetime
     updated_at: datetime
 
@@ -46,6 +48,7 @@ class PatientWithAdherence(PatientResponse):
     adherence_rate: float = Field(ge=0, le=100)
     last_active: Optional[datetime] = None
     medication_count: int = 0
+    care_setting: str = "at_home"  # 'in_clinic' or 'at_home'
 
 
 class PatientListResponse(BaseModel):

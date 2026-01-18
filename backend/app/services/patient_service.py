@@ -18,6 +18,7 @@ class PatientService:
         self,
         clinician_id: Optional[UUID] = None,
         status: Optional[str] = None,
+        care_setting: Optional[str] = None,
         page: int = 1,
         per_page: int = 20,
     ) -> tuple[list[PatientWithAdherence], int]:
@@ -31,10 +32,13 @@ class PatientService:
             query = query.eq("clinician_id", str(clinician_id))
         if status:
             query = query.eq("status", status)
+        if care_setting:
+            query = query.eq("care_setting", care_setting)
 
         offset = (page - 1) * per_page
         query = query.range(offset, offset + per_page - 1)
-        query = query.order("created_at", desc=True)
+        # Sort by care_setting (in_clinic first) then by created_at
+        query = query.order("care_setting", desc=False).order("created_at", desc=True)
 
         response = query.execute()
 
@@ -55,6 +59,7 @@ class PatientService:
                 emergency_contact_phone=row.get("emergency_contact_phone"),
                 notes=row.get("notes"),
                 status=row.get("status", "active"),
+                care_setting=row.get("care_setting", "at_home"),
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 full_name=row["users"]["full_name"] if row.get("users") else "Unknown",
@@ -90,6 +95,7 @@ class PatientService:
             emergency_contact_phone=row.get("emergency_contact_phone"),
             notes=row.get("notes"),
             status=row.get("status", "active"),
+            care_setting=row.get("care_setting", "at_home"),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             full_name=row["users"]["full_name"] if row.get("users") else "Unknown",

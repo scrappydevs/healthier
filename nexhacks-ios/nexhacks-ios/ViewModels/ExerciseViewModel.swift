@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import AVFoundation
+import Supabase
 
 @MainActor
 class ExerciseViewModel: ObservableObject {
@@ -21,6 +22,9 @@ class ExerciseViewModel: ObservableObject {
     @Published var showingAddExercise: Bool = false
     @Published var selectedExercise: Exercise?
     
+    // Clinician-assigned exercise plan (web -> iOS)
+    @Published var exercisePlanItems: [ExercisePlanItem] = []
+
     // Exercise summary
     @Published var totalMinutesToday: Int = 0
     @Published var totalCaloriesBurnedToday: Double = 0
@@ -29,8 +33,17 @@ class ExerciseViewModel: ObservableObject {
     // MARK: - Dependencies
     private let exerciseRepository: ExerciseRepository
     private let supabaseService: SupabaseService
+    private let notificationService: NotificationService
     
     private var cancellables = Set<AnyCancellable>()
+    private var authStateListener: Task<Void, Never>?
+    
+    private let reminderTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
     
     // Exercise goals
     private let dailyExerciseGoalMinutes: Double = 30
@@ -38,13 +51,24 @@ class ExerciseViewModel: ObservableObject {
     // MARK: - Initialization
     init(
         exerciseRepository: ExerciseRepository,
-        supabaseService: SupabaseService? = nil
+        supabaseService: SupabaseService? = nil,
+        notificationService: NotificationService? = nil
     ) {
         self.exerciseRepository = exerciseRepository
         self.supabaseService = supabaseService ?? SupabaseService()
+        self.notificationService = notificationService ?? NotificationService()
         
         setupBindings()
         loadExercises()
+        startAuthStateListener()
+        
+        Task {
+            await loadExercisePlanFromSupabase()
+        }
+    }
+    
+    deinit {
+        authStateListener?.cancel()
     }
     
     // MARK: - Public Methods
@@ -162,6 +186,82 @@ class ExerciseViewModel: ObservableObject {
                 self?.loadExercises()
             }
             .store(in: &cancellables)
+    }
+    
+    private func startAuthStateListener() {
+        authStateListener = Task { @MainActor in
+            for await state in supabase.auth.authStateChanges {
+                await handleAuthStateChange(state.event)
+            }
+        }
+    }
+    
+    private func handleAuthStateChange(_ event: AuthChangeEvent) async {
+        switch event {
+        case .signedIn, .tokenRefreshed, .userUpdated:
+            await loadExercisePlanFromSupabase()
+        case .signedOut:
+            let ids = exercisePlanItems.map(\.id)
+            exercisePlanItems = []
+            for id in ids {
+                notificationService.cancelExerciseReminders(planItemId: id)
+            }
+        default:
+            break
+        }
+    }
+    
+    private func loadExercisePlanFromSupabase() async {
+        guard supabaseService.getCurrentUserId() != nil else {
+            exercisePlanItems = []
+            return
+        }
+        
+        do {
+            let rows = try await supabaseService.fetchExercisePlanItems()
+            let mapped = rows.map { mapSupabaseExercisePlanItem($0) }
+            exercisePlanItems = mapped
+            
+            // Schedule (or cancel) reminders for all items (idempotent)
+            for item in mapped {
+                do {
+                    try await notificationService.scheduleExerciseReminder(planItem: item)
+                } catch {
+                    // Best-effort scheduling, keep UI functional
+                    print("Failed to schedule exercise reminder: \(error)")
+                }
+            }
+        } catch {
+            print("Failed to load exercise plan from Supabase: \(error)")
+        }
+    }
+    
+    private func mapSupabaseExercisePlanItem(_ row: SupabaseExercisePlanItem) -> ExercisePlanItem {
+        let times = row.reminderTimes.compactMap { parseReminderTime($0) }
+        return ExercisePlanItem(
+            id: row.id,
+            name: row.name,
+            category: row.category,
+            frequency: row.frequency,
+            reminderTimes: times,
+            daysOfWeek: row.daysOfWeek ?? [],
+            sets: row.sets,
+            reps: row.reps,
+            durationSeconds: row.durationSeconds,
+            formNotes: row.formNotes,
+            priority: row.priority,
+            isActive: row.isActive,
+            createdAt: row.createdAt ?? Date(),
+            updatedAt: row.updatedAt ?? Date()
+        )
+    }
+    
+    private func parseReminderTime(_ value: String) -> Date? {
+        guard let date = reminderTimeFormatter.date(from: value) else { return nil }
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: date)
+        let minute = calendar.component(.minute, from: date)
+        return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: Date())
     }
     
     private func updateExerciseSummary() {

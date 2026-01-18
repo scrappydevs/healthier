@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { 
   Search, 
   AlertCircle,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -20,32 +21,52 @@ import {
   Play,
   Video,
   BarChart3,
-  Loader2
+  Loader2,
+  Info
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   getPatients, 
   getPatientMeals,
   getPatientExercises,
   getPatientMedications,
   getPatientJournal,
+  getPatientPillLogs,
   getPills,
+  assignPatientMedication,
   generateDailySummary,
   createPatientPlan,
   updatePatientPlan,
   analyzeExercisePose,
   getExercisePoseAnalysis,
+  updatePatient,
+  getExerciseCatalog,
+  getPrescribedExercises,
+  prescribeExercise,
+  removePrescribedExercise,
   type Patient,
   type Pill as PillType,
+  type PillLog,
   type DailySummaryResponse,
+  type DailySummaryAlert,
   type JournalEntry,
-  type PatientPlan
+  type PatientPlan,
+  type ExerciseCatalogItem,
+  type PrescribedExercise
 } from "@/lib/api";
 import { FoodSection } from "@/components/patient/FoodSection";
 import { ExerciseSection } from "@/components/patient/ExerciseSection";
 import { MedicationSection } from "@/components/patient/MedicationSection";
 import { JournalSection } from "@/components/patient/JournalSection";
+import { MedicationDetailsModal } from "@/components/medications/MedicationDetailsModal";
 
 type Tab = "overview" | "plans" | "food" | "exercise" | "medications" | "journal";
 
@@ -59,6 +80,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [careSettingFilter, setCareSettingFilter] = useState<"all" | "in_clinic" | "at_home">("all");
   
   // Helper to get local date string (YYYY-MM-DD)
   const getLocalDate = (date: Date): string => {
@@ -91,9 +113,14 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
-  const filteredPatients = patients.filter(p => 
-    p.full_name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredPatients = patients.filter(p => {
+    const matchesSearch = p.full_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCareSetting = careSettingFilter === "all" || p.care_setting === careSettingFilter;
+    return matchesSearch && matchesCareSetting;
+  });
+  
+  const inClinicCount = patients.filter(p => p.care_setting === "in_clinic").length;
+  const atHomeCount = patients.filter(p => p.care_setting === "at_home").length;
 
   const getStatusFromAdherence = (rate: number): "good" | "warning" | "critical" => {
     if (rate >= 85) return "good";
@@ -171,10 +198,41 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Column Header */}
-        <div className="px-3 py-1.5 border-b bg-muted/20 flex items-center justify-between">
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Patient</span>
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Adherence</span>
+        {/* Care Setting Tabs */}
+        <div className="flex border-b">
+          <button
+            onClick={() => setCareSettingFilter("all")}
+            className={cn(
+              "flex-1 py-1.5 text-xs font-semibold tracking-tight transition-colors",
+              careSettingFilter === "all" 
+                ? "text-slate-900 border-b-2 border-slate-900" 
+                : "text-slate-500 hover:text-slate-900"
+            )}
+          >
+            All ({patients.length})
+          </button>
+          <button
+            onClick={() => setCareSettingFilter("in_clinic")}
+            className={cn(
+              "flex-1 py-1.5 text-xs font-semibold tracking-tight transition-colors",
+              careSettingFilter === "in_clinic" 
+                ? "text-slate-900 border-b-2 border-slate-900" 
+                : "text-slate-500 hover:text-slate-900"
+            )}
+          >
+            Clinic ({inClinicCount})
+          </button>
+          <button
+            onClick={() => setCareSettingFilter("at_home")}
+            className={cn(
+              "flex-1 py-1.5 text-xs font-semibold tracking-tight transition-colors",
+              careSettingFilter === "at_home" 
+                ? "text-slate-900 border-b-2 border-slate-900" 
+                : "text-slate-500 hover:text-slate-900"
+            )}
+          >
+            Home ({atHomeCount})
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -186,56 +244,119 @@ export default function DashboardPage() {
               const hasMeds = patient.medication_count > 0;
               const status = hasMeds ? getStatusFromAdherence(patient.adherence_rate) : null;
               return (
-                <button
+                <div
                   key={patient.id}
-                  onClick={() => {
-                    setSelectedPatient(patient);
-                    setActiveTab("overview");
-                  }}
                   className={cn(
-                    "w-full px-3 py-2 text-left transition-colors border-l-2",
+                    "px-3 py-2 transition-colors border-l-2",
                     isSelected 
                       ? "bg-primary/5 border-l-primary" 
                       : "border-l-transparent hover:bg-muted/30"
                   )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-foreground truncate">
-                      {patient.full_name}
-                    </span>
-                    {hasMeds ? (
-                      <div className="flex items-center gap-1">
-                      <span className={cn(
-                        "text-xs font-semibold tabular-nums",
-                          "text-muted-foreground"
-                      )}>
-                        {Math.round(patient.adherence_rate)}%
+                  <div className="flex items-center justify-between gap-1">
+                    <button
+                      onClick={() => {
+                        setSelectedPatient(patient);
+                        setActiveTab("overview");
+                      }}
+                      className="flex-1 text-left min-w-0"
+                    >
+                      <span className="text-sm font-medium text-slate-900 tracking-tight truncate block">
+                        {patient.full_name}
                       </span>
-                        {status === "critical" && (
-                          <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        )}
-                        {status === "warning" && (
-                          <svg className="w-3 h-3 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {hasMeds ? (
+                        <>
+                          <span className="text-xs font-semibold tabular-nums text-slate-500">
+                            {Math.round(patient.adherence_rate)}%
+                          </span>
+                          {status === "critical" && (
+                            <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          )}
+                          {status === "warning" && (
+                            <svg className="w-3 h-3 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {patient.medication_count} meds
-                    </span>
-                    <span className="text-muted-foreground/50">·</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatLastActive(patient.last_active)}
-                    </span>
+                  <div className="flex items-center justify-between mt-1">
+                    <button
+                      onClick={() => {
+                        setSelectedPatient(patient);
+                        setActiveTab("overview");
+                      }}
+                      className="text-left"
+                    >
+                      <span className="text-xs text-slate-500">
+                        {patient.medication_count} meds · {formatLastActive(patient.last_active)}
+                      </span>
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const newSetting = "at_home";
+                          if (patient.care_setting === newSetting) return;
+                          try {
+                            await updatePatient(patient.id, { care_setting: newSetting });
+                            setPatients(prev => prev.map(p => 
+                              p.id === patient.id ? { ...p, care_setting: newSetting } : p
+                            ));
+                            if (selectedPatient?.id === patient.id) {
+                              setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
+                            }
+                          } catch (err) {
+                            console.error("Failed to update care setting:", err);
+                          }
+                        }}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded transition-colors",
+                          patient.care_setting === "at_home"
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-400 hover:text-slate-600"
+                        )}
+                        title="Set to At-Home"
+                      >
+                        Home
+                      </button>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const newSetting = "in_clinic";
+                          if (patient.care_setting === newSetting) return;
+                          try {
+                            await updatePatient(patient.id, { care_setting: newSetting });
+                            setPatients(prev => prev.map(p => 
+                              p.id === patient.id ? { ...p, care_setting: newSetting } : p
+                            ));
+                            if (selectedPatient?.id === patient.id) {
+                              setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
+                            }
+                          } catch (err) {
+                            console.error("Failed to update care setting:", err);
+                          }
+                        }}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded transition-colors",
+                          patient.care_setting === "in_clinic"
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-400 hover:text-slate-600"
+                        )}
+                        title="Set to In-Clinic"
+                      >
+                        Clinic
+                      </button>
+                    </div>
                   </div>
-                </button>
+                </div>
               );
             })
           )}
@@ -251,12 +372,31 @@ export default function DashboardPage() {
               <div className="flex items-center gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-base font-semibold text-foreground">
+                    <h1 className="text-base font-semibold text-slate-900 tracking-tight">
                       {selectedPatient.full_name}
                     </h1>
+                    <button
+                      onClick={async () => {
+                        const newSetting = selectedPatient.care_setting === "in_clinic" ? "at_home" : "in_clinic";
+                        try {
+                          await updatePatient(selectedPatient.id, { care_setting: newSetting });
+                          // Update local state immediately
+                          setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
+                          setPatients(prev => prev.map(p => 
+                            p.id === selectedPatient.id ? { ...p, care_setting: newSetting } : p
+                          ));
+                        } catch (err) {
+                          console.error("Failed to update care setting:", err);
+                        }
+                      }}
+                      className="px-2 py-0.5 text-xs rounded border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+                      title={`Switch to ${selectedPatient.care_setting === "in_clinic" ? "At-Home" : "In-Clinic"}`}
+                    >
+                      {selectedPatient.care_setting === "in_clinic" ? "In-Clinic" : "At-Home"}
+                    </button>
                     <StatusBadge status={getStatusFromAdherence(selectedPatient.adherence_rate)} />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-slate-500 mt-0.5">
                     {selectedPatient.age ? `${selectedPatient.age} yrs` : "Age unknown"} · {selectedPatient.medication_count} medications
                   </p>
                 </div>
@@ -491,80 +631,77 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
   const currentVideoUrl = videoView === "analyzed" && hasProcessedVideo ? processedUrl : exercise.video_url;
 
   return (
-    <div className="p-3 bg-slate-50/50 rounded">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-foreground text-sm">{exercise.exercise_type || exercise.name || "Exercise"}</p>
-          <p className="text-xs text-muted-foreground">
-            {formatTime(exercise.logged_at)}
-            {exercise.duration_minutes && ` · ${exercise.duration_minutes} min`}
-            {exercise.calories_burned && ` · ${exercise.calories_burned} cal`}
-          </p>
+    <div className="py-3 border-b last:border-b-0">
+      {/* Header - inline layout */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-foreground text-sm">{exercise.exercise_type || exercise.name || "Exercise"}</p>
+              {isAnalyzing ? (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                </span>
+              ) : hasAnalysis ? (
+                <span className="text-xs text-emerald-600">✓</span>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {formatTime(exercise.logged_at)}
+              {exercise.duration_minutes && ` · ${exercise.duration_minutes} min`}
+              {exercise.calories_burned && ` · ${exercise.calories_burned} cal`}
+            </p>
+          </div>
         </div>
         
-          <div className="flex items-center gap-2">
-          {/* Status indicator */}
-          {isAnalyzing ? (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Analyzing...
-              </span>
-          ) : hasAnalysis ? (
-            <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-              Analyzed
-            </span>
-          ) : null}
-          
-          {/* Video Toggle */}
-          {hasVideo && (
-            <button
-              onClick={() => setShowVideo(!showVideo)}
-              className={cn(
-                "flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors",
-                showVideo ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
-              )}
-            >
-              <Video className="h-3 w-3" />
-              <span>{showVideo ? "Hide" : "Video"}</span>
-            </button>
+        {/* Video Toggle */}
+        {hasVideo && (
+          <button
+            onClick={() => setShowVideo(!showVideo)}
+            className={cn(
+              "flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors",
+              showVideo ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
             )}
-          </div>
-          </div>
+          >
+            <Video className="h-3 w-3" />
+            <span>{showVideo ? "Hide" : "Video"}</span>
+          </button>
+        )}
+      </div>
 
       {/* Expandable Video Section */}
       {hasVideo && showVideo && (
-        <div className="mt-3 rounded-lg overflow-hidden border bg-white">
-          {/* Video View Toggle (Raw / Analyzed) */}
+        <div className="mt-3 border-t pt-3">
+          {/* Video View Toggle */}
           {hasProcessedVideo && (
-            <div className="flex bg-slate-100">
+            <div className="flex gap-2 mb-2">
               <button
                 onClick={() => setVideoView("raw")}
                 className={cn(
-                  "flex-1 px-2 py-1 text-[10px] font-medium transition-colors",
+                  "text-xs px-2 py-0.5 rounded transition-colors",
                   videoView === "raw" 
-                    ? "bg-white text-foreground" 
+                    ? "bg-slate-200 text-foreground" 
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                Raw Video
+                Original Video
               </button>
               <button
                 onClick={() => setVideoView("analyzed")}
                 className={cn(
-                  "flex-1 px-2 py-1 text-[10px] font-medium transition-colors",
+                  "text-xs px-2 py-0.5 rounded transition-colors",
                   videoView === "analyzed" 
-                    ? "bg-white text-foreground" 
+                    ? "bg-emerald-100 text-emerald-700" 
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                Pose Analysis
+                Pose Overlay
               </button>
-          </div>
+            </div>
           )}
           
           {/* Video Player */}
-          <div className="relative bg-black flex items-center justify-center min-h-[200px] max-h-[400px]">
+          <div className="relative bg-black rounded overflow-hidden flex items-center justify-center min-h-[280px] max-h-[400px]">
             <video
               key={currentVideoUrl}
               src={currentVideoUrl!}
@@ -572,82 +709,140 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
               className="max-w-full max-h-[400px] w-auto h-auto"
               preload="metadata"
             />
-            {/* Video type indicator */}
-            <div className={cn(
-              "absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-medium",
-              videoView === "analyzed" && hasProcessedVideo
-                ? "bg-emerald-500 text-white"
-                : "bg-black/50 text-white"
-            )}>
-              {videoView === "analyzed" && hasProcessedVideo ? "Pose Overlay" : "Original"}
-          </div>
           </div>
           
-          {/* Pose Analysis Section */}
-          <div className="p-3 bg-slate-50">
-            {hasAnalysis ? (
-              <div className="space-y-3">
-                {/* AI Summary */}
-                <p className="text-sm font-medium text-foreground leading-relaxed">{analysis.summary}</p>
-                
-                {/* Asymmetry Alerts */}
-                {asymmetryIssues.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {asymmetryIssues.map(({ joint, left, right, difference }) => (
-                      <span
+          {/* Pose Analysis Summary */}
+          {hasAnalysis && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-foreground leading-relaxed">{analysis.summary}</p>
+              
+              {/* Asymmetry inline with severity colors */}
+              {asymmetryIssues.length > 0 && (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {asymmetryIssues.map(({ joint, difference }) => {
+                    // Color coding: red >= 40°, amber >= 20°, green < 20°
+                    const severity = difference >= 40 ? "high" : difference >= 20 ? "medium" : "low";
+                    return (
+                      <span 
                         key={joint}
-                        className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded"
-                        title={`Left: ${left}° | Right: ${right}°`}
+                        className={cn(
+                          "px-1.5 py-0.5 rounded",
+                          severity === "high" && "bg-red-100 text-red-700",
+                          severity === "medium" && "bg-amber-100 text-amber-700",
+                          severity === "low" && "bg-green-100 text-green-700"
+                        )}
                       >
-                        <AlertCircle className="h-3 w-3" />
                         {joint}: {difference.toFixed(0)}° diff
                       </span>
-                    ))}
-                  </div>
-                )}
-                
-                {/* Range of Motion Details */}
-                {analysis.angle_statistics && Object.keys(analysis.angle_statistics).length > 0 && (
-                  <details className="group">
-                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
-                      <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                      Range of motion details
-                    </summary>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {Object.entries(analysis.angle_statistics).slice(0, 4).map(([joint, stats]) => (
-                        <div key={joint} className="text-xs px-2 py-1.5 bg-white rounded border">
-                          <span className="text-muted-foreground">{joint.replace(/_/g, " ")}:</span>
-                          <span className="ml-1 font-medium">{stats.range}° range</span>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
-            ) : (
-              <button
-                onClick={handleAnalyze}
-                disabled={isAnalyzing}
-                className="w-full flex items-center justify-center gap-2 text-sm py-2 text-primary hover:bg-primary/5 rounded transition-colors disabled:opacity-50"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Analyzing movement...</span>
-                  </>
-                ) : (
-                  <>
-                    <BarChart3 className="h-4 w-4" />
-                    <span>Analyze movement</span>
-                  </>
-                )}
-              </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Analyze button if no analysis */}
+          {!hasAnalysis && (
+            <button
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+              className="mt-2 flex items-center gap-2 text-xs text-primary hover:underline disabled:opacity-50"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Analyzing...</span>
+                </>
+              ) : (
+                <>
+                  <BarChart3 className="h-3 w-3" />
+                  <span>Analyze movement</span>
+                </>
+              )}
+            </button>
           )}
         </div>
-      </div>
       )}
     </div>
   );
+}
+
+type AssignedMedication = {
+  id: string;
+  pill_id?: string;
+  name: string;
+  strength?: number;
+  unit?: string;
+  dosage_form?: string;
+  image_url?: string | null;
+  frequency?: string;
+  days_of_week?: number[];
+  times_of_day?: string[];
+  pill_details?: PillType; // Full pill object with all details
+};
+
+// Helper function to format medication schedule
+function formatMedicationSchedule(frequency: string | undefined, daysOfWeek: number[] | undefined, timesOfDay: string[] | undefined): string {
+  if (!frequency) return "";
+  
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const formatTime = (time: string) => {
+    const [hours, minutes] = time.split(":");
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  // Format times
+  const formattedTimes = timesOfDay && timesOfDay.length > 0 
+    ? timesOfDay.map(formatTime)
+    : [];
+
+  // Handle daily frequencies
+  if (frequency === "daily" || frequency === "once_daily") {
+    if (formattedTimes.length === 1) {
+      return `Once daily at ${formattedTimes[0]}`;
+    } else if (formattedTimes.length > 1) {
+      return `${formattedTimes.length}x daily at ${formattedTimes.join(", ")}`;
+    }
+    return "Once daily";
+  }
+
+  if (frequency === "twice_daily") {
+    if (formattedTimes.length > 0) {
+      return `Twice daily at ${formattedTimes.join(", ")}`;
+    }
+    return "Twice daily";
+  }
+
+  if (frequency === "three_times_daily") {
+    if (formattedTimes.length > 0) {
+      return `3x daily at ${formattedTimes.join(", ")}`;
+    }
+    return "3x daily";
+  }
+
+  // Handle weekly frequencies
+  if (frequency === "weekly" && daysOfWeek && daysOfWeek.length > 0) {
+    const daysList = daysOfWeek.map(d => dayNames[d]).join(", ");
+    if (formattedTimes.length > 0) {
+      return `${daysList} at ${formattedTimes.join(", ")}`;
+    }
+    return daysList;
+  }
+
+  // Handle as-needed
+  if (frequency === "as_needed") {
+    return "As needed";
+  }
+
+  // Fallback
+  const readableFrequency = frequency.replace(/_/g, " ");
+  if (formattedTimes.length > 0) {
+    return `${readableFrequency} at ${formattedTimes.join(", ")}`;
+  }
+  return readableFrequency;
 }
 
 function PlansContent({ patient }: { patient: Patient }) {
@@ -656,15 +851,18 @@ function PlansContent({ patient }: { patient: Patient }) {
   const [showExerciseForm, setShowExerciseForm] = useState(false);
   const [dietPlan, setDietPlan] = useState<PatientPlan | null>(null);
   const [exercisePlan, setExercisePlan] = useState<PatientPlan | null>(null);
-  const [medicationCount, setMedicationCount] = useState(0);
+  const [medications, setMedications] = useState<AssignedMedication[]>([]);
+  const [prescribedExercises, setPrescribedExercises] = useState<PrescribedExercise[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedMedForDetails, setSelectedMedForDetails] = useState<PillType | null>(null);
 
   const fetchPlans = async () => {
     setIsLoading(true);
     try {
-      const [plansRes, medsRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/patients/${patient.id}/plans`).then(r => r.json()),
+      const [plansRes, medsRes, prescribedRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/patients/${patient.id}/plans`, { cache: "no-store" }).then(r => r.json()),
         getPatientMedications(patient.id),
+        getPrescribedExercises(patient.id),
       ]);
       
       const plans = plansRes.plans || [];
@@ -682,7 +880,25 @@ function PlansContent({ patient }: { patient: Patient }) {
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           )[0] 
         : null);
-      setMedicationCount(medsRes.total);
+      
+      // Store full medication list from assigned_medications
+      const assignedMeds = medsRes.assigned_medications || [];
+      setMedications(assignedMeds.map((m: Record<string, unknown>) => ({
+        id: m.id as string,
+        pill_id: m.pill_id as string,
+        name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
+        strength: (m.pills as Record<string, unknown>)?.strength as number,
+        unit: (m.pills as Record<string, unknown>)?.unit as string,
+        dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
+        image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
+        frequency: m.frequency as string,
+        days_of_week: m.days_of_week as number[],
+        times_of_day: m.times_of_day as string[],
+        pill_details: m.pills as PillType, // Store full pill object
+      })));
+      
+      // Store prescribed exercises
+      setPrescribedExercises(prescribedRes.prescribed_exercises || []);
     } catch (err) {
       console.error("Failed to fetch plans:", err);
     } finally {
@@ -699,140 +915,209 @@ function PlansContent({ patient }: { patient: Patient }) {
   };
 
   return (
-    <div className="space-y-4">
-        {/* Medication Assignment */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Pill className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-medium text-foreground">Medication Plans</h3>
-            </div>
-            <button 
-              onClick={() => setShowMedForm(!showMedForm)}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              <Plus className="h-3 w-3" />
-            {showMedForm ? "Cancel" : "Assign"}
-            </button>
+    <div className="space-y-3">
+      {/* Medications */}
+      <div className="bg-white rounded-lg border">
+        <div className="px-4 py-3 flex items-center justify-between border-b">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium text-foreground">Medications</h3>
+            {medications.length > 0 && (
+              <span className="text-xs text-muted-foreground">{medications.length} active</span>
+            )}
           </div>
-          
+          <button 
+            onClick={() => setShowMedForm(!showMedForm)}
+            className="px-3 py-1.5 text-xs bg-neutral-700 text-white rounded hover:bg-neutral-800 transition-colors"
+          >
+            {showMedForm ? "Cancel" : "Assign"}
+          </button>
+        </div>
+        <div className="px-4 py-3">
           {showMedForm && (
             <MedicationAssignForm 
               patientId={patient.id} 
-              onClose={() => setShowMedForm(false)} 
+              onClose={() => { setShowMedForm(false); handlePlanSaved(); }} 
             />
           )}
           
-          {!showMedForm && (
-          <p className="text-sm text-muted-foreground">
-            {isLoading ? "Loading..." : `${medicationCount} active prescriptions`}
-            </p>
+          {!showMedForm && medications.length === 0 && (
+            <p className="text-sm text-muted-foreground">No medications assigned</p>
+          )}
+          
+          {!showMedForm && medications.length > 0 && (
+            <div className="divide-y">
+              {medications.map((med) => (
+                <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-4 min-w-0 flex-1">
+                    {med.image_url ? (
+                      <img
+                        src={med.image_url}
+                        alt={med.name}
+                        className="w-16 h-16 rounded object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded bg-muted/50 flex items-center justify-center shrink-0">
+                        <Pill className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-foreground mb-0.5">
+                        <span className="font-medium">{med.name}</span>
+                        {med.strength && med.unit && (
+                          <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatMedicationSchedule(med.frequency, med.days_of_week, med.times_of_day)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {med.pill_details && (
+                      <button
+                        onClick={() => setSelectedMedForDetails(med.pill_details!)}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        title="View medication details"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
+      </div>
 
-        {/* Diet Instructions */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Utensils className="h-4 w-4 text-amber-600" />
-              <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
-            </div>
-            <button 
-              onClick={() => setShowDietForm(!showDietForm)}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-            {showDietForm ? (
-              <>
-                <span>Cancel</span>
-              </>
-            ) : dietPlan ? (
-              <>
-                <span>Edit</span>
-              </>
-            ) : (
-              <>
-              <Plus className="h-3 w-3" />
-                <span>Add</span>
-              </>
-            )}
-            </button>
-          </div>
-          
+      {/* Diet */}
+      <div className="bg-white rounded-lg border">
+        <div className="px-4 py-3 flex items-center justify-between border-b">
+          <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
+          <button 
+            onClick={() => setShowDietForm(!showDietForm)}
+            className="px-3 py-1.5 text-xs bg-neutral-700 text-white rounded hover:bg-neutral-800 transition-colors"
+          >
+            {showDietForm ? "Cancel" : dietPlan ? "Edit" : "Add"}
+          </button>
+        </div>
+        <div className="px-4 py-3">
           {showDietForm && (
             <DietInstructionForm 
               patientId={patient.id} 
-            existingPlan={dietPlan}
-            onClose={() => { setShowDietForm(false); handlePlanSaved(); }} 
+              existingPlan={dietPlan}
+              onClose={() => { setShowDietForm(false); handlePlanSaved(); }} 
             />
           )}
           
-          {!showDietForm && (
-          <div className="space-y-2">
-            {dietPlan ? (
-              <div className="p-3 bg-amber-50 rounded border">
-                <p className="text-base text-foreground leading-relaxed">{dietPlan.notes || "No notes"}</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Updated {new Date(dietPlan.updated_at || dietPlan.created_at).toLocaleDateString()}
-                </p>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No diet plan set</p>
-            )}
-          </div>
+          {!showDietForm && !dietPlan && (
+            <p className="text-sm text-muted-foreground">No diet plan set</p>
+          )}
+          
+          {!showDietForm && dietPlan && (
+            <div className="space-y-2">
+              {dietPlan.notes && (
+                <p className="text-sm text-foreground">{dietPlan.notes}</p>
+              )}
+              {(dietPlan.calorie_target || dietPlan.protein_target || dietPlan.carb_target || dietPlan.fat_target) && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {dietPlan.calorie_target && (
+                    <span><span className="font-medium text-foreground">{dietPlan.calorie_target}</span> cal</span>
+                  )}
+                  {dietPlan.protein_target && (
+                    <span><span className="font-medium text-foreground">{dietPlan.protein_target}g</span> protein</span>
+                  )}
+                  {dietPlan.carb_target && (
+                    <span><span className="font-medium text-foreground">{dietPlan.carb_target}g</span> carbs</span>
+                  )}
+                  {dietPlan.fat_target && (
+                    <span><span className="font-medium text-foreground">{dietPlan.fat_target}g</span> fat</span>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
+      </div>
 
-        {/* Exercise Plan */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-slate-600" />
-              <h3 className="text-sm font-medium text-foreground">Exercise Plan</h3>
-            </div>
-            <button 
-              onClick={() => setShowExerciseForm(!showExerciseForm)}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-            {showExerciseForm ? (
-              <>
-                <span>Cancel</span>
-              </>
-            ) : exercisePlan ? (
-              <>
-                <span>Edit</span>
-              </>
-            ) : (
-              <>
-              <Plus className="h-3 w-3" />
-                <span>Add</span>
-              </>
+      {/* Exercise */}
+      <div className="bg-white rounded-lg border">
+        <div className="px-4 py-3 flex items-center justify-between border-b">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium text-foreground">Exercise Plan</h3>
+            {prescribedExercises.length > 0 && (
+              <span className="text-xs text-muted-foreground">{prescribedExercises.length} exercises</span>
             )}
-            </button>
           </div>
-          
+          <button 
+            onClick={() => setShowExerciseForm(!showExerciseForm)}
+            className="px-3 py-1.5 text-xs bg-neutral-700 text-white rounded hover:bg-neutral-800 transition-colors"
+          >
+            {showExerciseForm ? "Cancel" : "Add"}
+          </button>
+        </div>
+        <div className="px-4 py-3">
           {showExerciseForm && (
             <ExercisePlanForm 
               patientId={patient.id} 
-            existingPlan={exercisePlan}
-            onClose={() => { setShowExerciseForm(false); handlePlanSaved(); }} 
+              existingPlan={exercisePlan}
+              existingPrescriptions={prescribedExercises}
+              onClose={() => { setShowExerciseForm(false); handlePlanSaved(); }} 
             />
           )}
           
-          {!showExerciseForm && (
-          <div className="space-y-2">
-            {exercisePlan ? (
-              <div className="p-3 bg-slate-50 rounded border">
-                <p className="text-base text-foreground leading-relaxed">{exercisePlan.notes || "No guidelines specified"}</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Added {new Date(exercisePlan.created_at).toLocaleDateString()}
-                </p>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No exercise plan set</p>
-            )}
-          </div>
-        )}
+          {!showExerciseForm && prescribedExercises.length === 0 && (
+            <p className="text-sm text-muted-foreground">No exercises prescribed</p>
+          )}
+          
+          {!showExerciseForm && prescribedExercises.length > 0 && (
+            <div className="divide-y">
+              {prescribedExercises.map((rx) => (
+                <div key={rx.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-foreground">
+                      <span className="font-medium">{rx.exercise_catalog.name}</span>
+                      <span className="text-muted-foreground capitalize ml-1">· {rx.exercise_catalog.category}</span>
+                    </p>
+                    {rx.form_notes && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{rx.form_notes}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await removePrescribedExercise(patient.id, rx.id);
+                        handlePlanSaved();
+                      } catch (err) {
+                        console.error("Failed to remove exercise:", err);
+                      }
+                    }}
+                    className="p-1 text-muted-foreground/50 hover:text-red-500 transition-colors"
+                    title="Remove"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {/* General guidelines (if any) */}
+          {!showExerciseForm && exercisePlan?.notes && (
+            <div className={cn(prescribedExercises.length > 0 && "mt-2 pt-2 border-t")}>
+              <p className="text-xs text-muted-foreground">{exercisePlan.notes}</p>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Medication Details Modal */}
+      {selectedMedForDetails && (
+        <MedicationDetailsModal
+          pill={selectedMedForDetails}
+          onClose={() => setSelectedMedForDetails(null)}
+        />
+      )}
     </div>
   );
 }
@@ -870,16 +1155,20 @@ function OverviewContent({ patient }: { patient: Patient }) {
     } | null;
   }>>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [pillLogs, setPillLogs] = useState<PillLog[]>([]);
+  const [assignedMedications, setAssignedMedications] = useState<AssignedMedication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [aiSummary, setAiSummary] = useState<DailySummaryResponse | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [mealsExpanded, setMealsExpanded] = useState(false);
+  const [medicationsExpanded, setMedicationsExpanded] = useState(false);
   const [exercisesExpanded, setExercisesExpanded] = useState(false);
   const [journalExpanded, setJournalExpanded] = useState(false);
   const [journalSectionSummary, setJournalSectionSummary] = useState<string>("");
   const [mealsSectionSummary, setMealsSectionSummary] = useState<string>("");
   const [exercisesSectionSummary, setExercisesSectionSummary] = useState<string>("");
+  const [selectedMedForDetails, setSelectedMedForDetails] = useState<PillType | null>(null);
   const [lastDataHash, setLastDataHash] = useState("");
   
   // Helper to get local date string (YYYY-MM-DD)
@@ -951,28 +1240,49 @@ function OverviewContent({ patient }: { patient: Patient }) {
     async function fetchPatientData() {
       setIsLoading(true);
       try {
+        // Always fetch assigned medications (the plan)
+        const medsRes = await getPatientMedications(patient.id);
+        const assignedMeds = medsRes.assigned_medications || [];
+        setAssignedMedications(assignedMeds.map((m: Record<string, unknown>) => ({
+          id: m.id as string,
+          pill_id: m.pill_id as string,
+          name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
+          strength: (m.pills as Record<string, unknown>)?.strength as number,
+          unit: (m.pills as Record<string, unknown>)?.unit as string,
+          dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
+          image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
+          frequency: m.frequency as string,
+          days_of_week: m.days_of_week as number[],
+          times_of_day: m.times_of_day as string[],
+          pill_details: m.pills as PillType, // Store full pill object
+        })));
+        
         if (viewMode === "all") {
           // Fetch all recent data without date filter
-          const [mealsRes, exercisesRes, journalRes] = await Promise.all([
+          const [mealsRes, exercisesRes, journalRes, pillLogsRes] = await Promise.all([
             getPatientMeals(patient.id),
             getPatientExercises(patient.id),
             getPatientJournal(patient.id),
+            getPatientPillLogs(patient.id),
           ]);
           
           setMeals(mealsRes.meals);
           setExercises(exercisesRes.exercises);
           setJournalEntries(journalRes.entries);
+          setPillLogs(pillLogsRes.logs);
         } else {
           // Fetch data for specific date
-          const [mealsRes, exercisesRes, journalRes] = await Promise.all([
+          const [mealsRes, exercisesRes, journalRes, pillLogsRes] = await Promise.all([
             getPatientMeals(patient.id, selectedDate),
             getPatientExercises(patient.id, selectedDate),
             getPatientJournal(patient.id, selectedDate, selectedDate),
+            getPatientPillLogs(patient.id, selectedDate),
           ]);
           
           setMeals(mealsRes.meals);
           setExercises(exercisesRes.exercises);
           setJournalEntries(journalRes.entries);
+          setPillLogs(pillLogsRes.logs);
         }
         
         // Create hash of data to detect changes
@@ -1001,12 +1311,13 @@ function OverviewContent({ patient }: { patient: Patient }) {
     }
   }, [meals.length, exercises.length, journalEntries.length, isLoading]);
 
-  const handleGenerateSummary = async () => {
+  const handleGenerateSummary = async (forceRefresh = false) => {
     setIsGeneratingSummary(true);
     try {
       // Use selected date instead of always using today
       const summaryDate = viewMode === "day" ? selectedDate : todayDate;
-      const summary = await generateDailySummary(patient.id, summaryDate);
+      // Pass forceRefresh to bypass cache when manually refreshing
+      const summary = await generateDailySummary(patient.id, summaryDate, forceRefresh);
       setAiSummary(summary);
       // Set section summaries from the response
       if (summary.journal_summary) setJournalSectionSummary(summary.journal_summary);
@@ -1153,25 +1464,44 @@ function OverviewContent({ patient }: { patient: Patient }) {
           </h3>
           {aiSummary && (
             <button
-              onClick={handleGenerateSummary}
+              onClick={() => handleGenerateSummary(true)}
               className="text-xs text-muted-foreground hover:text-foreground"
+              title="Force regenerate summary (uses AI credits)"
             >
               Refresh
             </button>
           )}
         </div>
-        <div className="p-4">
+        <div className="px-4 py-3">
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading...</p>
           ) : aiSummary ? (
             <>
-              <p className="text-sm font-medium text-foreground leading-relaxed">{aiSummary.summary}</p>
-              <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+              {aiSummary.alerts && aiSummary.alerts.length > 0 ? (
+                <div className="space-y-2">
+                  {aiSummary.alerts.map((alert: DailySummaryAlert, idx: number) => (
+                    <p
+                      key={idx}
+                      className={cn(
+                        "text-sm text-foreground leading-snug pl-3 border-l-2",
+                        alert.severity === "high" && "border-red-500",
+                        alert.severity === "medium" && "border-amber-500",
+                        alert.severity === "low" && "border-blue-500"
+                      )}
+                    >
+                      {alert.message}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No alerts for this period.</p>
+              )}
+              <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
                 <span>{aiSummary.stats.meals} meals</span>
                 <span>·</span>
                 <span>{aiSummary.stats.exercises} exercises</span>
                 <span>·</span>
-                <span>{aiSummary.stats.adherence_percent}% meds</span>
+                <span>{aiSummary.stats.medications_taken}/{aiSummary.stats.medications_taken + aiSummary.stats.medications_missed + (aiSummary.stats.medications_pending || 0)} meds</span>
                 <span>·</span>
                 <span>{aiSummary.stats.journal_entries} journal</span>
               </div>
@@ -1207,7 +1537,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
               No journal entries {viewMode === "all" ? "recorded" : "today"}
             </p>
           ) : journalSectionSummary ? (
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-sm font-medium text-foreground mt-2 leading-relaxed">
               {journalSectionSummary}
             </p>
           ) : (
@@ -1218,25 +1548,27 @@ function OverviewContent({ patient }: { patient: Patient }) {
           )}
         </div>
         {journalExpanded && journalEntries.length > 0 && (
-          <div className="px-4 pb-4 border-t">
-            <div className="pt-3 space-y-3">
-              {(viewMode === "all" ? groupByDate(journalEntries) : [[formatDateDisplay(selectedDate), journalEntries] as [string, typeof journalEntries]]).map(([dateStr, entries]) => (
-                <div key={dateStr} className="space-y-2">
-                  {viewMode === "all" && (
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{dateStr}</p>
-                  )}
-                  {entries.map((entry) => (
-                    <div key={entry.id} className="py-2 border-b border-slate-100 last:border-b-0">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
-                        <span>{getMoodEmoji(entry.mood)}</span>
-                        <span>{formatTime(entry.logged_at)}</span>
-                        {entry.duration_seconds && <span>· {formatDuration(entry.duration_seconds)}</span>}
-                      </div>
-                      <p className="text-sm text-foreground leading-relaxed">{entry.transcript}</p>
+          <div className="px-4 pb-3 border-t">
+            <div className="pt-3 divide-y divide-slate-100">
+              {journalEntries.map((entry) => (
+                <div key={entry.id} className="py-2 first:pt-0 last:pb-0">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {formatTime(entry.logged_at)}
+                    </span>
+                    <p className="text-sm text-foreground line-clamp-2">{entry.transcript}</p>
+                  </div>
+                  {entry.tags && entry.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1 ml-12">
+                      {entry.tags.map((tag, idx) => (
+                        <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                          {tag}
+                        </span>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-            ))}
+              ))}
             </div>
           </div>
         )}
@@ -1251,7 +1583,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
           >
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-foreground">Meals</h3>
-              <span className="text-xs text-muted-foreground">{meals.length} logged · {meals.reduce((sum, m) => sum + (m.total_calories || 0), 0)} cal</span>
+              <span className="text-xs text-muted-foreground">{meals.length} logged · {meals.reduce((sum, m) => sum + Number(m.total_calories || 0), 0)} cal</span>
             </div>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", mealsExpanded && "rotate-180")} />
           </button>
@@ -1265,7 +1597,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
               No meals logged {viewMode === "all" ? "yet" : "today"}
             </p>
           ) : mealsSectionSummary ? (
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-sm font-medium text-foreground mt-2 leading-relaxed">
               {mealsSectionSummary}
             </p>
           ) : (
@@ -1284,20 +1616,25 @@ function OverviewContent({ patient }: { patient: Patient }) {
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
                   )}
                   {dateMeals.map((meal) => (
-                    <div key={meal.id} className="flex items-center gap-3 py-2 border-b border-slate-100 last:border-b-0">
-                      {meal.image_url ? (
-                        <img src={meal.image_url} alt={meal.name} className="w-10 h-10 rounded object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center flex-shrink-0">
-                          <Utensils className="h-4 w-4 text-slate-400" />
+                    <div key={meal.id} className="py-3 border-b border-slate-100 last:border-b-0 space-y-2">
+                      <div className="flex items-center gap-3">
+                        {meal.image_url ? (
+                          <img src={meal.image_url} alt={meal.name} className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center flex-shrink-0">
+                            <Utensils className="h-4 w-4 text-slate-400" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-foreground text-sm">{meal.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {mealTypeLabel(meal.meal_type)} · {formatTime(meal.consumed_at)}
+                            {meal.total_calories > 0 && ` · ${meal.total_calories} cal`}
+                          </p>
+                          {meal.ai_analysis && (
+                            <p className="text-sm text-emerald-600 leading-relaxed mt-1">{meal.ai_analysis}</p>
+                          )}
                         </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground text-sm">{meal.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {mealTypeLabel(meal.meal_type)} · {formatTime(meal.consumed_at)}
-                          {meal.total_calories > 0 && ` · ${meal.total_calories} cal`}
-                        </p>
                       </div>
                     </div>
                   ))}
@@ -1331,7 +1668,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
               No exercises logged {viewMode === "all" ? "yet" : "today"}
             </p>
           ) : exercisesSectionSummary ? (
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-sm font-medium text-foreground mt-2 leading-relaxed">
               {exercisesSectionSummary}
             </p>
           ) : (
@@ -1344,20 +1681,179 @@ function OverviewContent({ patient }: { patient: Patient }) {
         {exercisesExpanded && exercises.length > 0 && (
           <div className="px-4 pb-4 border-t">
             <div className="pt-3 space-y-2">
-              {(viewMode === "all" ? groupByDate(exercises) : [[formatDateDisplay(selectedDate), exercises] as [string, typeof exercises]]).map(([dateStr, dateExercises]) => (
-                <div key={dateStr}>
-                  {viewMode === "all" && (
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
-                  )}
-                  {dateExercises.map((exercise) => (
-                    <ExerciseCard key={exercise.id} exercise={exercise} />
-                  ))}
-                </div>
-              ))}
+              {(viewMode === "all" ? groupByDate(exercises) : [[formatDateDisplay(selectedDate), exercises] as [string, typeof exercises]]).map(([dateStr, dateExercises], idx) => {
+                const isToday = dateStr === "Today";
+                const exerciseCount = dateExercises.length;
+                const totalMin = dateExercises.reduce((sum, e) => sum + (e.duration_minutes || 0), 0);
+                const totalCal = dateExercises.reduce((sum, e) => sum + (e.calories_burned || 0), 0);
+                
+                // For "all" view, make past days collapsible
+                if (viewMode === "all" && !isToday) {
+                  return (
+                    <details key={dateStr} className="group border-b last:border-b-0">
+                      <summary className="flex items-center justify-between py-2 cursor-pointer hover:bg-slate-50 -mx-4 px-4">
+                        <div className="flex items-center gap-2">
+                          <ChevronRight className="h-3 w-3 text-muted-foreground transition-transform group-open:rotate-90" />
+                          <span className="text-xs font-medium text-muted-foreground">{dateStr}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {exerciseCount} {exerciseCount === 1 ? "workout" : "workouts"} · {totalMin} min · {totalCal} cal
+                        </span>
+                      </summary>
+                      <div className="pt-1 pb-2">
+                        {dateExercises.map((exercise) => (
+                          <ExerciseCard key={exercise.id} exercise={exercise} />
+                        ))}
+                      </div>
+                    </details>
+                  );
+                }
+                
+                return (
+                  <div key={dateStr}>
+                    {viewMode === "all" && (
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
+                    )}
+                    {dateExercises.map((exercise) => (
+                      <ExerciseCard key={exercise.id} exercise={exercise} />
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
       </div>
+
+      {/* Medications Section */}
+      <div className="bg-white rounded-lg shadow-sm">
+        <div className="px-4 py-3">
+          <button
+            onClick={() => setMedicationsExpanded(!medicationsExpanded)}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Medications</h3>
+              <span className="text-xs text-muted-foreground">
+                {assignedMedications.length > 0 ? (
+                  <>
+                    {pillLogs.filter(l => l.status === "taken" || l.status === "late").length}/{assignedMedications.length} taken
+                    {pillLogs.filter(l => l.status === "missed").length > 0 && ` · ${pillLogs.filter(l => l.status === "missed").length} missed`}
+                  </>
+                ) : (
+                  "none assigned"
+                )}
+              </span>
+            </div>
+            <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", medicationsExpanded && "rotate-180")} />
+          </button>
+          {isLoading ? (
+            <div className="mt-2 space-y-2">
+              <div className="h-3 bg-slate-100 rounded w-3/4 animate-pulse"></div>
+              <div className="h-3 bg-slate-100 rounded w-1/2 animate-pulse"></div>
+            </div>
+          ) : assignedMedications.length === 0 ? (
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              No medications assigned to this patient
+            </p>
+          ) : (
+            <div className="mt-2">
+              <p className="text-sm font-medium text-foreground leading-relaxed">
+                {pillLogs.filter(l => l.status === "taken" || l.status === "late").length} of {assignedMedications.length} medications taken {viewMode === "day" ? "today" : ""}
+                {pillLogs.filter(l => l.status === "missed").length > 0 && `, ${pillLogs.filter(l => l.status === "missed").length} missed`}
+              </p>
+            </div>
+          )}
+        </div>
+        {medicationsExpanded && assignedMedications.length > 0 && (
+          <div className="px-4 pb-3 border-t">
+            <div className="pt-3 divide-y">
+              {assignedMedications.map((med) => {
+                // Find pill log for this medication
+                const log = pillLogs.find(l => 
+                  l.patient_pills?.pills?.name === med.name
+                );
+                const status = log?.status || "scheduled";
+                const statusColors: Record<string, string> = {
+                  taken: "text-emerald-600",
+                  late: "text-amber-600",
+                  missed: "text-red-600",
+                  pending: "text-blue-600",
+                  scheduled: "text-muted-foreground"
+                };
+                
+                // Format status with time for upcoming meds
+                let statusLabel = "";
+                if (status === "taken") {
+                  statusLabel = "taken";
+                } else if (status === "late") {
+                  statusLabel = "late";
+                } else if (status === "missed") {
+                  statusLabel = "missed";
+                } else if (status === "pending" && log?.scheduled_time) {
+                  const scheduledTime = new Date(log.scheduled_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+                  statusLabel = `upcoming at ${scheduledTime}`;
+                } else if (med.times_of_day && med.times_of_day.length > 0) {
+                  statusLabel = `scheduled ${med.times_of_day[0]}`;
+                } else {
+                  statusLabel = "scheduled";
+                }
+                
+                return (
+                  <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-4 min-w-0 flex-1">
+                      {med.image_url ? (
+                        <img
+                          src={med.image_url}
+                          alt={med.name}
+                          className="w-16 h-16 rounded object-cover shrink-0"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded bg-muted/50 flex items-center justify-center shrink-0">
+                          <Pill className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-foreground mb-0.5">
+                          <span className="font-medium">{med.name}</span>
+                          {med.strength && med.unit && (
+                            <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatMedicationSchedule(med.frequency, med.days_of_week, med.times_of_day)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {med.pill_details && (
+                        <button
+                          onClick={() => setSelectedMedForDetails(med.pill_details!)}
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          title="View medication details"
+                        >
+                          <Info className="h-4 w-4" />
+                        </button>
+                      )}
+                      <span className={cn("text-xs", statusColors[status])}>
+                        {statusLabel}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Medication Details Modal */}
+      {selectedMedForDetails && (
+        <MedicationDetailsModal
+          pill={selectedMedForDetails}
+          onClose={() => setSelectedMedForDetails(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1395,48 +1891,51 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
 
   const handleSubmit = async () => {
     if (!selectedMedId) return;
-    // TODO: Implement API call to create patient_pills record
-    console.log("Assign medication:", { patientId, pillId: selectedMedId, frequency, selectedDays, times });
-    onClose();
+    try {
+      await assignPatientMedication(patientId, selectedMedId, frequency, selectedDays, times);
+      onClose();
+    } catch (err) {
+      console.error("Failed to assign medication:", err);
+    }
   };
 
   return (
-    <div className="space-y-3 pt-2 border-t">
-      <div className="flex items-center gap-2">
+    <div className="space-y-4 pt-3 border-t">
+      {/* Medication Selection Row */}
+      <div className="flex items-center gap-3">
         <label className="text-xs text-muted-foreground w-16 shrink-0">Medication</label>
-        <select
-          value={selectedMedId}
-          onChange={(e) => setSelectedMedId(e.target.value)}
-          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
-          disabled={isLoadingPills}
-        >
-          <option value="">{isLoadingPills ? "Loading..." : "Select medication"}</option>
-          {pills.map((med) => (
-            <option key={med.id} value={med.id}>
-              {med.name} {med.strength}{med.unit} ({med.dosage_form})
-            </option>
-          ))}
-        </select>
+        <Select value={selectedMedId} onValueChange={setSelectedMedId} disabled={isLoadingPills}>
+          <SelectTrigger className="flex-1 h-8 text-xs">
+            <SelectValue placeholder={isLoadingPills ? "Loading..." : "Select medication"} />
+          </SelectTrigger>
+          <SelectContent>
+            {pills.map((med) => (
+              <SelectItem key={med.id} value={med.id}>
+                {med.name} {med.strength}{med.unit}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      {selectedMed && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground pl-[72px]">
-          Dosage: {selectedMed.strength}{selectedMed.unit} {selectedMed.dosage_form}
-        </div>
-      )}
-      <div className="flex items-center gap-2">
+
+      {/* Frequency Selection Row */}
+      <div className="flex items-center gap-3">
         <label className="text-xs text-muted-foreground w-16 shrink-0">Frequency</label>
-        <select
-          value={frequency}
-          onChange={(e) => setFrequency(e.target.value)}
-          className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
-        >
-          <option value="once_daily">Once daily</option>
-          <option value="twice_daily">Twice daily</option>
-          <option value="three_times_daily">Three times daily</option>
-          <option value="as_needed">As needed</option>
-        </select>
+        <Select value={frequency} onValueChange={setFrequency}>
+          <SelectTrigger className="flex-1 h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="once_daily">Once daily</SelectItem>
+            <SelectItem value="twice_daily">Twice daily</SelectItem>
+            <SelectItem value="three_times_daily">Three times daily</SelectItem>
+            <SelectItem value="as_needed">As needed</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      <div className="flex items-start gap-2">
+
+      {/* Days Selection Row */}
+      <div className="flex items-start gap-3">
         <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Days</label>
         <div className="flex gap-1 flex-wrap">
           {DAYS_OF_WEEK.map((day) => (
@@ -1444,10 +1943,10 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
               key={day}
               onClick={() => toggleDay(day)}
               className={cn(
-                "w-7 h-6 text-[10px] rounded transition-colors",
+                "w-6 h-6 text-[10px] rounded transition-colors",
                 selectedDays.includes(day) 
-                  ? "bg-primary text-white" 
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                  ? "bg-foreground text-background" 
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               {day[0]}
@@ -1455,7 +1954,9 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
           ))}
         </div>
       </div>
-      <div className="flex items-center gap-2">
+
+      {/* Time Selection Row */}
+      <div className="flex items-center gap-3">
         <label className="text-xs text-muted-foreground w-16 shrink-0">Time</label>
         <input
           type="time"
@@ -1464,7 +1965,9 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
           className="h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
-      <div className="flex items-center gap-2 pt-2">
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-3 pt-2">
         <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={!selectedMedId}>
           Assign
         </Button>
@@ -1479,12 +1982,20 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
 // Inline Diet Instruction Form
 function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: string; existingPlan?: PatientPlan | null; onClose: () => void }) {
   const [notes, setNotes] = useState(existingPlan?.notes || "");
+  const [calorieTarget, setCalorieTarget] = useState(existingPlan?.calorie_target?.toString() || "");
+  const [proteinTarget, setProteinTarget] = useState(existingPlan?.protein_target?.toString() || "");
+  const [carbTarget, setCarbTarget] = useState(existingPlan?.carb_target?.toString() || "");
+  const [fatTarget, setFatTarget] = useState(existingPlan?.fat_target?.toString() || "");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (existingPlan) {
       setNotes(existingPlan.notes || "");
+      setCalorieTarget(existingPlan.calorie_target?.toString() || "");
+      setProteinTarget(existingPlan.protein_target?.toString() || "");
+      setCarbTarget(existingPlan.carb_target?.toString() || "");
+      setFatTarget(existingPlan.fat_target?.toString() || "");
     }
   }, [existingPlan]);
 
@@ -1497,23 +2008,27 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
     setIsSaving(true);
     setError(null);
     try {
+      const planData = {
+        notes: notes.trim(),
+        calorie_target: calorieTarget ? parseInt(calorieTarget) : null,
+        protein_target: proteinTarget ? parseInt(proteinTarget) : null,
+        carb_target: carbTarget ? parseInt(carbTarget) : null,
+        fat_target: fatTarget ? parseInt(fatTarget) : null,
+      };
+
       if (existingPlan) {
-        // Update existing plan
-        const result = await updatePatientPlan(patientId, existingPlan.id, {
-          notes: notes.trim(),
-        });
+        const result = await updatePatientPlan(patientId, existingPlan.id, planData);
         if (result.plan) {
-    onClose();
+          onClose();
         } else {
           setError("Failed to update plan");
         }
       } else {
-        // Create new plan - first deactivate any existing active diet plans
         const result = await createPatientPlan(patientId, {
           plan_type: "diet",
           title: "Diet Plan",
-          notes: notes.trim(),
           restrictions: [],
+          ...planData,
         });
         if (result.plan) {
           onClose();
@@ -1531,22 +2046,64 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
 
   return (
     <div className="space-y-3 pt-3 border-t">
-      <div>
-        <label className="block text-sm font-medium text-foreground mb-1">Dietary Guidelines</label>
+      <div className="flex items-start gap-2">
+        <label className="text-xs text-muted-foreground w-14 shrink-0 pt-1.5">Guidelines</label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="e.g., Avoid fried food, limit sodium, no processed foods, increase fiber..."
-          rows={3}
-          className="w-full px-3 py-2 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+          placeholder="e.g., Avoid fried food, limit sodium..."
+          rows={2}
+          className="flex-1 px-2 py-1.5 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
         />
       </div>
+      <div className="grid grid-cols-4 gap-2">
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">Calories</label>
+          <input
+            type="number"
+            value={calorieTarget}
+            onChange={(e) => setCalorieTarget(e.target.value)}
+            placeholder="2000"
+            className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">Protein (g)</label>
+          <input
+            type="number"
+            value={proteinTarget}
+            onChange={(e) => setProteinTarget(e.target.value)}
+            placeholder="150"
+            className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">Carbs (g)</label>
+          <input
+            type="number"
+            value={carbTarget}
+            onChange={(e) => setCarbTarget(e.target.value)}
+            placeholder="250"
+            className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">Fat (g)</label>
+          <input
+            type="number"
+            value={fatTarget}
+            onChange={(e) => setFatTarget(e.target.value)}
+            placeholder="65"
+            className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+      </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSubmit} disabled={isSaving || !notes.trim()}>
-          {isSaving ? "Saving..." : existingPlan ? "Update Diet Plan" : "Save Diet Plan"}
+      <div className="flex items-center gap-2 pt-1">
+        <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={isSaving || !notes.trim()}>
+          {isSaving ? "Saving..." : existingPlan ? "Update" : "Save"}
         </Button>
-        <button onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground px-3 py-1">
+        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
           Cancel
         </button>
       </div>
@@ -1554,79 +2111,146 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
   );
 }
 
-// Inline Exercise Plan Form
-function ExercisePlanForm({ patientId, existingPlan, onClose }: { patientId: string; existingPlan?: PatientPlan | null; onClose: () => void }) {
-  const [notes, setNotes] = useState(existingPlan?.notes || "");
+// Inline Exercise Plan Form - Now with exercise catalog selection
+function ExercisePlanForm({ 
+  patientId, 
+  existingPlan, 
+  existingPrescriptions,
+  onClose 
+}: { 
+  patientId: string; 
+  existingPlan?: PatientPlan | null; 
+  existingPrescriptions?: PrescribedExercise[];
+  onClose: () => void;
+}) {
+  const [catalog, setCatalog] = useState<ExerciseCatalogItem[]>([]);
+  const [selectedExercise, setSelectedExercise] = useState<string>("");
+  const [formNotes, setFormNotes] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
 
   useEffect(() => {
-    if (existingPlan) {
-      setNotes(existingPlan.notes || "");
-    }
-  }, [existingPlan]);
+    const fetchCatalog = async () => {
+      setIsLoadingCatalog(true);
+      try {
+        const res = await getExerciseCatalog();
+        setCatalog(res.exercises || []);
+      } catch (err) {
+        console.error("Failed to load exercise catalog:", err);
+      } finally {
+        setIsLoadingCatalog(false);
+      }
+    };
+    fetchCatalog();
+  }, []);
 
   const handleSubmit = async () => {
-    if (!notes.trim()) {
-      setError("Please enter exercise guidelines");
+    if (!selectedExercise) {
+      setError("Please select an exercise");
       return;
     }
     
     setIsSaving(true);
     setError(null);
     try {
-      if (existingPlan) {
-        // Update existing plan
-        const result = await updatePatientPlan(patientId, existingPlan.id, {
-          notes: notes.trim(),
-        });
-        if (result.plan) {
-          onClose();
-        } else {
-          setError("Failed to update plan");
-        }
-      } else {
-        // Create new plan
-        const result = await createPatientPlan(patientId, {
-          plan_type: "exercise",
-          title: "Exercise Plan",
-          notes: notes.trim(),
-        });
-        if (result.plan) {
-          onClose();
-        } else {
-          setError("Failed to save plan");
-        }
-      }
-    } catch (err) {
-      console.error("Failed to save exercise plan:", err);
-      setError("Failed to save plan. Please try again.");
+      await prescribeExercise(patientId, {
+        exercise_id: selectedExercise,
+        form_notes: formNotes.trim() || undefined,
+      });
+      onClose();
+    } catch (err: unknown) {
+      console.error("Failed to prescribe exercise:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to prescribe exercise";
+      setError(errorMessage.includes("already prescribed") 
+        ? "This exercise is already prescribed to this patient" 
+        : "Failed to prescribe exercise. Please try again.");
     } finally {
       setIsSaving(false);
     }
   };
 
+  // Filter out already prescribed exercises
+  const prescribedIds = new Set(existingPrescriptions?.map(p => p.exercise_id) || []);
+  const filteredCatalog = catalog.filter(e => {
+    const matchesCategory = categoryFilter === "all" || e.category === categoryFilter;
+    const notAlreadyPrescribed = !prescribedIds.has(e.id);
+    return matchesCategory && notAlreadyPrescribed;
+  });
+
+  const selectedExerciseData = catalog.find(e => e.id === selectedExercise);
+
   return (
     <div className="space-y-3 pt-3 border-t">
-      <div>
-        <label className="block text-sm font-medium text-foreground mb-1">Exercise Guidelines</label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="e.g., 30 minutes walking daily, strength training 3x per week, gentle stretching..."
-          rows={3}
-          className="w-full px-3 py-2 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-        />
-      </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSubmit} disabled={isSaving || !notes.trim()}>
-          {isSaving ? "Saving..." : existingPlan ? "Update Exercise Plan" : "Save Exercise Plan"}
-        </Button>
-        <button onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground px-3 py-1">
-          Cancel
-        </button>
-      </div>
+      {isLoadingCatalog ? (
+        <p className="text-xs text-muted-foreground">Loading exercises...</p>
+      ) : (
+        <>
+          {/* Category Filter */}
+          <div className="flex gap-1.5">
+            {["all", "strength", "cardio", "flexibility", "balance"].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={cn(
+                  "px-2 py-1 text-xs rounded transition-colors capitalize",
+                  categoryFilter === cat
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Exercise Selection */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted-foreground w-14 shrink-0">Exercise</label>
+            <Select value={selectedExercise} onValueChange={setSelectedExercise}>
+              <SelectTrigger className="flex-1 h-8 text-xs">
+                <SelectValue placeholder="Choose an exercise..." />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredCatalog.map((exercise) => (
+                  <SelectItem key={exercise.id} value={exercise.id}>
+                    {exercise.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {selectedExerciseData?.description && (
+            <p className="text-xs text-muted-foreground pl-[72px]">{selectedExerciseData.description}</p>
+          )}
+
+          {/* Form Notes */}
+          {selectedExercise && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground w-14 shrink-0">Notes</label>
+              <input
+                type="text"
+                value={formNotes}
+                onChange={(e) => setFormNotes(e.target.value)}
+                placeholder="e.g., Use wall for support..."
+                className="flex-1 h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+          )}
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          
+          <div className="flex items-center gap-2 pt-1">
+            <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={isSaving || !selectedExercise}>
+              {isSaving ? "Adding..." : "Add"}
+            </Button>
+            <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

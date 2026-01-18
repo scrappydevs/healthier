@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import Supabase
 
 @MainActor
 class MedicationRepository: ObservableObject {
@@ -16,6 +17,8 @@ class MedicationRepository: ObservableObject {
 
     // In-memory storage (will be replaced with Core Data/SwiftData)
     private var storage: [Medication] = []
+
+    private var authStateListener: Task<Void, Never>?
     
     private let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -40,6 +43,11 @@ class MedicationRepository: ObservableObject {
     init(supabaseService: SupabaseService? = nil) {
         self.supabaseService = supabaseService
         loadInitialData()
+        startAuthStateListener()
+    }
+
+    deinit {
+        authStateListener?.cancel()
     }
 
     // MARK: - Public Methods
@@ -181,17 +189,51 @@ class MedicationRepository: ObservableObject {
     }
     
     private func loadInitialData() {
-        guard let supabaseService = supabaseService,
-              let userId = supabaseService.getCurrentUserId() else {
+        guard let supabaseService else {
             loadSampleData()
             return
         }
-        
+
+        guard let userId = supabaseService.getCurrentUserId() else {
+            storage = []
+            updatePublished()
+            return
+        }
+
         storage = []
         updatePublished()
-        
+
         Task {
             await loadFromSupabase(userId: userId)
+        }
+    }
+
+    private func startAuthStateListener() {
+        guard supabaseService != nil else { return }
+        authStateListener = Task { @MainActor in
+            for await state in supabase.auth.authStateChanges {
+                await handleAuthStateChange(state.event, session: state.session)
+            }
+        }
+    }
+
+    private func handleAuthStateChange(_ event: AuthChangeEvent, session: Session?) async {
+        switch event {
+        case .signedIn, .tokenRefreshed, .userUpdated:
+            if let userId = session?.user.id {
+                storage = []
+                updatePublished()
+                await loadFromSupabase(userId: userId)
+            } else if let userId = supabaseService?.getCurrentUserId() {
+                storage = []
+                updatePublished()
+                await loadFromSupabase(userId: userId)
+            }
+        case .signedOut:
+            storage = []
+            updatePublished()
+        default:
+            break
         }
     }
     

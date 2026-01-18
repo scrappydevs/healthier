@@ -21,6 +21,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       ...headers,
     },
     signal: AbortSignal.timeout(10000), // 10 second timeout
+    cache: "no-store", // Disable caching to always get fresh data
   };
 
   if (body) {
@@ -32,6 +33,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: "Request failed" }));
+      console.error("API Error:", { status: response.status, error });
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
 
@@ -58,6 +60,7 @@ export type Patient = {
   full_name: string;
   age: number | null;
   status: string;
+  care_setting: "in_clinic" | "at_home";
   adherence_rate: number;
   last_active: string | null;
   medication_count: number;
@@ -80,12 +83,14 @@ export type PatientListResponse = {
 export async function getPatients(params?: {
   clinician_id?: string;
   status?: string;
+  care_setting?: "in_clinic" | "at_home";
   page?: number;
   per_page?: number;
 }): Promise<PatientListResponse> {
   const searchParams = new URLSearchParams();
   if (params?.clinician_id) searchParams.set("clinician_id", params.clinician_id);
   if (params?.status) searchParams.set("status", params.status);
+  if (params?.care_setting) searchParams.set("care_setting", params.care_setting);
   if (params?.page) searchParams.set("page", params.page.toString());
   if (params?.per_page) searchParams.set("per_page", params.per_page.toString());
 
@@ -95,6 +100,16 @@ export async function getPatients(params?: {
 
 export async function getPatient(id: string): Promise<Patient> {
   return request<Patient>(`/api/v1/patients/${id}`);
+}
+
+export async function updatePatient(
+  id: string,
+  data: { care_setting?: "in_clinic" | "at_home"; status?: string }
+): Promise<Patient> {
+  return request<Patient>(`/api/v1/patients/${id}`, {
+    method: "PATCH",
+    body: data,
+  });
 }
 
 // ============================================
@@ -220,8 +235,31 @@ export type Medication = {
   adherence_rate: number;
 };
 
+export type AssignedMedication = {
+  id: string;
+  patient_id: string;
+  pill_id: string;
+  dosage_amount: number;
+  frequency: string;
+  days_of_week: number[];
+  times_of_day: string[];
+  is_active: boolean;
+  start_date: string;
+  end_date: string | null;
+  created_at: string;
+  updated_at: string;
+  pills: {
+    id: string;
+    name: string;
+    strength: number;
+    unit: string;
+    dosage_form: string;
+  } | null;
+};
+
 export type PatientMedicationsResponse = {
   medications: Medication[];
+  assigned_medications: AssignedMedication[];
   total: number;
 };
 
@@ -239,8 +277,9 @@ export type Alert = {
   id: string;
   patient_id: string;
   clinician_id: string | null;
-  type: "missed_dose" | "low_adherence" | "refill_needed" | "pattern_detected";
-  severity: "critical" | "high" | "medium" | "low";
+  type: "missed_dose" | "low_adherence" | "refill_needed" | "pattern_detected" | "vital_abnormal" | "missed_meal" | "inactivity" | "fall_detected";
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  title: string;
   message: string;
   acknowledged: boolean;
   acknowledged_at: string | null;
@@ -383,10 +422,19 @@ export type Pill = {
   id: string;
   name: string;
   generic_name: string | null;
+  brand_name: string | null;
   dosage_form: string;
   strength: string;
   unit: string;
+  color: string | null;
+  shape: string | null;
+  imprint: string | null;
   instructions: string | null;
+  warnings: string | null;
+  side_effects: string[] | null;
+  interactions: string[] | null;
+  contraindications: string[] | null;
+  image_url: string | null;
 };
 
 export type PillsResponse = {
@@ -397,6 +445,19 @@ export async function getPills(): Promise<PillsResponse> {
   return request<PillsResponse>("/api/v1/pills");
 }
 
+export async function assignPatientMedication(
+  patientId: string,
+  pillId: string,
+  frequency: string,
+  daysOfWeek: string[],
+  timesOfDay: string[]
+): Promise<{ success: boolean; patient_pill: unknown }> {
+  return request<{ success: boolean; patient_pill: unknown }>(
+    `/api/v1/patients/${patientId}/medications/assign?pill_id=${pillId}&frequency=${frequency}&days_of_week=${daysOfWeek.join(",")}&times_of_day=${timesOfDay.join(",")}`,
+    { method: "POST" }
+  );
+}
+
 // ============================================
 // JOURNAL LOGS
 // ============================================
@@ -405,12 +466,13 @@ export type JournalEntry = {
   id: string;
   patient_id: string;
   transcript: string;
-  voice_transcription: string | null;
   duration_seconds: number | null;
   tags: string[] | null;
   mood: "very_positive" | "positive" | "neutral" | "negative" | "very_negative" | null;
   sentiment_score: number | null;
-  ai_analysis: Record<string, unknown> | null;
+  ai_analysis: {
+    summary?: string;
+  } | null;
   logged_at: string;
   created_at: string;
 };
@@ -430,6 +492,48 @@ export async function getPatientJournal(
   if (endDate) params.set("end_date", endDate);
   const query = params.toString();
   return request<PatientJournalResponse>(`/api/v1/patients/${patientId}/journal${query ? `?${query}` : ""}`);
+}
+
+
+// ============================================
+// PILL LOGS
+// ============================================
+
+export type PillLog = {
+  id: string;
+  patient_id: string;
+  patient_pill_id: string;
+  scheduled_time: string;
+  taken_time: string | null;
+  status: "pending" | "taken" | "missed" | "late";
+  patient_pills: {
+    pill_id: string;
+    dosage_amount: number;
+    frequency: string;
+    times_of_day: string[];
+    pills: {
+      name: string;
+      strength: number;
+      unit: string;
+      dosage_form: string;
+    };
+  };
+  created_at: string;
+};
+
+export type PatientPillLogsResponse = {
+  logs: PillLog[];
+  total: number;
+};
+
+export async function getPatientPillLogs(
+  patientId: string,
+  date?: string
+): Promise<PatientPillLogsResponse> {
+  const params = new URLSearchParams();
+  if (date) params.set("date", date);
+  const query = params.toString();
+  return request<PatientPillLogsResponse>(`/api/v1/patients/${patientId}/pill-logs${query ? `?${query}` : ""}`);
 }
 
 
@@ -466,13 +570,18 @@ export type DailySummaryResponse = {
   activity_summary?: string;
   alerts: DailySummaryAlert[];
   stats: DailySummaryStats;
+  cached?: boolean;  // True if returned from cache, false if freshly generated
 };
 
 export async function generateDailySummary(
   patientId: string,
-  date?: string
+  date?: string,
+  forceRefresh?: boolean
 ): Promise<DailySummaryResponse> {
-  const query = date ? `?summary_date=${date}` : "";
+  const params = new URLSearchParams();
+  if (date) params.append("summary_date", date);
+  if (forceRefresh) params.append("force_refresh", "true");
+  const query = params.toString() ? `?${params.toString()}` : "";
   return request<DailySummaryResponse>(`/api/v1/patients/${patientId}/daily-summary${query}`, {
     method: "POST",
   });
@@ -557,6 +666,19 @@ export async function generateJournalSummary(
   });
 }
 
+export async function generateJournalDaySummary(
+  patientId: string,
+  date: string,
+  forceRefresh?: boolean
+): Promise<{ summary: string; entry_count: number; cached?: boolean }> {
+  const params = new URLSearchParams({ date });
+  if (forceRefresh) params.append("force_refresh", "true");
+  return request<{ summary: string; entry_count: number; cached?: boolean }>(
+    `/api/v1/patients/${patientId}/journal/summary?${params.toString()}`,
+    { method: "POST" }
+  );
+}
+
 export async function generateMealSummary(
   mealId: string
 ): Promise<{ summary: string }> {
@@ -633,6 +755,141 @@ export async function analyzeExercisePose(
   return request<AnalyzePoseResponse>(`/api/v1/exercises/${exerciseId}/analyze-pose`, {
     method: "POST",
   });
+}
+
+// ============================================
+// EXERCISE CATALOG & PRESCRIBED EXERCISES
+// ============================================
+
+export type ExerciseCatalogItem = {
+  id: string;
+  name: string;
+  category: "strength" | "cardio" | "flexibility" | "balance";
+  description: string | null;
+  video_demo_url: string | null;
+  default_sets: number | null;
+  default_reps: number | null;
+  default_duration_seconds: number | null;
+  difficulty: "easy" | "moderate" | "hard" | null;
+  target_muscles: string[] | null;
+};
+
+export type PrescribedExercise = {
+  id: string;
+  patient_id: string;
+  exercise_id: string;
+  sets: number | null;
+  reps: number | null;
+  duration_seconds: number | null;
+  frequency: "daily" | "3x_week" | "2x_week" | "weekly" | "as_needed";
+  form_notes: string | null;
+  priority: number;
+  is_active: boolean;
+  created_at: string;
+  exercise_catalog: ExerciseCatalogItem;
+};
+
+export type ExerciseAdherenceSummary = {
+  date: string;
+  summary: {
+    total_prescribed: number;
+    completed: number;
+    missed: number;
+    off_plan: number;
+  };
+  completed: Array<{
+    prescription: PrescribedExercise;
+    log: Exercise;
+    form_score: number | null;
+  }>;
+  missed: PrescribedExercise[];
+  off_plan: Exercise[];
+};
+
+export async function getExerciseCatalog(
+  category?: string
+): Promise<{ exercises: ExerciseCatalogItem[] }> {
+  const params = category ? `?category=${category}` : "";
+  return request<{ exercises: ExerciseCatalogItem[] }>(`/api/v1/exercise-catalog${params}`);
+}
+
+export async function getPrescribedExercises(
+  patientId: string,
+  includeInactive = false
+): Promise<{ prescribed_exercises: PrescribedExercise[] }> {
+  const params = includeInactive ? "?include_inactive=true" : "";
+  return request<{ prescribed_exercises: PrescribedExercise[] }>(
+    `/api/v1/patients/${patientId}/prescribed-exercises${params}`
+  );
+}
+
+export async function prescribeExercise(
+  patientId: string,
+  data: {
+    exercise_id: string;
+    sets?: number;
+    reps?: number;
+    duration_seconds?: number;
+    frequency?: string;
+    form_notes?: string;
+    priority?: number;
+  }
+): Promise<{ prescribed_exercise: PrescribedExercise }> {
+  const params = new URLSearchParams();
+  params.append("exercise_id", data.exercise_id);
+  if (data.sets) params.append("sets", String(data.sets));
+  if (data.reps) params.append("reps", String(data.reps));
+  if (data.duration_seconds) params.append("duration_seconds", String(data.duration_seconds));
+  if (data.frequency) params.append("frequency", data.frequency);
+  if (data.form_notes) params.append("form_notes", data.form_notes);
+  if (data.priority) params.append("priority", String(data.priority));
+  
+  return request<{ prescribed_exercise: PrescribedExercise }>(
+    `/api/v1/patients/${patientId}/prescribed-exercises?${params.toString()}`,
+    { method: "POST" }
+  );
+}
+
+export async function updatePrescribedExercise(
+  patientId: string,
+  prescriptionId: string,
+  updates: Partial<{
+    sets: number;
+    reps: number;
+    duration_seconds: number;
+    frequency: string;
+    form_notes: string;
+    priority: number;
+    is_active: boolean;
+  }>
+): Promise<{ prescribed_exercise: PrescribedExercise }> {
+  return request<{ prescribed_exercise: PrescribedExercise }>(
+    `/api/v1/patients/${patientId}/prescribed-exercises/${prescriptionId}`,
+    {
+      method: "PATCH",
+      body: updates,
+    }
+  );
+}
+
+export async function removePrescribedExercise(
+  patientId: string,
+  prescriptionId: string
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(
+    `/api/v1/patients/${patientId}/prescribed-exercises/${prescriptionId}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function getExerciseAdherence(
+  patientId: string,
+  date?: string
+): Promise<ExerciseAdherenceSummary> {
+  const params = date ? `?date=${date}` : "";
+  return request<ExerciseAdherenceSummary>(
+    `/api/v1/patients/${patientId}/exercise-adherence${params}`
+  );
 }
 
 export async function getExercisePoseAnalysis(
