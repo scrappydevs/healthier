@@ -789,6 +789,9 @@ extension MedicationAssistantService: URLSessionWebSocketDelegate {
             self.isVisionConnected = true
             self.isAnalyzing = true
             self.visionStatus = "Connected"
+            if self.visionDescription.isEmpty || self.visionDescription == "Connecting to vision..." {
+                self.visionDescription = "Analyzing what the camera sees..."
+            }
             self.receiveVisionMessages()
             await self.sendVisionStartMessage()
             print("MedicationAssistant: Vision websocket opened")

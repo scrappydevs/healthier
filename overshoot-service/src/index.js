@@ -120,9 +120,9 @@ Make it brief, clear, and specific about colors and shapes.`;
               prompt,
               outputSchemaJson: outputSchema,
               processing: {
-                sampling_ratio: 0.2,
-                fps: 15,
-                clip_length_seconds: 2,
+                sampling_ratio: 0.5,
+                fps: 12,
+                clip_length_seconds: 1,
                 delay_seconds: 1
               },
               onResult: (result) => {

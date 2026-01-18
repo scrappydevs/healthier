@@ -499,11 +499,36 @@ extension MedicationCameraManager: AVCaptureVideoDataOutputSampleBufferDelegate 
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
         
         let uiImage = UIImage(cgImage: cgImage)
+        let resizedImage = resizeForVision(uiImage)
         
         // Compress to JPEG
-        guard let jpegData = uiImage.jpegData(compressionQuality: 0.5) else { return }
+        guard let jpegData = resizedImage.jpegData(compressionQuality: 0.35) else { return }
         
         frameCallback?(jpegData)
+    }
+
+    private func resizeForVision(_ image: UIImage) -> UIImage {
+        let maxWidth: CGFloat = 640
+        let originalSize = image.size
+        guard originalSize.width > 0, originalSize.height > 0 else { return image }
+
+        // If already small enough, still enforce even dimensions
+        let scale = min(1.0, maxWidth / originalSize.width)
+        var targetWidth = floor(originalSize.width * scale)
+        var targetHeight = floor(originalSize.height * scale)
+
+        // Force even dimensions (helps some YUV conversions downstream)
+        if Int(targetWidth) % 2 != 0 { targetWidth -= 1 }
+        if Int(targetHeight) % 2 != 0 { targetHeight -= 1 }
+        if targetWidth < 2 || targetHeight < 2 { return image }
+
+        let targetSize = CGSize(width: targetWidth, height: targetHeight)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
     }
 }
 
