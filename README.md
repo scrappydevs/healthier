@@ -7,17 +7,24 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 
 ![3D Map (1)](https://github.com/user-attachments/assets/35713d75-b1ec-49ec-943f-ae0e78066021)
 
+<br>
 
 ## Tech Stack
 <img width="912" height="670" alt="IMG_2300" src="https://github.com/user-attachments/assets/f817389d-2115-4ae5-b5aa-903360392a3e" />
 
-## Current Features (Planned / In Progress)
+<br>
+
+## Mobile App Workflows
 
 <p align="center">
   <img src="assets/demos/Medication Analysis.gif" width="30%" alt="Medication Analysis" />&nbsp;&nbsp;&nbsp;
   <img src="assets/demos/Journaling w: Voice.gif" width="30%" alt="Journaling with Voice" />&nbsp;&nbsp;&nbsp;
   <img src="assets/demos/Exercise Tracking.gif" width="30%" alt="Exercise Tracking" />
 </p>
+
+<br>
+
+## Web Dashboard Features
 
 ### Medication Logging and Procedures
 - Scan medications to generate clear instructions + interact with a voice agent that will guide you through yuor daily routine
@@ -38,6 +45,4 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 
 ![squat](https://github.com/user-attachments/assets/824bdd4b-e6ad-4966-b34b-ef3ff98f430c)
 
-
-
-
+<br>
