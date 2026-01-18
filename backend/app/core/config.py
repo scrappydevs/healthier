@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # AI configuration (Cerebras)
     cerebras_key: str | None = None
 
+    # Smplrspace configuration
+    smplr_org_id: str | None = None
+    smplr_client_token: str | None = None
+    smplr_space_id: str | None = None
+
     @property
     def cors_origins(self) -> list[str]:
         return parse_cors_origins()

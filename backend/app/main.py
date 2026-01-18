@@ -332,6 +332,21 @@ async def get_session(session_id: str):
         return {"error": str(e)}
 
 
+@app.get("/smplrspace/config")
+async def get_smplrspace_config():
+    """
+    Get Smplrspace configuration for the frontend.
+    Keeps sensitive tokens on the backend.
+    """
+    import os
+    # Use os.getenv directly - handle both correct and typo'd Infisical keys
+    return {
+        "organizationId": os.getenv("SMPLR_ORG_ID") or os.getenv("SMPLR_ORD_ID"),
+        "clientToken": os.getenv("SMPLR_CLIENT_TOKEN") or os.getenv("SMPLR_TOKEN") or os.getenv("SMPR_CLIENT_TOKEN"),
+        "spaceId": os.getenv("SMPLR_SPACE_ID"),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
