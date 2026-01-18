@@ -5,7 +5,7 @@ from uuid import UUID
 from datetime import date
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from supabase import Client
 from openai import OpenAI
 
@@ -187,8 +187,10 @@ async def get_patient_meals(
     db: Client = Depends(get_db),
 ):
     """Get meals logged by a patient via the iOS app."""
+    patient_id_str = str(patient_id)
+    
     # First get the patient's user_id
-    patient_response = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+    patient_response = db.table("patients").select("user_id").eq("id", patient_id_str).single().execute()
     if not patient_response.data:
         raise HTTPException(status_code=404, detail="Patient not found")
     
@@ -200,8 +202,17 @@ async def get_patient_meals(
     query = db.table("meals").select("*").eq("user_id", user_id).order("consumed_at", desc=True)
     
     if date:
-        # Filter by date (start and end of day)
-        query = query.gte("consumed_at", f"{date}T00:00:00").lt("consumed_at", f"{date}T23:59:59")
+        # Filter by date (start and end of day) - use proper date range
+        from datetime import datetime, timezone
+        try:
+            date_obj = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            date_start = date_obj.isoformat()
+            date_end = (date_obj.replace(hour=23, minute=59, second=59, microsecond=999999)).isoformat()
+            query = query.gte("consumed_at", date_start).lte("consumed_at", date_end)
+        except Exception as e:
+            print(f"Date filtering error for meals: {e}")
+            # Fallback to simple string comparison
+            query = query.gte("consumed_at", f"{date}T00:00:00").lt("consumed_at", f"{date}T23:59:59.999999")
     
     response = query.execute()
     meals = response.data or []
@@ -223,23 +234,61 @@ async def get_patient_exercises(
     db: Client = Depends(get_db),
 ):
     """Get exercises logged by a patient via the iOS app."""
-    # First get the patient's user_id
-    patient_response = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
-    if not patient_response.data:
-        raise HTTPException(status_code=404, detail="Patient not found")
+    patient_id_str = str(patient_id)
     
-    user_id = patient_response.data.get("user_id")
-    if not user_id:
-        return {"exercises": [], "total": 0, "summary": {"total_minutes": 0, "total_calories": 0}}
+    # Query exercises by patient_id (primary) or user_id (fallback)
+    # First try patient_id directly - this is the most reliable
+    query = db.table("exercises").select("*").eq("patient_id", patient_id_str)
     
-    # Query exercises by user_id (using the new user_id column)
-    query = db.table("exercises").select("*").eq("user_id", user_id).order("logged_at", desc=True)
-    
-    if date:
-        query = query.gte("logged_at", f"{date}T00:00:00").lt("logged_at", f"{date}T23:59:59")
-    
-    response = query.execute()
+    response = query.order("logged_at", desc=True).execute()
     exercises = response.data or []
+    
+    # If no results with patient_id, try user_id as fallback
+    if not exercises:
+        patient_response = db.table("patients").select("user_id").eq("id", patient_id_str).single().execute()
+        if patient_response.data:
+            user_id = patient_response.data.get("user_id")
+            if user_id:
+                query = db.table("exercises").select("*").eq("user_id", user_id)
+                response = query.order("logged_at", desc=True).execute()
+                exercises = response.data or []
+    
+    # Apply date filter if provided
+    if date:
+        from datetime import datetime, timezone
+        try:
+            # Parse date and create date range in UTC
+            date_obj = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            date_start = date_obj.isoformat()
+            date_end = (date_obj.replace(hour=23, minute=59, second=59, microsecond=999999)).isoformat()
+            
+            # Filter exercises by date (handle timezone-aware timestamps)
+            filtered_exercises = []
+            for e in exercises:
+                logged_at = e.get("logged_at")
+                if logged_at:
+                    # Parse the timestamp (handle both with and without timezone)
+                    try:
+                        if isinstance(logged_at, str):
+                            # Try parsing with timezone
+                            try:
+                                ts = datetime.fromisoformat(logged_at.replace('Z', '+00:00'))
+                            except:
+                                ts = datetime.strptime(logged_at.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+                                ts = ts.replace(tzinfo=timezone.utc)
+                        else:
+                            continue
+                        
+                        # Compare dates (ignore time)
+                        if date_start.split('T')[0] <= ts.isoformat().split('T')[0] <= date_end.split('T')[0]:
+                            filtered_exercises.append(e)
+                    except:
+                        # If parsing fails, include it (better to show than hide)
+                        filtered_exercises.append(e)
+            exercises = filtered_exercises
+        except Exception as e:
+            print(f"Date filtering error: {e}")
+            # If date parsing fails, return all exercises
     
     # Calculate summary
     total_minutes = sum(e.get("duration_minutes") or 0 for e in exercises)
@@ -665,15 +714,31 @@ async def get_patient_journal(
     db: Client = Depends(get_db)
 ):
     """Get journal entries for a patient, optionally filtered by date range."""
+    patient_id_str = str(patient_id)
     query = db.table("journal_logs").select(
         "id, patient_id, transcript, duration_seconds, "
         "tags, mood, sentiment_score, ai_analysis, metadata, logged_at, created_at"
-    ).eq("patient_id", str(patient_id))
+    ).eq("patient_id", patient_id_str)
     
     if start_date:
-        query = query.gte("logged_at", f"{start_date}T00:00:00")
+        from datetime import datetime, timezone
+        try:
+            date_obj = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            date_start = date_obj.isoformat()
+            query = query.gte("logged_at", date_start)
+        except Exception as e:
+            print(f"Start date filtering error: {e}")
+            query = query.gte("logged_at", f"{start_date}T00:00:00")
+    
     if end_date:
-        query = query.lte("logged_at", f"{end_date}T23:59:59")
+        from datetime import datetime, timezone
+        try:
+            date_obj = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            date_end = (date_obj.replace(hour=23, minute=59, second=59, microsecond=999999)).isoformat()
+            query = query.lte("logged_at", date_end)
+        except Exception as e:
+            print(f"End date filtering error: {e}")
+            query = query.lte("logged_at", f"{end_date}T23:59:59.999999")
     
     response = query.order("logged_at", desc=True).execute()
     
@@ -887,31 +952,28 @@ Date: {target_date}
             }
         }
     
-    prompt = f"""You are a healthcare assistant helping clinicians monitor elderly patients. Based on the following patient data for {target_date}, provide:
+    prompt = f"""You are a healthcare assistant. Based on the patient data for {target_date}, provide brief summaries.
 
-1. An overall summary (2-3 sentences) of the patient's day
-2. A journal summary (1-2 sentences) summarizing all journal entries and the patient's mood
-3. A meals summary (1-2 sentences) summarizing what they ate and nutritional status
-4. An activity summary (1-2 sentences) summarizing their exercise/activity
-5. Any concerns or alerts the clinician should be aware of (return as JSON array)
-   - Include alerts for diet plan violations if any are listed
-   - Include alerts for missed medications, poor nutrition, negative mood, no activity, etc.
+RULES:
+- Be extremely concise. Each summary should be 1-2 short sentences max.
+- Focus on key facts only, no filler words.
+- Only flag genuine clinical concerns as alerts.
 
 Patient Data:
 {context}
 
 Respond in this exact JSON format:
 {{
-  "summary": "Overall summary of the patient's day...",
-  "journal_summary": "Summary of journal entries and mood...",
-  "meals_summary": "Summary of meals and nutrition...",
-  "activity_summary": "Summary of exercise and activity...",
+  "summary": "1-2 sentences max. Key highlights of the day only.",
+  "journal_summary": "1 sentence on mood/emotional state. Say 'No entries' if none.",
+  "meals_summary": "1 sentence on nutrition. Include calorie total if meals logged.",
+  "activity_summary": "1 sentence on exercise. Include duration if activity logged.",
   "alerts": [
-    {{"severity": "high|medium|low", "type": "missed_dose|low_adherence|nutrition|inactivity|mood|diet_violation|other", "message": "Alert message"}}
+    {{"severity": "high|medium|low", "type": "missed_dose|low_adherence|nutrition|inactivity|mood|diet_violation|other", "message": "Brief alert"}}
   ]
 }}
 
-Only include alerts if there are genuine concerns. Be concise and compassionate."""
+Be clinical and factual. No repetition."""
 
     try:
         response = cerebras.chat.completions.create(
@@ -1315,3 +1377,193 @@ async def generate_exercise_summary(
         return {"summary": summary}
     except Exception as e:
         return {"summary": f"{name} - {duration} min, {calories} cal"}
+
+
+# ============================================
+# POSE ANALYSIS
+# ============================================
+
+def _run_pose_analysis_background(
+    exercise_id: str,
+    video_url: str,
+    exercise_type: str,
+):
+    """Background task to run pose analysis without blocking the API response."""
+    import asyncio
+    from app.services.pose_analysis import analyze_exercise_video
+    from app.core.database import get_db_sync
+    
+    # Get fresh database connection for background task
+    db = get_db_sync()
+    cerebras = get_cerebras_client()
+    
+    try:
+        # Run the async analysis in a new event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        analysis = loop.run_until_complete(
+            analyze_exercise_video(
+                video_url=video_url,
+                exercise_type=exercise_type,
+                exercise_id=exercise_id,
+                supabase_client=db,
+                cerebras_client=cerebras,
+            )
+        )
+        loop.close()
+        
+        # Store analysis results
+        update_data = {"pose_analysis": analysis}
+        if analysis.get("processed_video_url"):
+            update_data["processed_video_url"] = analysis["processed_video_url"]
+        
+        db.table("exercises").update(update_data).eq("id", exercise_id).execute()
+        
+    except Exception as e:
+        # Log error but don't raise (background task)
+        import logging
+        logging.error(f"Background pose analysis failed for {exercise_id}: {e}")
+
+
+@router.post("/exercises/{exercise_id}/analyze-pose")
+async def analyze_exercise_pose(
+    exercise_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Client = Depends(get_db)
+):
+    """
+    Analyze exercise video using YOLO pose estimation.
+    Returns immediately with status, runs analysis in background.
+    Poll GET /exercises/{id}/pose-analysis to check completion.
+    """
+    exercise_res = db.table("exercises").select(
+        "id, pose_analysis, video_url, processed_video_url, exercise_type, name"
+    ).eq("id", str(exercise_id)).single().execute()
+    
+    if not exercise_res.data:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    
+    exercise = exercise_res.data
+    
+    # If already analyzed, return cached result
+    if exercise.get("pose_analysis"):
+        # Check both the column and pose_analysis for processed_video_url
+        processed_url = exercise.get("processed_video_url") or exercise["pose_analysis"].get("processed_video_url")
+        return {
+            "status": "completed",
+            "exercise_id": str(exercise_id),
+            "pose_analysis": exercise["pose_analysis"],
+            "processed_video_url": processed_url,
+        }
+    
+    video_url = exercise.get("video_url")
+    if not video_url:
+        raise HTTPException(status_code=400, detail="No video URL for this exercise")
+    
+    exercise_type = exercise.get("exercise_type") or exercise.get("name") or "exercise"
+    
+    # Queue background task and return immediately
+    background_tasks.add_task(
+        _run_pose_analysis_background,
+        exercise_id=str(exercise_id),
+        video_url=video_url,
+        exercise_type=exercise_type,
+    )
+    
+    return {
+        "status": "processing",
+        "exercise_id": str(exercise_id),
+        "message": "Analysis queued. Poll GET /exercises/{id}/pose-analysis for results.",
+    }
+
+
+@router.get("/exercises/{exercise_id}/pose-analysis")
+async def get_exercise_pose_analysis(
+    exercise_id: UUID,
+    db: Client = Depends(get_db)
+):
+    """Get cached pose analysis for an exercise."""
+    exercise_res = db.table("exercises").select("id, pose_analysis, video_url, processed_video_url, exercise_type, name").eq("id", str(exercise_id)).single().execute()
+    
+    if not exercise_res.data:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    
+    exercise = exercise_res.data
+    pose_analysis = exercise.get("pose_analysis")
+    
+    # Check both the column and pose_analysis for processed_video_url
+    processed_url = exercise.get("processed_video_url")
+    if not processed_url and pose_analysis:
+        processed_url = pose_analysis.get("processed_video_url")
+    
+    return {
+        "exercise_id": exercise["id"],
+        "video_url": exercise.get("video_url"),
+        "processed_video_url": processed_url,
+        "exercise_type": exercise.get("exercise_type") or exercise.get("name"),
+        "pose_analysis": pose_analysis,
+        "has_analysis": pose_analysis is not None,
+    }
+
+
+@router.post("/exercises/process-pending")
+async def process_pending_pose_analyses(
+    limit: int = Query(5, description="Max number of videos to process"),
+    db: Client = Depends(get_db)
+):
+    """
+    Process exercises that have video_url but no pose_analysis.
+    Can be called by a cron job, webhook, or manually.
+    """
+    from app.services.pose_analysis import analyze_exercise_video
+    
+    # Find exercises with video but no analysis
+    exercises_res = db.table("exercises").select(
+        "id, video_url, exercise_type, name"
+    ).not_.is_("video_url", "null").is_("pose_analysis", "null").limit(limit).execute()
+    
+    exercises = exercises_res.data or []
+    
+    if not exercises:
+        return {"message": "No pending videos to process", "processed": 0}
+    
+    cerebras = get_cerebras_client()
+    results = []
+    
+    for exercise in exercises:
+        try:
+            exercise_type = exercise.get("exercise_type") or exercise.get("name") or "exercise"
+            
+            analysis = await analyze_exercise_video(
+                video_url=exercise["video_url"],
+                exercise_type=exercise_type,
+                exercise_id=str(exercise["id"]),
+                supabase_client=db,
+                cerebras_client=cerebras,
+            )
+            
+            # Store results
+            update_data = {"pose_analysis": analysis}
+            if analysis.get("processed_video_url"):
+                update_data["processed_video_url"] = analysis["processed_video_url"]
+            
+            db.table("exercises").update(update_data).eq("id", str(exercise["id"])).execute()
+            
+            results.append({
+                "exercise_id": exercise["id"],
+                "status": "success",
+                "summary": analysis.get("summary", "")[:100],
+            })
+        except Exception as e:
+            results.append({
+                "exercise_id": exercise["id"],
+                "status": "error",
+                "error": str(e),
+            })
+    
+    return {
+        "message": f"Processed {len(results)} videos",
+        "processed": len([r for r in results if r["status"] == "success"]),
+        "results": results,
+    }

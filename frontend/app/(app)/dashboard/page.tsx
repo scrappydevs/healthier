@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Search, 
@@ -16,7 +16,11 @@ import {
   Activity,
   X,
   BookOpen,
-  Sparkles
+  Sparkles,
+  Play,
+  Video,
+  BarChart3,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
@@ -30,6 +34,8 @@ import {
   generateDailySummary,
   createPatientPlan,
   updatePatientPlan,
+  analyzeExercisePose,
+  getExercisePoseAnalysis,
   type Patient,
   type Pill as PillType,
   type DailySummaryResponse,
@@ -353,6 +359,309 @@ function StatusBadge({ status }: { status: "good" | "warning" | "critical" }) {
   );
 }
 
+// Exercise Card with Video and Pose Analysis
+type ExerciseWithAnalysis = {
+  id: string;
+  exercise_type: string;
+  name?: string | null;
+  duration_minutes: number | null;
+  calories_burned: number | null;
+  logged_at: string;
+  intensity?: string | null;
+  notes?: string | null;
+  video_url?: string | null;
+  processed_video_url?: string | null;
+  pose_analysis?: {
+    summary?: string;
+    processed_video_url?: string;
+    video_info?: { duration_seconds: number; analyzed_frames: number };
+    symmetry_analysis?: Record<string, { left: number; right: number; difference: number; symmetric: boolean }>;
+    angle_statistics?: Record<string, { min: number; max: number; avg: number; range: number }>;
+  } | null;
+};
+
+function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
+  const [showVideo, setShowVideo] = useState(false);
+  const initialProcessedUrl = exercise.processed_video_url || exercise.pose_analysis?.processed_video_url;
+  const [videoView, setVideoView] = useState<"raw" | "analyzed">(initialProcessedUrl ? "analyzed" : "raw");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState(exercise.pose_analysis);
+  const [processedUrl, setProcessedUrl] = useState(initialProcessedUrl);
+  const autoAnalyzeTriggeredRef = useRef(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const formatTime = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  };
+
+  // Sync state when exercise prop changes (e.g., data refetch)
+  useEffect(() => {
+    const newProcessedUrl = exercise.processed_video_url || exercise.pose_analysis?.processed_video_url;
+    if (newProcessedUrl && newProcessedUrl !== processedUrl) {
+      setProcessedUrl(newProcessedUrl);
+      // Auto-switch to analyzed view when processed video becomes available
+      if (videoView === "raw") {
+        setVideoView("analyzed");
+      }
+    }
+    if (exercise.pose_analysis && exercise.pose_analysis !== analysis) {
+      setAnalysis(exercise.pose_analysis);
+    }
+  }, [exercise.processed_video_url, exercise.pose_analysis]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Poll for analysis results
+  const startPolling = (exerciseId: string) => {
+    // Clear any existing poll
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const result = await getExercisePoseAnalysis(exerciseId);
+        
+        if (result.has_analysis && result.pose_analysis) {
+          // Analysis complete - update state and stop polling
+          setAnalysis(result.pose_analysis);
+          // Check both the column and the nested pose_analysis for processed_video_url
+          const pUrl = result.processed_video_url || result.pose_analysis?.processed_video_url;
+          if (pUrl) {
+            setProcessedUrl(pUrl);
+            setVideoView("analyzed");
+          }
+          setIsAnalyzing(false);
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+        }
+      } catch (err) {
+        console.error("Polling failed:", err);
+      }
+    }, 3000); // Poll every 3 seconds
+  };
+
+  const handleAnalyze = async () => {
+    if (isAnalyzing) return;
+    setIsAnalyzing(true);
+    try {
+      const result = await analyzeExercisePose(exercise.id);
+      
+      if (result.status === "completed" && result.pose_analysis) {
+        // Already analyzed - use cached result
+        setAnalysis(result.pose_analysis);
+        // Check both the column and the nested pose_analysis for processed_video_url
+        const pUrl = result.processed_video_url || result.pose_analysis?.processed_video_url;
+        if (pUrl) {
+          setProcessedUrl(pUrl);
+          setVideoView("analyzed");
+        }
+        setIsAnalyzing(false);
+      } else if (result.status === "processing") {
+        // Analysis queued - start polling for results
+        startPolling(exercise.id);
+      }
+    } catch (err) {
+      console.error("Analysis request failed:", err);
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Auto-trigger analysis if video exists but no analysis yet
+  useEffect(() => {
+    const hasVideo = !!exercise.video_url;
+    const hasExistingAnalysis = !!exercise.pose_analysis?.summary;
+    
+    if (hasVideo && !hasExistingAnalysis && !autoAnalyzeTriggeredRef.current) {
+      autoAnalyzeTriggeredRef.current = true;
+      handleAnalyze();
+    }
+  }, [exercise.id]); // Only run once per exercise
+
+  const hasVideo = !!exercise.video_url;
+  const hasAnalysis = !!analysis?.summary;
+  const hasProcessedVideo = !!processedUrl;
+
+  // Get asymmetry issues
+  const asymmetryIssues = analysis?.symmetry_analysis 
+    ? Object.entries(analysis.symmetry_analysis)
+        .filter(([, data]) => !data.symmetric)
+        .map(([joint, data]) => ({ joint, ...data }))
+    : [];
+
+  // Current video URL based on view mode
+  const currentVideoUrl = videoView === "analyzed" && hasProcessedVideo ? processedUrl : exercise.video_url;
+
+  return (
+    <div className="p-3 bg-slate-50/50 rounded">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-foreground text-sm">{exercise.exercise_type || exercise.name || "Exercise"}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatTime(exercise.logged_at)}
+            {exercise.duration_minutes && ` · ${exercise.duration_minutes} min`}
+            {exercise.calories_burned && ` · ${exercise.calories_burned} cal`}
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          {/* Status indicator */}
+          {isAnalyzing ? (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Analyzing...
+            </span>
+          ) : hasAnalysis ? (
+            <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+              Analyzed
+            </span>
+          ) : null}
+          
+          {/* Video Toggle */}
+          {hasVideo && (
+            <button
+              onClick={() => setShowVideo(!showVideo)}
+              className={cn(
+                "flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors",
+                showVideo ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
+              )}
+            >
+              <Video className="h-3 w-3" />
+              <span>{showVideo ? "Hide" : "Video"}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Expandable Video Section */}
+      {hasVideo && showVideo && (
+        <div className="mt-3 rounded-lg overflow-hidden border bg-white">
+          {/* Video View Toggle (Raw / Analyzed) */}
+          {hasProcessedVideo && (
+            <div className="flex bg-slate-100">
+              <button
+                onClick={() => setVideoView("raw")}
+                className={cn(
+                  "flex-1 px-2 py-1 text-[10px] font-medium transition-colors",
+                  videoView === "raw" 
+                    ? "bg-white text-foreground" 
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Raw Video
+              </button>
+              <button
+                onClick={() => setVideoView("analyzed")}
+                className={cn(
+                  "flex-1 px-2 py-1 text-[10px] font-medium transition-colors",
+                  videoView === "analyzed" 
+                    ? "bg-white text-foreground" 
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Pose Analysis
+              </button>
+            </div>
+          )}
+          
+          {/* Video Player */}
+          <div className="relative bg-black flex items-center justify-center min-h-[200px] max-h-[400px]">
+            <video
+              key={currentVideoUrl}
+              src={currentVideoUrl!}
+              controls
+              className="max-w-full max-h-[400px] w-auto h-auto"
+              preload="metadata"
+            />
+            {/* Video type indicator */}
+            <div className={cn(
+              "absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-medium",
+              videoView === "analyzed" && hasProcessedVideo
+                ? "bg-emerald-500 text-white"
+                : "bg-black/50 text-white"
+            )}>
+              {videoView === "analyzed" && hasProcessedVideo ? "Pose Overlay" : "Original"}
+            </div>
+          </div>
+          
+          {/* Pose Analysis Section */}
+          <div className="p-3 bg-slate-50">
+            {hasAnalysis ? (
+              <div className="space-y-2">
+                {/* AI Summary */}
+                <p className="text-sm text-foreground leading-relaxed">{analysis.summary}</p>
+                
+                {/* Asymmetry Alerts */}
+                {asymmetryIssues.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {asymmetryIssues.map(({ joint, left, right, difference }) => (
+                      <span
+                        key={joint}
+                        className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded"
+                        title={`Left: ${left}° | Right: ${right}°`}
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        {joint}: {difference.toFixed(0)}° diff
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Range of Motion Details */}
+                {analysis.angle_statistics && Object.keys(analysis.angle_statistics).length > 0 && (
+                  <details className="group">
+                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
+                      <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                      Range of motion details
+                    </summary>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {Object.entries(analysis.angle_statistics).slice(0, 4).map(([joint, stats]) => (
+                        <div key={joint} className="text-xs px-2 py-1.5 bg-white rounded border">
+                          <span className="text-muted-foreground">{joint.replace(/_/g, " ")}:</span>
+                          <span className="ml-1 font-medium">{stats.range}° range</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={handleAnalyze}
+                disabled={isAnalyzing}
+                className="w-full flex items-center justify-center gap-2 text-sm py-2 text-primary hover:bg-primary/5 rounded transition-colors disabled:opacity-50"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Analyzing movement...</span>
+                  </>
+                ) : (
+                  <>
+                    <BarChart3 className="h-4 w-4" />
+                    <span>Analyze movement</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlansContent({ patient }: { patient: Patient }) {
   const [showMedForm, setShowMedForm] = useState(false);
   const [showDietForm, setShowDietForm] = useState(false);
@@ -570,6 +879,15 @@ function OverviewContent({ patient }: { patient: Patient }) {
     logged_at: string;
     intensity?: string | null;
     notes?: string | null;
+    video_url?: string | null;
+    processed_video_url?: string | null;
+    pose_analysis?: {
+      summary?: string;
+      processed_video_url?: string;
+      video_info?: { duration_seconds: number; analyzed_frames: number };
+      symmetry_analysis?: Record<string, { left: number; right: number; difference: number; symmetric: boolean }>;
+      angle_statistics?: Record<string, { min: number; max: number; avg: number; range: number }>;
+    } | null;
   }>>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -584,8 +902,47 @@ function OverviewContent({ patient }: { patient: Patient }) {
   const [exercisesSectionSummary, setExercisesSectionSummary] = useState<string>("");
   const [lastDataHash, setLastDataHash] = useState("");
   const todayDate = new Date().toISOString().split("T")[0];
+  const [selectedDate, setSelectedDate] = useState<string>(todayDate);
+  const [viewMode, setViewMode] = useState<"day" | "all">("day"); // "day" for specific day (default: today), "all" for all recent
 
-  // Fetch all data - reset all state when patient changes
+  // Helper to format date for display
+  const formatDateDisplay = (dateStr: string) => {
+    const date = new Date(dateStr + "T00:00:00");
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (dateStr === todayDate) return "Today";
+    if (dateStr === yesterday.toISOString().split("T")[0]) return "Yesterday";
+    return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  };
+
+  // Navigate to previous day
+  const goToPreviousDay = () => {
+    const date = new Date(selectedDate + "T00:00:00");
+    date.setDate(date.getDate() - 1);
+    setSelectedDate(date.toISOString().split("T")[0]);
+    setViewMode("day");
+  };
+
+  // Navigate to next day
+  const goToNextDay = () => {
+    const date = new Date(selectedDate + "T00:00:00");
+    date.setDate(date.getDate() + 1);
+    const nextDate = date.toISOString().split("T")[0];
+    if (nextDate <= todayDate) {
+      setSelectedDate(nextDate);
+      setViewMode("day");
+    }
+  };
+
+  // Go to today
+  const goToToday = () => {
+    setSelectedDate(todayDate);
+    setViewMode("all");
+  };
+
+  // Fetch all data - reset all state when patient or date changes
   useEffect(() => {
     // Reset all state when patient changes
     setAiSummary(null);
@@ -596,24 +953,40 @@ function OverviewContent({ patient }: { patient: Patient }) {
     setExercises([]);
     setJournalEntries([]);
     
-    async function fetchTodayData() {
+    async function fetchPatientData() {
       setIsLoading(true);
       try {
-        const [mealsRes, exercisesRes, journalRes] = await Promise.all([
-          getPatientMeals(patient.id, todayDate),
-          getPatientExercises(patient.id, todayDate),
-          getPatientJournal(patient.id, todayDate, todayDate),
-        ]);
-        
-        setMeals(mealsRes.meals);
-        setExercises(exercisesRes.exercises);
-        setJournalEntries(journalRes.entries);
+        if (viewMode === "all") {
+          // Fetch all recent data without date filter
+          const [mealsRes, exercisesRes, journalRes] = await Promise.all([
+            getPatientMeals(patient.id),
+            getPatientExercises(patient.id),
+            getPatientJournal(patient.id),
+          ]);
+          
+          setMeals(mealsRes.meals);
+          setExercises(exercisesRes.exercises);
+          setJournalEntries(journalRes.entries);
+        } else {
+          // Fetch data for specific date
+          const [mealsRes, exercisesRes, journalRes] = await Promise.all([
+            getPatientMeals(patient.id, selectedDate),
+            getPatientExercises(patient.id, selectedDate),
+            getPatientJournal(patient.id, selectedDate, selectedDate),
+          ]);
+          
+          setMeals(mealsRes.meals);
+          setExercises(exercisesRes.exercises);
+          setJournalEntries(journalRes.entries);
+        }
         
         // Create hash of data to detect changes
         const dataHash = JSON.stringify({
-          meals: mealsRes.meals.length,
-          exercises: exercisesRes.exercises.length,
-          journal: journalRes.entries.length,
+          meals: meals.length,
+          exercises: exercises.length,
+          journal: journalEntries.length,
+          date: selectedDate,
+          viewMode,
         });
         setLastDataHash(dataHash);
       } catch {
@@ -622,8 +995,8 @@ function OverviewContent({ patient }: { patient: Patient }) {
         setIsLoading(false);
       }
     }
-    fetchTodayData();
-  }, [patient.id, todayDate]);
+    fetchPatientData();
+  }, [patient.id, selectedDate, viewMode]);
 
   // Auto-generate summary when there's activity and no summary yet
   useEffect(() => {
@@ -700,310 +1073,319 @@ function OverviewContent({ patient }: { patient: Patient }) {
 
   const totalActivity = meals.length + exercises.length + journalEntries.length;
 
+  // Group items by date for display
+  const groupByDate = <T extends { logged_at?: string; consumed_at?: string }>(items: T[]) => {
+    const groups: Record<string, T[]> = {};
+    items.forEach(item => {
+      const dateStr = (item.logged_at || item.consumed_at || "").split("T")[0];
+      if (!groups[dateStr]) groups[dateStr] = [];
+      groups[dateStr].push(item);
+    });
+    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0])); // Sort newest first
+  };
+
+  const isToday = selectedDate === todayDate;
+
   return (
-    <div className="space-y-2">
-      {/* Daily Summary - Collapsible */}
-      <div className="bg-gradient-to-r from-slate-50 to-white rounded-lg border">
-        <button
-          onClick={() => setSummaryExpanded(!summaryExpanded)}
-          className="w-full p-2.5 flex items-center justify-between hover:bg-muted/20 transition-colors"
-        >
+    <div className="space-y-4">
+      {/* Date Navigation */}
+      <div className="bg-white rounded-lg border">
+        <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-foreground">Daily Summary</span>
-            {isGeneratingSummary && (
-              <span className="text-xs text-muted-foreground animate-pulse">Generating...</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {aiSummary && (
-              <span
-                onClick={(e) => { e.stopPropagation(); handleGenerateSummary(); }}
-                className="text-xs text-primary hover:underline cursor-pointer"
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handleGenerateSummary(); } }}
-              >
-                Refresh
+            <button
+              onClick={goToPreviousDay}
+              className="p-1 rounded hover:bg-slate-100 text-muted-foreground hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">
+                {viewMode === "all" ? "All Recent Activity" : formatDateDisplay(selectedDate)}
               </span>
-            )}
-            {summaryExpanded ? (
-              <ChevronUp className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <button
+              onClick={goToNextDay}
+              disabled={isToday && viewMode === "day"}
+              className={cn(
+                "p-1 rounded hover:bg-slate-100 text-muted-foreground hover:text-foreground",
+                isToday && viewMode === "day" && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewMode(viewMode === "all" ? "day" : "all")}
+              className={cn(
+                "text-xs px-2 py-1 rounded transition-colors",
+                viewMode === "all" ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
+              )}
+            >
+              {viewMode === "all" ? "Viewing All" : "Viewing Day"}
+            </button>
+            {(viewMode === "day" && !isToday) && (
+              <button
+                onClick={goToToday}
+                className="text-xs text-primary hover:underline"
+              >
+                Go to Today
+              </button>
             )}
           </div>
-        </button>
-
-        {summaryExpanded && (
-          <div className="px-3 pb-3 border-t">
-            {aiSummary ? (
-              <div className="space-y-2 pt-2">
-                <p className="text-sm text-foreground leading-relaxed">{aiSummary.summary}</p>
-                
-                {/* Quick Stats */}
-                <div className="grid grid-cols-4 gap-2">
-                  <div className="text-center p-2 bg-white rounded border">
-                    <p className="text-lg font-semibold text-foreground">{aiSummary.stats.meals}</p>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Meals</p>
-                  </div>
-                  <div className="text-center p-2 bg-white rounded border">
-                    <p className="text-lg font-semibold text-foreground">{aiSummary.stats.exercises}</p>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Exercise</p>
-                  </div>
-                  <div className="text-center p-2 bg-white rounded border">
-                    <p className="text-lg font-semibold text-foreground">{aiSummary.stats.adherence_percent}%</p>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Meds</p>
-                  </div>
-                  <div className="text-center p-2 bg-white rounded border">
-                    <p className="text-lg font-semibold text-foreground">{aiSummary.stats.journal_entries}</p>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Journal</p>
-                  </div>
-                </div>
-
-                {/* Alerts */}
-                {aiSummary.alerts.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
-                    {aiSummary.alerts.map((alert, idx) => (
-                      <div key={idx} className={`p-2 rounded border text-xs ${getSeverityColor(alert.severity)}`}>
-                        <div className="flex items-start gap-1.5">
-                          <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                          <span className="leading-relaxed">{alert.message}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : totalActivity === 0 ? (
-              <p className="text-sm text-muted-foreground pt-2">No activity logged today yet.</p>
-            ) : (
-              <p className="text-sm text-muted-foreground pt-2 animate-pulse">Generating summary...</p>
-            )}
-          </div>
-        )}
+        </div>
       </div>
 
-      {/* Journal Entries */}
+      {/* Daily Summary */}
       <div className="bg-white rounded-lg border">
-        <button
-          onClick={() => setJournalExpanded(!journalExpanded)}
-          className="w-full p-2.5 flex items-center justify-between hover:bg-muted/20 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Journal</span>
-            <span className="text-xs text-muted-foreground">{journalEntries.length} entries</span>
-          </div>
-          {journalExpanded ? (
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <h3 className="text-sm font-medium text-foreground">
+            {viewMode === "all" ? "Summary" : "Daily Summary"}
+          </h3>
+          {aiSummary && (
+            <button
+              onClick={handleGenerateSummary}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Refresh
+            </button>
           )}
-        </button>
+        </div>
+        <div className="p-4">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : aiSummary ? (
+            <>
+              <p className="text-sm text-foreground leading-relaxed">{aiSummary.summary}</p>
+              <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                <span>{aiSummary.stats.meals} meals</span>
+                <span>·</span>
+                <span>{aiSummary.stats.exercises} exercises</span>
+                <span>·</span>
+                <span>{aiSummary.stats.adherence_percent}% meds</span>
+                <span>·</span>
+                <span>{aiSummary.stats.journal_entries} journal</span>
+              </div>
+            </>
+          ) : totalActivity === 0 ? (
+            <p className="text-sm text-muted-foreground">No activity logged today yet.</p>
+          ) : (
+            <p className="text-sm text-muted-foreground animate-pulse">Generating summary...</p>
+          )}
+        </div>
+      </div>
 
-        {journalExpanded && (
-          <div className="border-t p-3">
-            {isLoading ? (
-              <div className="text-sm text-muted-foreground">Loading...</div>
-            ) : journalEntries.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No journal entries today</div>
-            ) : (
-              <div className="space-y-2">
-                {/* Section Summary */}
-                <p className="text-sm text-foreground leading-relaxed">
-                  {journalSectionSummary || (aiSummary ? 
-                    `Patient recorded ${journalEntries.length} journal ${journalEntries.length === 1 ? 'entry' : 'entries'} today.` : 
-                    "Loading summary..."
-                  )}
-                </p>
-                
-                {/* Expandable Raw Transcripts */}
-                <details className="group">
-                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
-                    <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                    View raw transcripts ({journalEntries.length})
-                  </summary>
-                  <div className="mt-2 space-y-2 pl-3 border-l-2 border-muted">
-                    {journalEntries.map((entry) => (
-                      <div key={entry.id} className="space-y-1">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      {/* Journal Section */}
+      <div className="bg-white rounded-lg border">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <h3 className="text-sm font-medium text-foreground">Journal</h3>
+          <span className="text-xs text-muted-foreground">{journalEntries.length} entries</span>
+        </div>
+        <div className="p-4">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : journalEntries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No journal entries {viewMode === "all" ? "recorded" : "today"}</p>
+          ) : (
+            <>
+              <p className="text-sm text-foreground leading-relaxed mb-3">
+                {journalSectionSummary || (aiSummary ? 
+                  `Patient recorded ${journalEntries.length} journal ${journalEntries.length === 1 ? 'entry' : 'entries'}.` : 
+                  "Loading summary..."
+                )}
+              </p>
+              {journalEntries.length > 0 && (
+                <button
+                  onClick={() => setJournalExpanded(!journalExpanded)}
+                  className="text-xs text-primary hover:underline mb-2"
+                >
+                  {journalExpanded ? "Hide entries" : "View entries"}
+                </button>
+              )}
+              {journalExpanded && (
+                <div className="mt-3 space-y-3">
+                  {viewMode === "all" ? (
+                    // Group by date
+                    groupByDate(journalEntries).map(([dateStr, entries]) => (
+                      <div key={dateStr}>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                          {formatDateDisplay(dateStr)}
+                        </p>
+                        <div className="space-y-2">
+                          {entries.map((entry) => (
+                            <div key={entry.id} className="p-3 bg-slate-50/50 rounded">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                                <span>{getMoodEmoji(entry.mood)}</span>
+                                <span>{formatTime(entry.logged_at)}</span>
+                                {entry.duration_seconds && <span>· {formatDuration(entry.duration_seconds)}</span>}
+                              </div>
+                              <p className="text-sm text-foreground">{entry.transcript}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    // Single day view
+                    journalEntries.map((entry) => (
+                      <div key={entry.id} className="p-3 bg-slate-50/50 rounded">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                           <span>{getMoodEmoji(entry.mood)}</span>
                           <span>{formatTime(entry.logged_at)}</span>
-                          {entry.duration_seconds && (
-                            <span>· {formatDuration(entry.duration_seconds)}</span>
-                          )}
+                          {entry.duration_seconds && <span>· {formatDuration(entry.duration_seconds)}</span>}
                         </div>
-                        <p className="text-sm text-foreground leading-relaxed">{entry.transcript}</p>
-                        {entry.tags && entry.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {entry.tags.map((tag, i) => (
-                              <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted rounded">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        <p className="text-sm text-foreground">{entry.transcript}</p>
                       </div>
-                    ))}
-                  </div>
-                </details>
-              </div>
-            )}
-          </div>
-        )}
+                    ))
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Meals */}
+      {/* Meals Section */}
       <div className="bg-white rounded-lg border">
-        <button
-          onClick={() => setMealsExpanded(!mealsExpanded)}
-          className="w-full p-2.5 flex items-center justify-between hover:bg-muted/20 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <Utensils className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Meals</span>
-            <span className="text-xs text-muted-foreground">{meals.length} logged</span>
-          </div>
-          {mealsExpanded ? (
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <h3 className="text-sm font-medium text-foreground">Meals</h3>
+          <span className="text-xs text-muted-foreground">{meals.length} logged</span>
+        </div>
+        <div className="p-4">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : meals.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No meals logged {viewMode === "all" ? "yet" : "today"}</p>
           ) : (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          )}
-        </button>
-
-        {mealsExpanded && (
-          <div className="border-t p-3">
-            {isLoading ? (
-              <div className="text-sm text-muted-foreground">Loading...</div>
-            ) : meals.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No meals logged today</div>
-            ) : (
-              <div className="space-y-2">
-                {/* Section Summary */}
-                <p className="text-sm text-foreground leading-relaxed">
-                  {mealsSectionSummary || (aiSummary ? 
-                    `Patient logged ${meals.length} ${meals.length === 1 ? 'meal' : 'meals'} today totaling ${meals.reduce((sum, m) => sum + (m.total_calories || 0), 0)} calories.` : 
-                    "Loading summary..."
-                  )}
-                </p>
-                
-                {/* Expandable Meal Details */}
-                <details className="group">
-                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
-                    <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                    View meal details ({meals.length})
-                  </summary>
-                  <div className="mt-2 space-y-2 pl-3 border-l-2 border-muted">
-                    {meals.map((meal) => (
-                      <div key={meal.id} className="flex items-start gap-2">
+            <>
+              <p className="text-sm text-foreground leading-relaxed mb-3">
+                {mealsSectionSummary || (aiSummary ? 
+                  `Patient logged ${meals.length} ${meals.length === 1 ? 'meal' : 'meals'} totaling ${meals.reduce((sum, m) => sum + (m.total_calories || 0), 0)} calories.` : 
+                  "Loading summary..."
+                )}
+              </p>
+              {meals.length > 0 && (
+                <button
+                  onClick={() => setMealsExpanded(!mealsExpanded)}
+                  className="text-xs text-primary hover:underline mb-2"
+                >
+                  {mealsExpanded ? "Hide meals" : "View meals"}
+                </button>
+              )}
+              {mealsExpanded && (
+                <div className="mt-3 space-y-3">
+                  {viewMode === "all" ? (
+                    // Group by date
+                    groupByDate(meals.map(m => ({ ...m, logged_at: m.consumed_at }))).map(([dateStr, dateMeals]) => (
+                      <div key={dateStr}>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                          {formatDateDisplay(dateStr)}
+                        </p>
+                        <div className="space-y-2">
+                          {dateMeals.map((meal) => (
+                            <div key={meal.id} className="flex items-center gap-3 p-3 bg-slate-50/50 rounded">
+                              {meal.image_url ? (
+                                <img src={meal.image_url} alt={meal.name} className="w-12 h-12 rounded object-cover flex-shrink-0" />
+                              ) : (
+                                <div className="w-12 h-12 rounded bg-slate-200 flex items-center justify-center flex-shrink-0">
+                                  <Utensils className="h-5 w-5 text-slate-400" />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-foreground text-sm">{meal.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {mealTypeLabel(meal.meal_type)} · {formatTime(meal.consumed_at)}
+                                  {meal.total_calories > 0 && ` · ${meal.total_calories} cal`}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    // Single day view
+                    meals.map((meal) => (
+                      <div key={meal.id} className="flex items-center gap-3 p-3 bg-slate-50/50 rounded">
                         {meal.image_url ? (
-                          <img
-                            src={meal.image_url}
-                            alt={meal.name}
-                            className="w-10 h-10 rounded object-cover flex-shrink-0"
-                          />
+                          <img src={meal.image_url} alt={meal.name} className="w-12 h-12 rounded object-cover flex-shrink-0" />
                         ) : (
-                          <div className="w-10 h-10 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
-                            <Utensils className="h-4 w-4 text-muted-foreground" />
+                          <div className="w-12 h-12 rounded bg-slate-200 flex items-center justify-center flex-shrink-0">
+                            <Utensils className="h-5 w-5 text-slate-400" />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground">{meal.name}</p>
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <span>{mealTypeLabel(meal.meal_type)}</span>
-                            <span>·</span>
-                            <span>{formatTime(meal.consumed_at)}</span>
-                            {meal.total_calories > 0 && (
-                              <>
-                                <span>·</span>
-                                <span>{meal.total_calories} cal</span>
-                              </>
-                            )}
-                          </div>
+                          <p className="font-medium text-foreground text-sm">{meal.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {mealTypeLabel(meal.meal_type)} · {formatTime(meal.consumed_at)}
+                            {meal.total_calories > 0 && ` · ${meal.total_calories} cal`}
+                          </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </details>
-              </div>
-            )}
-          </div>
-        )}
+                    ))
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Activity */}
+      {/* Activity Section */}
       <div className="bg-white rounded-lg border">
-        <button
-          onClick={() => setExercisesExpanded(!exercisesExpanded)}
-          className="w-full p-2.5 flex items-center justify-between hover:bg-muted/20 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Activity</span>
-            <span className="text-xs text-muted-foreground">{exercises.length} logged</span>
-          </div>
-          {exercisesExpanded ? (
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <h3 className="text-sm font-medium text-foreground">Activity</h3>
+          <span className="text-xs text-muted-foreground">{exercises.length} logged</span>
+        </div>
+        <div className="p-4">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : exercises.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No exercises logged {viewMode === "all" ? "yet" : "today"}</p>
           ) : (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          )}
-        </button>
-
-        {exercisesExpanded && (
-          <div className="border-t p-3">
-            {isLoading ? (
-              <div className="text-sm text-muted-foreground">Loading...</div>
-            ) : exercises.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No exercises logged today</div>
-            ) : (
-              <div className="space-y-2">
-                {/* Section Summary */}
-                <p className="text-sm text-foreground leading-relaxed">
-                  {exercisesSectionSummary || (aiSummary ? 
-                    `Patient completed ${exercises.length} ${exercises.length === 1 ? 'activity' : 'activities'} today totaling ${exercises.reduce((sum, e) => sum + (e.duration_minutes || 0), 0)} minutes.` : 
-                    "Loading summary..."
-                  )}
-                </p>
-                
-                {/* Expandable Activity Details */}
-                <details className="group">
-                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
-                    <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                    View activity details ({exercises.length})
-                  </summary>
-                  <div className="mt-2 space-y-2 pl-3 border-l-2 border-muted">
-                    {exercises.map((exercise) => (
-                      <div key={exercise.id} className="flex items-start gap-2">
-                        <div className="w-8 h-8 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
-                          <Activity className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground">{exercise.exercise_type || exercise.name || "Exercise"}</p>
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <span>{formatTime(exercise.logged_at)}</span>
-                            {exercise.duration_minutes && (
-                              <>
-                                <span>·</span>
-                                <span>{exercise.duration_minutes} min</span>
-                              </>
-                            )}
-                            {exercise.calories_burned && (
-                              <>
-                                <span>·</span>
-                                <span>{exercise.calories_burned} cal</span>
-                              </>
-                            )}
-                          </div>
+            <>
+              <p className="text-sm text-foreground leading-relaxed mb-3">
+                {exercisesSectionSummary || (aiSummary ? 
+                  `Patient completed ${exercises.length} ${exercises.length === 1 ? 'activity' : 'activities'} totaling ${exercises.reduce((sum, e) => sum + (e.duration_minutes || 0), 0)} minutes.` : 
+                  "Loading summary..."
+                )}
+              </p>
+              {exercises.length > 0 && (
+                <button
+                  onClick={() => setExercisesExpanded(!exercisesExpanded)}
+                  className="text-xs text-primary hover:underline mb-2"
+                >
+                  {exercisesExpanded ? "Hide activities" : "View activities"}
+                </button>
+              )}
+              {exercisesExpanded && (
+                <div className="mt-3 space-y-3">
+                  {viewMode === "all" ? (
+                    // Group by date
+                    groupByDate(exercises).map(([dateStr, dateExercises]) => (
+                      <div key={dateStr}>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                          {formatDateDisplay(dateStr)}
+                        </p>
+                        <div className="space-y-3">
+                          {dateExercises.map((exercise) => (
+                            <ExerciseCard key={exercise.id} exercise={exercise} />
+                          ))}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </details>
-              </div>
-            )}
-          </div>
-        )}
+                    ))
+                  ) : (
+                    // Single day view
+                    exercises.map((exercise) => (
+                      <ExerciseCard key={exercise.id} exercise={exercise} />
+                    ))
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

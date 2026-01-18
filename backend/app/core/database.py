@@ -54,3 +54,14 @@ def get_db() -> Client:
     if client is None:
         raise RuntimeError("Database not configured - check SUPABASE_URL and SUPABASE_KEY")
     return client
+
+
+def get_db_sync() -> Client:
+    """
+    Get database client for use in background tasks (non-dependency injection).
+    Raises if Supabase not configured.
+    """
+    client = get_supabase()
+    if client is None:
+        raise RuntimeError("Database not configured - check SUPABASE_URL and SUPABASE_KEY")
+    return client

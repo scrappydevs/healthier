@@ -563,3 +563,71 @@ export async function generateExerciseSummary(
     method: "POST",
   });
 }
+
+
+// ============================================
+// POSE ANALYSIS
+// ============================================
+
+export type PoseAnalysisSymmetry = {
+  left: number;
+  right: number;
+  difference: number;
+  symmetric: boolean;
+};
+
+export type PoseAnalysisAngleStats = {
+  min: number;
+  max: number;
+  avg: number;
+  range: number;
+};
+
+export type PoseAnalysis = {
+  video_info?: {
+    fps: number;
+    total_frames: number;
+    analyzed_frames: number;
+    duration_seconds: number;
+    width: number;
+    height: number;
+  };
+  angle_statistics?: Record<string, PoseAnalysisAngleStats>;
+  symmetry_analysis?: Record<string, PoseAnalysisSymmetry>;
+  summary?: string;
+  exercise_type?: string;
+  processed_video_url?: string;
+  error?: string;
+};
+
+export type ExercisePoseAnalysisResponse = {
+  exercise_id: string;
+  video_url: string | null;
+  processed_video_url: string | null;
+  exercise_type: string | null;
+  pose_analysis: PoseAnalysis | null;
+  has_analysis: boolean;
+};
+
+// Response from POST analyze-pose (async background processing)
+export type AnalyzePoseResponse = {
+  status: "processing" | "completed";
+  exercise_id: string;
+  message?: string;
+  pose_analysis?: PoseAnalysis;
+  processed_video_url?: string;
+};
+
+export async function analyzeExercisePose(
+  exerciseId: string
+): Promise<AnalyzePoseResponse> {
+  return request<AnalyzePoseResponse>(`/api/v1/exercises/${exerciseId}/analyze-pose`, {
+    method: "POST",
+  });
+}
+
+export async function getExercisePoseAnalysis(
+  exerciseId: string
+): Promise<ExercisePoseAnalysisResponse> {
+  return request<ExercisePoseAnalysisResponse>(`/api/v1/exercises/${exerciseId}/pose-analysis`);
+}

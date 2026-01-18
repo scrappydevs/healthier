@@ -124,13 +124,41 @@ class PatientService:
 
     def _calculate_adherence(self, patient_id: str) -> float:
         """Calculate adherence rate for a patient (last 7 days)."""
-        response = self.db.rpc(
-            "calculate_adherence_rate",
-            {"p_patient_id": patient_id, "p_days": 7}
-        ).execute()
+        try:
+            # Try RPC function first
+            response = self.db.rpc(
+                "calculate_adherence_rate",
+                {"p_patient_id": patient_id, "p_days": 7}
+            ).execute()
 
-        if response.data is not None:
-            return float(response.data)
+            if response.data is not None:
+                return float(response.data)
+        except Exception as e:
+            # RPC function may not exist - fallback to manual calculation
+            print(f"RPC calculate_adherence_rate failed: {e}")
+            try:
+                # Manual calculation: count taken/late vs total pill_logs in last 7 days
+                from datetime import datetime, timedelta
+                seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+                
+                logs_response = self.db.table("pill_logs").select(
+                    "status"
+                ).eq("patient_id", patient_id).gte(
+                    "scheduled_time", seven_days_ago
+                ).execute()
+                
+                logs = logs_response.data or []
+                if not logs:
+                    return 100.0  # No logs = no data to calculate
+                
+                taken_count = sum(1 for log in logs if log.get("status") in ("taken", "late"))
+                total_count = len(logs)
+                
+                if total_count > 0:
+                    return round((taken_count / total_count) * 100, 1)
+            except Exception as inner_e:
+                print(f"Fallback adherence calculation failed: {inner_e}")
+        
         return 100.0
 
     def _get_last_active(self, patient_id: str) -> Optional[str]:
