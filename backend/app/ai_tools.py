@@ -1475,6 +1475,11 @@ async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dic
             "notes": "Assigned via AI assistant"
         }).execute()
         
+        # Update patient care_setting to in_clinic
+        supabase.table("patients").update({
+            "care_setting": "in_clinic"
+        }).eq("id", patient["id"]).execute()
+        
         # Update room status if vacant
         if room["status"] == "vacant":
             supabase.table("hospital_rooms").update({
@@ -1602,6 +1607,11 @@ async def remove_patient_from_room(room_id: str, reason: Optional[str], supabase
         }).eq("room_id", room["id"]).eq("patient_id", patient["id"]).is_(
             "discharged_at", "null"
         ).execute()
+        
+        # Update patient care_setting to at_home (discharged)
+        supabase.table("patients").update({
+            "care_setting": "at_home"
+        }).eq("id", patient["id"]).execute()
         
         # Set room status to vacant (for patient-type rooms)
         if room["room_type"] in ["patient"]:
@@ -2027,6 +2037,11 @@ async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], 
             "patient_id": patient["id"],
             "notes": f"Transferred from {old_room_name or 'unknown'}: {reason or 'No reason provided'}"
         }).execute()
+        
+        # Update patient care_setting to in_clinic
+        supabase.table("patients").update({
+            "care_setting": "in_clinic"
+        }).eq("id", patient["id"]).execute()
         
         # Update destination room status
         if dest_room["status"] == "vacant":
