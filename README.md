@@ -1,5 +1,8 @@
 # Healthier
 
+![hero](https://github.com/user-attachments/assets/8236f53a-3c04-4390-b711-422f4c925ce9)
+
+
 A lightweight elderly care app focused on medication guidance, nutrition insights, exercise support, and Apple Watch integration, with a simple dashboard for summaries.
 
 ## Team / Responsibilities
