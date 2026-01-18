@@ -853,7 +853,9 @@ async def get_recent_activity(
 async def get_pills(db: Client = Depends(get_db)):
     """Get all available pills/medications for assignment."""
     response = db.table("pills").select(
-        "id, name, generic_name, dosage_form, strength, unit, instructions"
+        "id, name, generic_name, brand_name, dosage_form, strength, unit, "
+        "color, shape, imprint, instructions, warnings, side_effects, "
+        "interactions, image_url"
     ).order("name").execute()
     
     return {"pills": response.data or []}

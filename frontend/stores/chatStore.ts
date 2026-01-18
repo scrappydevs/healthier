@@ -35,6 +35,7 @@ interface ChatStore {
   sessionId: string | null;
   sessionTitle: string | null;
   sessions: ChatSession[];
+  isTitleAnimating: boolean;
 
   // Context state (what page/view the user is on)
   currentPage: string;
@@ -63,6 +64,7 @@ interface ChatStore {
   setSessionTitle: (title: string | null) => void;
   setSessions: (sessions: ChatSession[]) => void;
   startNewSession: () => void;
+  setIsTitleAnimating: (animating: boolean) => void;
 
   // Context actions
   setCurrentPage: (page: string) => void;
@@ -84,6 +86,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sessionId: null,
   sessionTitle: null,
   sessions: [],
+  isTitleAnimating: false,
   currentPage: "/dashboard",
   currentContext: {},
   showToolIndicator: false,
@@ -188,6 +191,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: [],
       sessionId: null,
       sessionTitle: null,
+      isTitleAnimating: false,
       isStreaming: false,
       isLoading: false,
       showToolIndicator: false,
@@ -196,6 +200,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (typeof window !== "undefined") {
       localStorage.removeItem(SESSION_ID_KEY);
     }
+  },
+
+  setIsTitleAnimating: (animating) => {
+    set({ isTitleAnimating: animating });
   },
 
   // Context actions

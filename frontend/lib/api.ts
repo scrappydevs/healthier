@@ -277,8 +277,9 @@ export type Alert = {
   id: string;
   patient_id: string;
   clinician_id: string | null;
-  type: "missed_dose" | "low_adherence" | "refill_needed" | "pattern_detected";
-  severity: "critical" | "high" | "medium" | "low";
+  type: "missed_dose" | "low_adherence" | "refill_needed" | "pattern_detected" | "vital_abnormal" | "missed_meal" | "inactivity" | "fall_detected";
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  title: string;
   message: string;
   acknowledged: boolean;
   acknowledged_at: string | null;
@@ -421,10 +422,19 @@ export type Pill = {
   id: string;
   name: string;
   generic_name: string | null;
+  brand_name: string | null;
   dosage_form: string;
   strength: string;
   unit: string;
+  color: string | null;
+  shape: string | null;
+  imprint: string | null;
   instructions: string | null;
+  warnings: string | null;
+  side_effects: string[] | null;
+  interactions: string[] | null;
+  contraindications: string[] | null;
+  image_url: string | null;
 };
 
 export type PillsResponse = {

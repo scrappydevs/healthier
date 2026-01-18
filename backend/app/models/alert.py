@@ -10,6 +10,7 @@ class AlertBase(BaseModel):
     """Base alert fields."""
     type: str
     severity: str
+    title: str
     message: str
 
 

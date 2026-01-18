@@ -66,6 +66,7 @@ import { FoodSection } from "@/components/patient/FoodSection";
 import { ExerciseSection } from "@/components/patient/ExerciseSection";
 import { MedicationSection } from "@/components/patient/MedicationSection";
 import { JournalSection } from "@/components/patient/JournalSection";
+import { MedicationDetailsModal } from "@/components/medications/MedicationDetailsModal";
 
 type Tab = "overview" | "plans" | "food" | "exercise" | "medications" | "journal";
 
@@ -768,14 +769,81 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
 
 type AssignedMedication = {
   id: string;
+  pill_id?: string;
   name: string;
   strength?: number;
   unit?: string;
   dosage_form?: string;
   image_url?: string | null;
   frequency?: string;
+  days_of_week?: number[];
   times_of_day?: string[];
+  pill_details?: PillType; // Full pill object with all details
 };
+
+// Helper function to format medication schedule
+function formatMedicationSchedule(frequency: string | undefined, daysOfWeek: number[] | undefined, timesOfDay: string[] | undefined): string {
+  if (!frequency) return "";
+  
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const formatTime = (time: string) => {
+    const [hours, minutes] = time.split(":");
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  // Format times
+  const formattedTimes = timesOfDay && timesOfDay.length > 0 
+    ? timesOfDay.map(formatTime)
+    : [];
+
+  // Handle daily frequencies
+  if (frequency === "daily" || frequency === "once_daily") {
+    if (formattedTimes.length === 1) {
+      return `Once daily at ${formattedTimes[0]}`;
+    } else if (formattedTimes.length > 1) {
+      return `${formattedTimes.length}x daily at ${formattedTimes.join(", ")}`;
+    }
+    return "Once daily";
+  }
+
+  if (frequency === "twice_daily") {
+    if (formattedTimes.length > 0) {
+      return `Twice daily at ${formattedTimes.join(", ")}`;
+    }
+    return "Twice daily";
+  }
+
+  if (frequency === "three_times_daily") {
+    if (formattedTimes.length > 0) {
+      return `3x daily at ${formattedTimes.join(", ")}`;
+    }
+    return "3x daily";
+  }
+
+  // Handle weekly frequencies
+  if (frequency === "weekly" && daysOfWeek && daysOfWeek.length > 0) {
+    const daysList = daysOfWeek.map(d => dayNames[d]).join(", ");
+    if (formattedTimes.length > 0) {
+      return `${daysList} at ${formattedTimes.join(", ")}`;
+    }
+    return daysList;
+  }
+
+  // Handle as-needed
+  if (frequency === "as_needed") {
+    return "As needed";
+  }
+
+  // Fallback
+  const readableFrequency = frequency.replace(/_/g, " ");
+  if (formattedTimes.length > 0) {
+    return `${readableFrequency} at ${formattedTimes.join(", ")}`;
+  }
+  return readableFrequency;
+}
 
 function PlansContent({ patient }: { patient: Patient }) {
   const [showMedForm, setShowMedForm] = useState(false);
@@ -786,6 +854,7 @@ function PlansContent({ patient }: { patient: Patient }) {
   const [medications, setMedications] = useState<AssignedMedication[]>([]);
   const [prescribedExercises, setPrescribedExercises] = useState<PrescribedExercise[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedMedForDetails, setSelectedMedForDetails] = useState<PillType | null>(null);
 
   const fetchPlans = async () => {
     setIsLoading(true);
@@ -816,13 +885,16 @@ function PlansContent({ patient }: { patient: Patient }) {
       const assignedMeds = medsRes.assigned_medications || [];
       setMedications(assignedMeds.map((m: Record<string, unknown>) => ({
         id: m.id as string,
+        pill_id: m.pill_id as string,
         name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
         strength: (m.pills as Record<string, unknown>)?.strength as number,
         unit: (m.pills as Record<string, unknown>)?.unit as string,
         dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
         image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
         frequency: m.frequency as string,
+        days_of_week: m.days_of_week as number[],
         times_of_day: m.times_of_day as string[],
+        pill_details: m.pills as PillType, // Store full pill object
       })));
       
       // Store prescribed exercises
@@ -855,7 +927,7 @@ function PlansContent({ patient }: { patient: Patient }) {
           </div>
           <button 
             onClick={() => setShowMedForm(!showMedForm)}
-            className="text-xs text-muted-foreground hover:text-foreground"
+            className="px-3 py-1.5 text-xs bg-neutral-700 text-white rounded hover:bg-neutral-800 transition-colors"
           >
             {showMedForm ? "Cancel" : "Assign"}
           </button>
@@ -875,8 +947,8 @@ function PlansContent({ patient }: { patient: Patient }) {
           {!showMedForm && medications.length > 0 && (
             <div className="divide-y">
               {medications.map((med) => (
-                <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start justify-between">
-                  <div className="flex items-start gap-4 min-w-0">
+                <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-4 min-w-0 flex-1">
                     {med.image_url ? (
                       <img
                         src={med.image_url}
@@ -888,7 +960,7 @@ function PlansContent({ patient }: { patient: Patient }) {
                         <Pill className="h-6 w-6 text-muted-foreground" />
                       </div>
                     )}
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm text-foreground mb-0.5">
                         <span className="font-medium">{med.name}</span>
                         {med.strength && med.unit && (
@@ -896,15 +968,21 @@ function PlansContent({ patient }: { patient: Patient }) {
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {med.frequency?.replace(/_/g, " ")}
+                        {formatMedicationSchedule(med.frequency, med.days_of_week, med.times_of_day)}
                       </p>
                     </div>
                   </div>
-                  {med.times_of_day && med.times_of_day.length > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      {med.times_of_day.join(", ")}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-3 shrink-0">
+                    {med.pill_details && (
+                      <button
+                        onClick={() => setSelectedMedForDetails(med.pill_details!)}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        title="View medication details"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -918,7 +996,7 @@ function PlansContent({ patient }: { patient: Patient }) {
           <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
           <button 
             onClick={() => setShowDietForm(!showDietForm)}
-            className="text-xs text-muted-foreground hover:text-foreground"
+            className="px-3 py-1.5 text-xs bg-neutral-700 text-white rounded hover:bg-neutral-800 transition-colors"
           >
             {showDietForm ? "Cancel" : dietPlan ? "Edit" : "Add"}
           </button>
@@ -973,7 +1051,7 @@ function PlansContent({ patient }: { patient: Patient }) {
           </div>
           <button 
             onClick={() => setShowExerciseForm(!showExerciseForm)}
-            className="text-xs text-muted-foreground hover:text-foreground"
+            className="px-3 py-1.5 text-xs bg-neutral-700 text-white rounded hover:bg-neutral-800 transition-colors"
           >
             {showExerciseForm ? "Cancel" : "Add"}
           </button>
@@ -1032,6 +1110,14 @@ function PlansContent({ patient }: { patient: Patient }) {
           )}
         </div>
       </div>
+
+      {/* Medication Details Modal */}
+      {selectedMedForDetails && (
+        <MedicationDetailsModal
+          pill={selectedMedForDetails}
+          onClose={() => setSelectedMedForDetails(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1082,6 +1168,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
   const [journalSectionSummary, setJournalSectionSummary] = useState<string>("");
   const [mealsSectionSummary, setMealsSectionSummary] = useState<string>("");
   const [exercisesSectionSummary, setExercisesSectionSummary] = useState<string>("");
+  const [selectedMedForDetails, setSelectedMedForDetails] = useState<PillType | null>(null);
   const [lastDataHash, setLastDataHash] = useState("");
   
   // Helper to get local date string (YYYY-MM-DD)
@@ -1158,13 +1245,16 @@ function OverviewContent({ patient }: { patient: Patient }) {
         const assignedMeds = medsRes.assigned_medications || [];
         setAssignedMedications(assignedMeds.map((m: Record<string, unknown>) => ({
           id: m.id as string,
+          pill_id: m.pill_id as string,
           name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
           strength: (m.pills as Record<string, unknown>)?.strength as number,
           unit: (m.pills as Record<string, unknown>)?.unit as string,
           dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
           image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
           frequency: m.frequency as string,
+          days_of_week: m.days_of_week as number[],
           times_of_day: m.times_of_day as string[],
+          pill_details: m.pills as PillType, // Store full pill object
         })));
         
         if (viewMode === "all") {
@@ -1710,8 +1800,8 @@ function OverviewContent({ patient }: { patient: Patient }) {
                 }
                 
                 return (
-                  <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start justify-between">
-                    <div className="flex items-start gap-4 min-w-0">
+                  <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-4 min-w-0 flex-1">
                       {med.image_url ? (
                         <img
                           src={med.image_url}
@@ -1723,7 +1813,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
                           <Pill className="h-6 w-6 text-muted-foreground" />
                         </div>
                       )}
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm text-foreground mb-0.5">
                           <span className="font-medium">{med.name}</span>
                           {med.strength && med.unit && (
@@ -1731,13 +1821,24 @@ function OverviewContent({ patient }: { patient: Patient }) {
                           )}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {med.frequency?.replace(/_/g, " ")}
+                          {formatMedicationSchedule(med.frequency, med.days_of_week, med.times_of_day)}
                         </p>
                       </div>
                     </div>
-                    <span className={cn("text-xs", statusColors[status])}>
-                      {statusLabel}
-                    </span>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {med.pill_details && (
+                        <button
+                          onClick={() => setSelectedMedForDetails(med.pill_details!)}
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          title="View medication details"
+                        >
+                          <Info className="h-4 w-4" />
+                        </button>
+                      )}
+                      <span className={cn("text-xs", statusColors[status])}>
+                        {statusLabel}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
@@ -1745,6 +1846,14 @@ function OverviewContent({ patient }: { patient: Patient }) {
           </div>
         )}
       </div>
+
+      {/* Medication Details Modal */}
+      {selectedMedForDetails && (
+        <MedicationDetailsModal
+          pill={selectedMedForDetails}
+          onClose={() => setSelectedMedForDetails(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1791,9 +1900,10 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
   };
 
   return (
-    <div className="space-y-3 pt-3 border-t">
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-muted-foreground w-14 shrink-0">Medication</label>
+    <div className="space-y-4 pt-3 border-t">
+      {/* Medication Selection Row */}
+      <div className="flex items-center gap-3">
+        <label className="text-xs text-muted-foreground w-16 shrink-0">Medication</label>
         <Select value={selectedMedId} onValueChange={setSelectedMedId} disabled={isLoadingPills}>
           <SelectTrigger className="flex-1 h-8 text-xs">
             <SelectValue placeholder={isLoadingPills ? "Loading..." : "Select medication"} />
@@ -1807,13 +1917,10 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
           </SelectContent>
         </Select>
       </div>
-      {selectedMed && (
-        <p className="text-xs text-muted-foreground pl-[72px]">
-          {selectedMed.strength}{selectedMed.unit} {selectedMed.dosage_form}
-        </p>
-      )}
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-muted-foreground w-14 shrink-0">Frequency</label>
+
+      {/* Frequency Selection Row */}
+      <div className="flex items-center gap-3">
+        <label className="text-xs text-muted-foreground w-16 shrink-0">Frequency</label>
         <Select value={frequency} onValueChange={setFrequency}>
           <SelectTrigger className="flex-1 h-8 text-xs">
             <SelectValue />
@@ -1826,8 +1933,10 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
           </SelectContent>
         </Select>
       </div>
-      <div className="flex items-start gap-2">
-        <label className="text-xs text-muted-foreground w-14 shrink-0 pt-1">Days</label>
+
+      {/* Days Selection Row */}
+      <div className="flex items-start gap-3">
+        <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Days</label>
         <div className="flex gap-1 flex-wrap">
           {DAYS_OF_WEEK.map((day) => (
             <button
@@ -1845,8 +1954,10 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
           ))}
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-muted-foreground w-14 shrink-0">Time</label>
+
+      {/* Time Selection Row */}
+      <div className="flex items-center gap-3">
+        <label className="text-xs text-muted-foreground w-16 shrink-0">Time</label>
         <input
           type="time"
           value={times[0]}
@@ -1854,7 +1965,9 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
           className="h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
-      <div className="flex items-center gap-2 pt-1">
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-3 pt-2">
         <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={!selectedMedId}>
           Assign
         </Button>

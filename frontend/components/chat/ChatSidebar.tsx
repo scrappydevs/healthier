@@ -35,10 +35,12 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
   const [autocompleteItems, setAutocompleteItems] = useState<Room[]>([]);
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+  const [displayedTitle, setDisplayedTitle] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const titleAnimationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const {
     messages,
@@ -47,6 +49,7 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     sessionId,
     sessionTitle,
     sessions,
+    isTitleAnimating,
     showToolIndicator,
     toolCallCount,
     currentPage,
@@ -63,6 +66,7 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     setCurrentPage,
     setShowToolIndicator,
     setToolCallCount,
+    setIsTitleAnimating,
   } = useChatStore();
 
   // Update current page context when pathname changes
@@ -71,6 +75,40 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
       setCurrentPage(pathname);
     }
   }, [pathname, setCurrentPage]);
+
+  // Animate title typing effect
+  useEffect(() => {
+    if (!sessionTitle || !isTitleAnimating) {
+      setDisplayedTitle(sessionTitle || "");
+      return;
+    }
+
+    // Clear any existing animation
+    if (titleAnimationTimeoutRef.current) {
+      clearTimeout(titleAnimationTimeoutRef.current);
+    }
+
+    let currentIndex = 0;
+    setDisplayedTitle("");
+
+    const animate = () => {
+      if (currentIndex < sessionTitle.length) {
+        setDisplayedTitle(sessionTitle.substring(0, currentIndex + 1));
+        currentIndex++;
+        titleAnimationTimeoutRef.current = setTimeout(animate, 30);
+      } else {
+        setIsTitleAnimating(false);
+      }
+    };
+
+    animate();
+
+    return () => {
+      if (titleAnimationTimeoutRef.current) {
+        clearTimeout(titleAnimationTimeoutRef.current);
+      }
+    };
+  }, [sessionTitle, isTitleAnimating, setIsTitleAnimating]);
 
   // Auto-scroll messages
   useEffect(() => {
@@ -220,6 +258,30 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     const trimmedInput = inputValue.trim();
     if (!trimmedInput || isLoading || isStreaming) return;
 
+    // Generate title immediately for the first visible message in the UI
+    // (sessionId may be persisted across reloads while messages/title are not).
+    const shouldGenerateTitle =
+      messages.length === 0 && (!sessionTitle || sessionTitle === "New Chat" || sessionTitle === "Chat");
+
+    let generatedTitle: string | null = null;
+    if (shouldGenerateTitle) {
+      try {
+        const titleResponse = await fetch(`${API_URL}/ai/generate-title`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: trimmedInput }),
+        });
+        const titleData = await titleResponse.json();
+        if (titleData.title) {
+          generatedTitle = titleData.title;
+          setIsTitleAnimating(true);
+          setSessionTitle(titleData.title);
+        }
+      } catch (error) {
+        console.error("Error generating title:", error);
+      }
+    }
+
     addMessage({ role: "user", content: trimmedInput });
     setInputValue("");
     setIsLoading(true);
@@ -230,6 +292,7 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
         current_page: pathname || "/",
         user_name: "Clinical Staff",
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...(generatedTitle ? { title: generatedTitle } : {}),
       };
 
       const response = await fetch(`${API_URL}/ai/chat`, {
@@ -249,8 +312,12 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
       if (data.session_id && !sessionId) {
         setSessionId(data.session_id);
       }
-      if (data.session_title) {
-        setSessionTitle(data.session_title);
+      if (data.session_title && data.session_title !== sessionTitle) {
+        // If we already generated a title, don't overwrite it with the backend title.
+        if (!generatedTitle) {
+          setIsTitleAnimating(true);
+          setSessionTitle(data.session_title);
+        }
       }
 
       // Show tool indicator if tools were called
@@ -287,10 +354,13 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     isStreaming,
     pathname,
     sessionId,
+    sessionTitle,
+    messages.length,
     addMessage,
     setIsLoading,
     setSessionId,
     setSessionTitle,
+    setIsTitleAnimating,
     setShowToolIndicator,
     setToolCallCount,
     streamText,
@@ -302,11 +372,41 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
   // Handle suggestion click
   const handleSuggestionClick = useCallback(async (prompt: string) => {
     setInputValue("");
+    
+    // Generate title immediately for the first visible message in the UI
+    // (sessionId may be persisted across reloads while messages/title are not).
+    const shouldGenerateTitle =
+      messages.length === 0 && (!sessionTitle || sessionTitle === "New Chat" || sessionTitle === "Chat");
+
+    let generatedTitle: string | null = null;
+    if (shouldGenerateTitle) {
+      try {
+        const titleResponse = await fetch(`${API_URL}/ai/generate-title`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: prompt }),
+        });
+        const titleData = await titleResponse.json();
+        if (titleData.title) {
+          generatedTitle = titleData.title;
+          setIsTitleAnimating(true);
+          setSessionTitle(titleData.title);
+        }
+      } catch (error) {
+        console.error("Error generating title:", error);
+      }
+    }
+    
     addMessage({ role: "user", content: prompt });
     setIsLoading(true);
     setFollowUpQuestions([]);
 
     try {
+      const chatState = {
+        current_page: pathname || "/",
+        ...(generatedTitle ? { title: generatedTitle } : {}),
+      };
+
       const response = await fetch(`${API_URL}/ai/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -314,7 +414,7 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
           message: prompt,
           session_id: sessionId,
           user_id: "default_user",
-          chat_state: { current_page: pathname || "/" },
+          chat_state: chatState,
         }),
       });
 
@@ -323,8 +423,12 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
       if (data.session_id && !sessionId) {
         setSessionId(data.session_id);
       }
-      if (data.session_title) {
-        setSessionTitle(data.session_title);
+      if (data.session_title && data.session_title !== sessionTitle) {
+        // If we already generated a title, don't overwrite it with the backend title.
+        if (!generatedTitle) {
+          setIsTitleAnimating(true);
+          setSessionTitle(data.session_title);
+        }
       }
 
       if (data.tool_calls && data.tool_calls > 0) {
@@ -352,11 +456,14 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     }
   }, [
     sessionId,
+    sessionTitle,
+    messages.length,
     pathname,
     addMessage,
     setIsLoading,
     setSessionId,
     setSessionTitle,
+    setIsTitleAnimating,
     setShowToolIndicator,
     setToolCallCount,
     streamText,
@@ -486,8 +593,13 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
             onClick={() => setShowSessions(!showSessions)}
             className="flex items-center gap-1.5 hover:bg-muted/50 transition-colors px-2 py-1 rounded max-w-[180px]"
           >
-            <span className="text-sm font-medium text-foreground truncate">
-              {sessionTitle && messages.length > 0 ? sessionTitle : "New Chat"}
+            <span className="text-sm font-medium text-foreground truncate flex items-center gap-0.5">
+              {isTitleAnimating
+                ? displayedTitle
+                : (displayedTitle || (messages.length > 0 ? (sessionTitle || "Chat") : "New Chat"))}
+              {isTitleAnimating && (
+                <span className="inline-block w-0.5 h-4 bg-foreground animate-pulse ml-0.5" />
+              )}
             </span>
             <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
           </button>

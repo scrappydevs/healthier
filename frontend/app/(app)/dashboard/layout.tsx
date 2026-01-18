@@ -10,7 +10,6 @@ import {
   Settings, 
   LogOut,
   Search,
-  Bell,
   MessageSquare,
   PanelLeftClose,
   PanelLeft,
@@ -19,6 +18,7 @@ import {
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
+import { NotificationDropdown } from "@/components/notifications/NotificationDropdown";
 import { useChatStore } from "@/stores/chatStore";
 import { useSidebarStore } from "@/stores/sidebarStore";
 import { logoutAction } from "./actions";
@@ -254,10 +254,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               >
                 <MessageSquare className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 relative">
-                <Bell className="h-4 w-4" />
-                <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-destructive" />
-              </Button>
+              <NotificationDropdown />
             </div>
           </header>
 
