@@ -1,4 +1,4 @@
-# TBD (Elderly Care App)
+# Healthier
 
 A lightweight elderly care app focused on medication guidance, nutrition insights, exercise support, and Apple Watch integration, with a simple dashboard for summaries.
 
