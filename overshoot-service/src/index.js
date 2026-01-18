@@ -41,6 +41,58 @@ const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 const wssMedication = new WebSocketServer({ noServer: true });
 
+const useOvershootForMedication = false;
+const claudeApiKey = (process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || "").trim();
+const claudeApiUrl = "https://api.anthropic.com/v1/messages";
+const claudeModel = "claude-sonnet-4-20250514";
+
+async function analyzeFrameWithClaude(jpegBase64) {
+  if (!claudeApiKey) {
+    throw new Error("Claude API key not configured");
+  }
+
+  const body = {
+    model: claudeModel,
+    max_tokens: 64,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "What do you see? Reply in 30 characters or fewer." },
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/jpeg",
+              data: jpegBase64
+            }
+          }
+        ]
+      }
+    ]
+  };
+
+  const response = await fetch(claudeApiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": claudeApiKey,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify(body)
+  });
+
+  const json = await response.json().catch(() => null);
+  if (!response.ok) {
+    const msg = json?.error?.message || json?.message || response.statusText;
+    throw new Error(`Claude API error ${response.status}: ${msg}`);
+  }
+
+  const textBlock = Array.isArray(json?.content) ? json.content.find((c) => c?.type === "text") : null;
+  const rawText = (textBlock?.text || "").toString().trim();
+  return rawText;
+}
+
 server.on('upgrade', (req, socket, head) => {
   const url = req?.url || '';
   const ua = req?.headers?.['user-agent'] || '';
@@ -77,6 +129,8 @@ wssMedication.on('connection', (ws) => {
   let medicationContext = '';
   let resultTimeout = null;
   let firstResultReceived = false;
+  let claudeInFlight = false;
+  let lastClaudeSentAt = 0;
 
   function extractDescription(obj) {
     if (!obj) return '';
@@ -114,6 +168,8 @@ wssMedication.on('connection', (ws) => {
           frameCount = 0;
           lastDescription = '';
           firstResultReceived = false;
+          claudeInFlight = false;
+          lastClaudeSentAt = 0;
           if (resultTimeout) {
             clearTimeout(resultTimeout);
             resultTimeout = null;
@@ -121,7 +177,7 @@ wssMedication.on('connection', (ws) => {
           console.log('Started medication vision session');
           console.log('Medication context length:', medicationContext.length);
 
-          if (process.env.OVERSHOOT_API_KEY) {
+          if (useOvershootForMedication && process.env.OVERSHOOT_API_KEY) {
             const prompt = "Describe what you see.";
 
             overshootSession = new OvershootStreamSession({
@@ -240,9 +296,9 @@ wssMedication.on('connection', (ws) => {
             type: 'vision',
             description: overshootSession
               ? 'Analyzing what the camera sees...'
-              : (process.env.OVERSHOOT_API_KEY
+              : (useOvershootForMedication && process.env.OVERSHOOT_API_KEY
                 ? 'Vision stream failed to start. Check server logs.'
-                : 'Overshoot API not configured. Showing basic prompts only.'),
+                : 'Analyzing what the camera sees...'),
             timestamp: Date.now()
           }));
           break;
@@ -264,13 +320,32 @@ wssMedication.on('connection', (ws) => {
                 console.log("Medication vision: throttling frames (server-side)");
               }
             } else {
-              // Fallback: mock response when no Overshoot API
-              if (frameCount % 30 === 0) {
-                ws.send(JSON.stringify({
-                  type: 'vision',
-                  description: 'Point your camera at your medication to identify it.',
-                  timestamp: Date.now()
-                }));
+              if (frameCount % 10 === 0 && !claudeInFlight) {
+                const now = Date.now();
+                if (now - lastClaudeSentAt < 800) {
+                  break;
+                }
+                claudeInFlight = true;
+                lastClaudeSentAt = now;
+                const frameBase64 = data.frame;
+                try {
+                  const rawText = await analyzeFrameWithClaude(frameBase64);
+                  const trimmed = rawText.replace(/\s+/g, " ").trim().slice(0, 30);
+                  const description = trimmed ? `I see: ${trimmed}` : "I see: (no detail)";
+                  ws.send(JSON.stringify({
+                    type: 'vision',
+                    description,
+                    timestamp: Date.now()
+                  }));
+                } catch (err) {
+                  console.error("Medication vision Claude error:", err);
+                  ws.send(JSON.stringify({
+                    type: 'error',
+                    message: err.message || 'Claude vision error'
+                  }));
+                } finally {
+                  claudeInFlight = false;
+                }
               }
             }
           }
