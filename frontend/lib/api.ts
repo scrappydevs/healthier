@@ -21,6 +21,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       ...headers,
     },
     signal: AbortSignal.timeout(10000), // 10 second timeout
+    cache: "no-store", // Disable caching to always get fresh data
   };
 
   if (body) {
@@ -220,8 +221,31 @@ export type Medication = {
   adherence_rate: number;
 };
 
+export type AssignedMedication = {
+  id: string;
+  patient_id: string;
+  pill_id: string;
+  dosage_amount: number;
+  frequency: string;
+  days_of_week: number[];
+  times_of_day: string[];
+  is_active: boolean;
+  start_date: string;
+  end_date: string | null;
+  created_at: string;
+  updated_at: string;
+  pills: {
+    id: string;
+    name: string;
+    strength: number;
+    unit: string;
+    dosage_form: string;
+  } | null;
+};
+
 export type PatientMedicationsResponse = {
   medications: Medication[];
+  assigned_medications: AssignedMedication[];
   total: number;
 };
 
@@ -397,6 +421,19 @@ export async function getPills(): Promise<PillsResponse> {
   return request<PillsResponse>("/api/v1/pills");
 }
 
+export async function assignPatientMedication(
+  patientId: string,
+  pillId: string,
+  frequency: string,
+  daysOfWeek: string[],
+  timesOfDay: string[]
+): Promise<{ success: boolean; patient_pill: unknown }> {
+  return request<{ success: boolean; patient_pill: unknown }>(
+    `/api/v1/patients/${patientId}/medications/assign?pill_id=${pillId}&frequency=${frequency}&days_of_week=${daysOfWeek.join(",")}&times_of_day=${timesOfDay.join(",")}`,
+    { method: "POST" }
+  );
+}
+
 // ============================================
 // JOURNAL LOGS
 // ============================================
@@ -405,12 +442,13 @@ export type JournalEntry = {
   id: string;
   patient_id: string;
   transcript: string;
-  voice_transcription: string | null;
   duration_seconds: number | null;
   tags: string[] | null;
   mood: "very_positive" | "positive" | "neutral" | "negative" | "very_negative" | null;
   sentiment_score: number | null;
-  ai_analysis: Record<string, unknown> | null;
+  ai_analysis: {
+    summary?: string;
+  } | null;
   logged_at: string;
   created_at: string;
 };
@@ -430,6 +468,48 @@ export async function getPatientJournal(
   if (endDate) params.set("end_date", endDate);
   const query = params.toString();
   return request<PatientJournalResponse>(`/api/v1/patients/${patientId}/journal${query ? `?${query}` : ""}`);
+}
+
+
+// ============================================
+// PILL LOGS
+// ============================================
+
+export type PillLog = {
+  id: string;
+  patient_id: string;
+  patient_pill_id: string;
+  scheduled_time: string;
+  taken_time: string | null;
+  status: "pending" | "taken" | "missed" | "late";
+  patient_pills: {
+    pill_id: string;
+    dosage_amount: number;
+    frequency: string;
+    times_of_day: string[];
+    pills: {
+      name: string;
+      strength: number;
+      unit: string;
+      dosage_form: string;
+    };
+  };
+  created_at: string;
+};
+
+export type PatientPillLogsResponse = {
+  logs: PillLog[];
+  total: number;
+};
+
+export async function getPatientPillLogs(
+  patientId: string,
+  date?: string
+): Promise<PatientPillLogsResponse> {
+  const params = new URLSearchParams();
+  if (date) params.set("date", date);
+  const query = params.toString();
+  return request<PatientPillLogsResponse>(`/api/v1/patients/${patientId}/pill-logs${query ? `?${query}` : ""}`);
 }
 
 
@@ -466,13 +546,18 @@ export type DailySummaryResponse = {
   activity_summary?: string;
   alerts: DailySummaryAlert[];
   stats: DailySummaryStats;
+  cached?: boolean;  // True if returned from cache, false if freshly generated
 };
 
 export async function generateDailySummary(
   patientId: string,
-  date?: string
+  date?: string,
+  forceRefresh?: boolean
 ): Promise<DailySummaryResponse> {
-  const query = date ? `?summary_date=${date}` : "";
+  const params = new URLSearchParams();
+  if (date) params.append("summary_date", date);
+  if (forceRefresh) params.append("force_refresh", "true");
+  const query = params.toString() ? `?${params.toString()}` : "";
   return request<DailySummaryResponse>(`/api/v1/patients/${patientId}/daily-summary${query}`, {
     method: "POST",
   });
@@ -555,6 +640,19 @@ export async function generateJournalSummary(
   return request<{ summary: string }>(`/api/v1/journal-entries/${entryId}/summary`, {
     method: "POST",
   });
+}
+
+export async function generateJournalDaySummary(
+  patientId: string,
+  date: string,
+  forceRefresh?: boolean
+): Promise<{ summary: string; entry_count: number; cached?: boolean }> {
+  const params = new URLSearchParams({ date });
+  if (forceRefresh) params.append("force_refresh", "true");
+  return request<{ summary: string; entry_count: number; cached?: boolean }>(
+    `/api/v1/patients/${patientId}/journal/summary?${params.toString()}`,
+    { method: "POST" }
+  );
 }
 
 export async function generateMealSummary(

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { BookOpen, AlertCircle, Clock, Smile, Meh, Frown } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { getPatientJournal, generateJournalSummary, type JournalEntry } from "@/lib/api";
+import { getPatientJournal, generateJournalDaySummary, type JournalEntry } from "@/lib/api";
 
 interface JournalSectionProps {
   patientId: string;
@@ -73,8 +73,8 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
-  const [summaries, setSummaries] = useState<Record<string, string>>({});
+  const [daySummaries, setDaySummaries] = useState<Record<string, string>>({});
+  const [loadingSummaries, setLoadingSummaries] = useState(false);
 
   useEffect(() => {
     async function fetchJournal() {
@@ -83,25 +83,33 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
       try {
         const response = await getPatientJournal(patientId, startDate, endDate);
         setEntries(response.entries);
+        setIsLoading(false);
         
-        // Generate summaries
+        // Generate AI summaries for each day (async, don't block UI)
+        setLoadingSummaries(true);
+        const grouped = groupEntriesByDay(response.entries);
         const summariesMap: Record<string, string> = {};
-        for (const entry of response.entries) {
-          if (entry.ai_analysis && typeof entry.ai_analysis === "object" && "summary" in entry.ai_analysis) {
-            summariesMap[entry.id] = String(entry.ai_analysis.summary);
-          } else {
+        
+        // Generate AI summaries in parallel for all days
+        await Promise.all(
+          Object.keys(grouped).map(async (dayKey) => {
+            const firstEntry = grouped[dayKey][0];
+            const entryDate = new Date(firstEntry.logged_at).toISOString().split('T')[0];
+            
             try {
-              const summaryRes = await generateJournalSummary(entry.id);
-              summariesMap[entry.id] = summaryRes.summary;
+              const result = await generateJournalDaySummary(patientId, entryDate);
+              summariesMap[dayKey] = result.summary;
             } catch {
-              summariesMap[entry.id] = getEntrySummary(entry.transcript);
+              // If AI summary fails, don't show anything
+              summariesMap[dayKey] = "";
             }
-          }
-        }
-        setSummaries(summariesMap);
+          })
+        );
+        
+        setDaySummaries(summariesMap);
+        setLoadingSummaries(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load journal");
-      } finally {
         setIsLoading(false);
       }
     }
@@ -164,25 +172,29 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
               </div>
             </div>
 
-            {/* Day Entries */}
+            {/* Day Summary */}
+            {(loadingSummaries || daySummaries[dayKey]) && (
+              <div className="px-4 py-3 bg-slate-50/50 border-b">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Summary</p>
+                {loadingSummaries && !daySummaries[dayKey] ? (
+                  <p className="text-sm text-muted-foreground italic">Generating AI summary...</p>
+                ) : (
+                  <p className="text-sm text-foreground leading-relaxed">{daySummaries[dayKey]}</p>
+                )}
+              </div>
+            )}
+
+            {/* Day Entries - Raw Transcripts */}
             <div className="divide-y">
               {dayEntries.map((entry) => {
-                const isExpanded = expandedEntryId === entry.id;
                 const moodInfo = entry.mood ? moodIcons[entry.mood] : null;
                 const MoodIcon = moodInfo?.icon;
-                const summary = summaries[entry.id] || getEntrySummary(entry.transcript);
-                const hasMoreContent = entry.transcript.length > (summary.length || 0);
 
                 return (
                   <div 
                     key={entry.id} 
-                    className={cn(
-                      "px-4 py-3 transition-colors",
-                      hasMoreContent && "cursor-pointer hover:bg-muted/10"
-                    )}
-                    onClick={() => hasMoreContent && setExpandedEntryId(isExpanded ? null : entry.id)}
+                    className="px-4 py-3"
                   >
-                    {/* Entry Header Row */}
                     <div className="flex items-start gap-3">
                       {/* Time */}
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground w-20 shrink-0">
@@ -191,52 +203,21 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
                       </div>
 
                       {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        {/* Summary (always shown) */}
-                        <p className="text-sm text-foreground">
-                          {summary}
-                        </p>
-                        
-                        {/* Expand hint */}
-                        {hasMoreContent && !isExpanded && (
-                          <span className="text-[10px] text-muted-foreground mt-1 inline-block">
-                            Click to see full transcript
-                          </span>
-                        )}
-
-                        {/* Full Transcript (expanded) */}
-                        {isExpanded && hasMoreContent && (
-                          <div className="mt-3 pt-3 border-t border-dashed">
-                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-                              Full Transcript
-                            </p>
-                            <p className="text-sm text-muted-foreground leading-relaxed">
-                              {entry.transcript}
-                            </p>
-                          </div>
-                        )}
+                      <div className="flex-1 min-w-0 space-y-2">
+                        {/* Raw Transcript */}
+                        <p className="text-sm text-foreground leading-relaxed">{entry.transcript}</p>
 
                         {/* Tags */}
                         {entry.tags && entry.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2">
+                          <div className="flex flex-wrap gap-1.5">
                             {entry.tags.map((tag, idx) => (
                               <span 
                                 key={idx}
-                                className="px-2 py-0.5 text-xs bg-muted rounded-full text-muted-foreground"
+                                className="px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded"
                               >
                                 {tag}
                               </span>
                             ))}
-                          </div>
-                        )}
-
-                        {/* Analysis Summary */}
-                        {isExpanded && entry.ai_analysis && Object.keys(entry.ai_analysis).length > 0 && (
-                          <div className="text-xs text-muted-foreground bg-muted/30 rounded-md p-2 mt-2">
-                            <span className="font-medium">Analysis: </span>
-                            {typeof entry.ai_analysis === "object" && "summary" in entry.ai_analysis 
-                              ? String(entry.ai_analysis.summary)
-                              : "Analysis available"}
                           </div>
                         )}
                       </div>

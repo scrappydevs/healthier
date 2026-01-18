@@ -287,28 +287,141 @@ async def get_patient_medications(
         raise HTTPException(status_code=404, detail="Patient not found")
     
     user_id = patient_response.data.get("user_id")
-    if not user_id:
-        return {"medications": [], "total": 0}
+    medications = []
     
-    # Query medications by user_id
-    meds_response = db.table("medications").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
-    medications = meds_response.data or []
-    
-    # For each medication, get recent logs
-    for med in medications:
-        logs_response = db.table("medication_logs").select("*").eq(
-            "medication_id", med.get("id")
-        ).order("taken_at", desc=True).limit(10).execute()
-        med["recent_logs"] = logs_response.data or []
+    if user_id:
+        # Query medications by user_id (iOS self-logged)
+        meds_response = db.table("medications").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        medications = meds_response.data or []
         
-        # Calculate adherence for this medication
-        total_logs = len(logs_response.data or [])
-        on_time_logs = len([l for l in (logs_response.data or []) if l.get("was_on_time")])
-        med["adherence_rate"] = round((on_time_logs / total_logs * 100) if total_logs > 0 else 100, 1)
+        # For each medication, get recent logs
+        for med in medications:
+            logs_response = db.table("medication_logs").select("*").eq(
+                "medication_id", med.get("id")
+            ).order("taken_at", desc=True).limit(10).execute()
+            med["recent_logs"] = logs_response.data or []
+            
+            # Calculate adherence for this medication
+            total_logs = len(logs_response.data or [])
+            on_time_logs = len([l for l in (logs_response.data or []) if l.get("was_on_time")])
+            med["adherence_rate"] = round((on_time_logs / total_logs * 100) if total_logs > 0 else 100, 1)
+    
+    # Get clinician-assigned medications from patient_pills
+    patient_pills_response = db.table("patient_pills").select("*, pills(*)").eq("patient_id", str(patient_id)).eq("is_active", True).execute()
+    assigned_medications = patient_pills_response.data or []
     
     return {
         "medications": medications,
-        "total": len(medications),
+        "assigned_medications": assigned_medications,
+        "total": len(assigned_medications),  # Count clinician-assigned active prescriptions
+    }
+
+
+@router.post("/patients/{patient_id}/medications/assign")
+async def assign_patient_medication(
+    patient_id: UUID,
+    pill_id: str = Query(...),
+    frequency: str = Query(...),
+    days_of_week: str = Query(...),
+    times_of_day: str = Query(...),
+    db: Client = Depends(get_db)
+):
+    """Assign a medication to a patient."""
+    # Verify patient exists
+    patient_res = db.table("patients").select("id").eq("id", str(patient_id)).single().execute()
+    if not patient_res.data:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    # Get pill info to extract dosage
+    pill_res = db.table("pills").select("strength").eq("id", pill_id).single().execute()
+    if not pill_res.data:
+        raise HTTPException(status_code=404, detail="Pill not found")
+    
+    dosage_amount = pill_res.data.get("strength", 1)  # Default to 1 if not specified
+    
+    # #region agent log
+    import json
+    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+        f.write(json.dumps({"location":"v1.py:assign_medication:input","message":"Assignment input","data":{"days_of_week_raw":days_of_week,"times_of_day_raw":times_of_day,"frequency":frequency},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
+    # #endregion
+    
+    # Day name to integer mapping (0=Mon, 1=Tue, ..., 6=Sun)
+    day_mapping = {
+        "Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, 
+        "Fri": 4, "Sat": 5, "Sun": 6
+    }
+    
+    # Parse arrays from comma-separated strings
+    day_names = [d.strip() for d in days_of_week.split(",") if d.strip()]
+    days_list = [day_mapping.get(d, 0) for d in day_names]  # Convert to integers
+    times_list = [t.strip() for t in times_of_day.split(",") if t.strip()]
+    
+    # #region agent log
+    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+        f.write(json.dumps({"location":"v1.py:assign_medication:parsed","message":"Parsed values","data":{"day_names":day_names,"days_list":days_list,"times_list":times_list},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
+    # #endregion
+    
+    # Create patient_pills record
+    patient_pill_data = {
+        "patient_id": str(patient_id),
+        "pill_id": pill_id,
+        "dosage_amount": dosage_amount,
+        "frequency": frequency,
+        "days_of_week": days_list,
+        "times_of_day": times_list,
+        "is_active": True,
+        "start_date": date.today().isoformat(),
+    }
+    
+    result = db.table("patient_pills").insert(patient_pill_data).execute()
+    
+    # #region agent log
+    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+        f.write(json.dumps({"location":"v1.py:assign_medication:patient_pill_created","message":"patient_pills record created","data":{"patient_pill_id":result.data[0]["id"] if result.data else None,"times_of_day":times_list},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
+    # #endregion
+    
+    # Create pill_logs for today's scheduled times
+    if result.data and times_list:
+        from datetime import datetime, timedelta
+        patient_pill_id = result.data[0]["id"]
+        today = date.today()
+        
+        # If days_list is empty and it's a daily medication, treat as every day
+        effective_days = days_list if len(days_list) > 0 else ([0,1,2,3,4,5,6] if "daily" in frequency else [])
+        
+        # Check if today is in the allowed days_of_week
+        today_weekday = today.weekday()  # Python: 0=Monday, 6=Sunday
+        if today_weekday in effective_days:
+            # Create a pill_log for each scheduled time today
+            for time_str in times_list:
+                # Parse time and create scheduled datetime
+                hour, minute = map(int, time_str.split(":"))
+                scheduled_datetime = datetime.combine(today, datetime.min.time().replace(hour=hour, minute=minute))
+                
+                # Determine status: if time has passed, mark as missed, otherwise pending
+                now = datetime.now()
+                if scheduled_datetime < now:
+                    status = "missed"
+                else:
+                    status = "pending"
+                
+                pill_log_data = {
+                    "patient_pill_id": patient_pill_id,
+                    "patient_id": str(patient_id),
+                    "scheduled_time": scheduled_datetime.isoformat(),
+                    "status": status,
+                }
+                
+                db.table("pill_logs").insert(pill_log_data).execute()
+        
+        # #region agent log
+        with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"location":"v1.py:assign_medication:pill_logs_created","message":"pill_logs created for today","data":{"patient_pill_id":patient_pill_id,"today_in_schedule":today_weekday in days_list,"times_count":len(times_list)},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
+        # #endregion
+    
+    return {
+        "success": True,
+        "patient_pill": result.data[0] if result.data else None
     }
 
 
@@ -702,6 +815,253 @@ async def get_patient_journal(
     }
 
 
+@router.get("/patients/{patient_id}/pill-logs")
+async def get_patient_pill_logs(
+    patient_id: UUID,
+    date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format"),
+    db: Client = Depends(get_db)
+):
+    """Get pill logs for a patient, optionally filtered by date."""
+    patient_id_str = str(patient_id)
+    # #region agent log
+    import json
+    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+        f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:entry","message":"Endpoint called","data":{"patient_id":patient_id_str,"date":date},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","hypothesisId":"H2,H4"}) + '\n')
+    # #endregion
+    
+    query = db.table("pill_logs").select(
+        "id, patient_id, patient_pill_id, scheduled_time, taken_time, status, "
+        "patient_pills(pill_id, dosage_amount, frequency, times_of_day, pills(name, strength, unit, dosage_form)), "
+        "created_at"
+    ).eq("patient_id", patient_id_str)
+    
+    # Filter by date if provided
+    if date:
+        date_start = f"{date}T00:00:00"
+        date_end = f"{date}T23:59:59"
+        # #region agent log
+        with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:date_filter","message":"Date filtering","data":{"date_start":date_start,"date_end":date_end},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","hypothesisId":"H2"}) + '\n')
+        # #endregion
+        query = query.gte("scheduled_time", date_start).lte("scheduled_time", date_end)
+    
+    # #region agent log
+    # Check all pill_logs for this patient (no date filter) to see if any exist
+    all_logs_response = db.table("pill_logs").select("id, scheduled_time, status").eq("patient_id", patient_id_str).execute()
+    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+        f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:all_logs","message":"All pill logs for patient","data":{"total_all_logs":len(all_logs_response.data or []),"all_logs_sample":all_logs_response.data[:5] if all_logs_response.data else []},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","hypothesisId":"H1,H2"}) + '\n')
+    # #endregion
+    
+    # #region agent log
+    # Check patient_pills to see if medications are assigned (include frequency and days_of_week for scheduling)
+    patient_pills_response = db.table("patient_pills").select("id, patient_id, pill_id, is_active, times_of_day, frequency, days_of_week").eq("patient_id", patient_id_str).eq("is_active", True).execute()
+    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+        f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:patient_pills","message":"Active patient_pills records","data":{"total_patient_pills":len(patient_pills_response.data or []),"patient_pills_sample":patient_pills_response.data if patient_pills_response.data else []},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","hypothesisId":"H1"}) + '\n')
+    # #endregion
+    
+    response = query.order("scheduled_time", desc=False).execute()
+    
+    # #region agent log
+    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+        f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:response","message":"Query result","data":{"total_logs":len(response.data or []),"logs_preview":response.data[:3] if response.data else [],"raw_count":len(response.data) if response.data else 0},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H1,H3,H5"}) + '\n')
+    # #endregion
+    
+    # If no pill_logs exist but patient has active medications, generate them for the requested date
+    if date and len(response.data or []) == 0 and len(patient_pills_response.data or []) > 0:
+        from datetime import datetime
+        target_date = __import__('datetime').date.fromisoformat(date)
+        target_weekday = target_date.weekday()
+        
+        # #region agent log
+        with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:generate_logs","message":"No logs found, generating from patient_pills","data":{"target_date":date,"target_weekday":target_weekday,"patient_pills_count":len(patient_pills_response.data)},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
+        # #endregion
+        
+        generated_logs = []
+        for patient_pill in patient_pills_response.data:
+            days_of_week = patient_pill.get("days_of_week") or []
+            times_of_day = patient_pill.get("times_of_day") or []
+            frequency = patient_pill.get("frequency", "")
+            
+            # If days_of_week is empty and it's a daily medication, treat as every day
+            if len(days_of_week) == 0 and "daily" in frequency:
+                days_of_week = [0, 1, 2, 3, 4, 5, 6]  # All days
+            
+            # #region agent log
+            with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:check_schedule","message":"Checking patient_pill schedule","data":{"patient_pill_id":patient_pill.get("id"),"days_of_week":days_of_week,"frequency":frequency,"times_of_day":times_of_day,"target_weekday":target_weekday,"is_scheduled_today":target_weekday in days_of_week},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
+            # #endregion
+            
+            # Check if target date is in the schedule
+            if target_weekday in days_of_week:
+                for time_str in times_of_day:
+                    # Parse time and create scheduled datetime
+                    hour, minute = map(int, time_str.split(":"))
+                    scheduled_datetime = datetime.combine(target_date, datetime.min.time().replace(hour=hour, minute=minute))
+                    
+                    # Determine status
+                    now = datetime.now()
+                    if scheduled_datetime < now:
+                        status = "missed"
+                    else:
+                        status = "pending"
+                    
+                    pill_log_data = {
+                        "patient_pill_id": patient_pill["id"],
+                        "patient_id": patient_id_str,
+                        "scheduled_time": scheduled_datetime.isoformat(),
+                        "status": status,
+                    }
+                    
+                    # Insert into database
+                    insert_result = db.table("pill_logs").insert(pill_log_data).execute()
+                    if insert_result.data:
+                        generated_logs.append(insert_result.data[0])
+        
+        # #region agent log
+        with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:generated","message":"pill_logs generated","data":{"generated_count":len(generated_logs)},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
+        # #endregion
+        
+        # Re-query to get the full data with joins
+        if generated_logs:
+            response = query.order("scheduled_time", desc=False).execute()
+    
+    return {
+        "logs": response.data or [],
+        "total": len(response.data or [])
+    }
+
+
+@router.post("/patients/{patient_id}/journal/summary")
+async def generate_journal_day_summary(
+    patient_id: UUID,
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    force_refresh: bool = Query(False, description="Force regeneration even if cached"),
+    db: Client = Depends(get_db)
+):
+    """Generate an AI summary of what the patient talked about in their journal entries for a specific day.
+    
+    Uses caching to avoid regenerating when no new entries have been added.
+    """
+    
+    # Get journal entries for the day
+    date_start = f"{date}T00:00:00"
+    date_end = f"{date}T23:59:59"
+    
+    response = db.table("journal_logs").select(
+        "id, transcript, mood, logged_at"
+    ).eq("patient_id", str(patient_id)).gte(
+        "logged_at", date_start
+    ).lte("logged_at", date_end).order("logged_at", desc=False).execute()
+    
+    entries = response.data or []
+    current_count = len(entries)
+    
+    if current_count == 0:
+        return {
+            "summary": "No journal entries recorded for this day.",
+            "entry_count": 0,
+            "cached": False
+        }
+    
+    # Check for cached summary (unless force_refresh is True)
+    if not force_refresh:
+        cached_res = db.table("daily_summaries").select(
+            "journal_summary, entry_counts"
+        ).eq("patient_id", str(patient_id)).eq("date", date).single().execute()
+        
+        if cached_res.data:
+            cached = cached_res.data
+            cached_counts = cached.get("entry_counts") or {}
+            cached_journal_count = cached_counts.get("journal", 0)
+            
+            # If journal count matches and we have a summary, return cached
+            if cached_journal_count == current_count and cached.get("journal_summary"):
+                return {
+                    "summary": cached.get("journal_summary"),
+                    "entry_count": current_count,
+                    "cached": True
+                }
+    
+    # Build context from all entries
+    context = ""
+    for entry in entries:
+        transcript = entry.get("transcript", "")
+        mood = entry.get("mood", "neutral")
+        logged_at = entry.get("logged_at", "")[:16]
+        context += f"[{logged_at}] Mood: {mood}\n\"{transcript}\"\n\n"
+    
+    # Use Cerebras to summarize what they talked about
+    cerebras = get_cerebras_client()
+    if not cerebras:
+        return {
+            "summary": "AI summary unavailable - Cerebras not configured",
+            "entry_count": current_count,
+            "cached": False
+        }
+    
+    prompt = f"""You are a healthcare assistant. The patient recorded {current_count} voice journal {"entry" if current_count == 1 else "entries"} today.
+
+Your task: Summarize WHAT the patient talked about. Synthesize the topics, experiences, thoughts, and feelings they shared into a cohesive 2-3 sentence summary.
+
+DO NOT just list snippets or count entries. Focus on the substance of what they discussed.
+
+Journal entries:
+{context}
+
+Provide a clear, natural summary of what the patient talked about:"""
+
+    try:
+        response = cerebras.chat.completions.create(
+            model="llama-3.3-70b",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=200
+        )
+        
+        summary = response.choices[0].message.content.strip()
+    except Exception as e:
+        summary = f"Error generating summary: {str(e)}"
+    
+    # Store/update summary in daily_summaries table
+    # First check if record exists
+    from datetime import datetime as dt
+    existing = db.table("daily_summaries").select("id, entry_counts").eq(
+        "patient_id", str(patient_id)
+    ).eq("date", date).single().execute()
+    
+    if existing.data:
+        # Update existing record
+        existing_counts = existing.data.get("entry_counts") or {}
+        existing_counts["journal"] = current_count
+        
+        db.table("daily_summaries").update({
+            "journal_summary": summary,
+            "entry_counts": existing_counts,
+            "generated_at": dt.utcnow().isoformat()
+        }).eq("id", existing.data.get("id")).execute()
+    else:
+        # Create new record (get patient info first)
+        patient_res = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+        user_id = patient_res.data.get("user_id") if patient_res.data else None
+        
+        db.table("daily_summaries").insert({
+            "patient_id": str(patient_id),
+            "user_id": user_id,
+            "date": date,
+            "journal_summary": summary,
+            "entry_counts": {"journal": current_count},
+            "generated_at": dt.utcnow().isoformat()
+        }).execute()
+    
+    return {
+        "summary": summary,
+        "entry_count": current_count,
+        "cached": False
+    }
+
+
 # ============================================
 # DAILY AI SUMMARY
 # ============================================
@@ -710,9 +1070,14 @@ async def get_patient_journal(
 async def generate_daily_summary(
     patient_id: UUID,
     summary_date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format, defaults to today"),
+    force_refresh: bool = Query(False, description="Force regeneration even if cached"),
     db: Client = Depends(get_db)
 ):
-    """Generate an AI-powered daily summary for a patient using Cerebras."""
+    """Generate an AI-powered daily summary for a patient using Cerebras.
+    
+    Uses caching to avoid regenerating when no new data has been added.
+    Set force_refresh=true to bypass the cache.
+    """
     
     target_date = summary_date or date.today().isoformat()
     
@@ -761,6 +1126,64 @@ async def generate_daily_summary(
     ).gte("logged_at", date_start).lte("logged_at", date_end).execute()
     journal_entries = journal_res.data or []
     
+    # Calculate current entry counts for cache comparison
+    current_counts = {
+        "meals": len(meals),
+        "exercises": len(exercises),
+        "journal": len(journal_entries),
+        "pill_logs": len(pill_logs)
+    }
+    
+    # Check for existing cached summary (unless force_refresh is True)
+    if not force_refresh:
+        cached_res = db.table("daily_summaries").select("*").eq(
+            "patient_id", str(patient_id)
+        ).eq("date", target_date).single().execute()
+        
+        if cached_res.data:
+            cached = cached_res.data
+            cached_counts = cached.get("entry_counts") or {}
+            
+            # Check if entry counts match (no new data added)
+            if (cached_counts.get("meals") == current_counts["meals"] and
+                cached_counts.get("exercises") == current_counts["exercises"] and
+                cached_counts.get("journal") == current_counts["journal"] and
+                cached_counts.get("pill_logs") == current_counts["pill_logs"] and
+                cached.get("ai_summary")):
+                
+                # Return cached summary - no API call needed
+                taken = sum(1 for p in pill_logs if p.get('status') == 'taken')
+                missed = sum(1 for p in pill_logs if p.get('status') == 'missed')
+                late = sum(1 for p in pill_logs if p.get('status') == 'late')
+                pending = sum(1 for p in pill_logs if p.get('status') == 'pending')
+                total_calories = sum(m.get('total_calories', 0) or 0 for m in meals)
+                total_exercise_min = sum(e.get('duration_minutes', 0) or 0 for e in exercises)
+                calories_burned = sum(e.get('calories_burned', 0) or 0 for e in exercises)
+                
+                return {
+                    "date": target_date,
+                    "patient_name": patient_name,
+                    "summary": cached.get("ai_summary", ""),
+                    "journal_summary": cached.get("journal_summary", ""),
+                    "meals_summary": cached.get("meals_summary", ""),
+                    "activity_summary": cached.get("activity_summary", ""),
+                    "alerts": cached.get("ai_alerts", []),
+                    "stats": {
+                        "meals": len(meals),
+                        "total_calories": total_calories,
+                        "exercises": len(exercises),
+                        "exercise_minutes": total_exercise_min,
+                        "calories_burned": calories_burned,
+                        "medications_taken": taken,
+                        "medications_missed": missed,
+                        "medications_late": late,
+                        "medications_pending": pending,
+                        "journal_entries": len(journal_entries),
+                        "med_adherence_pct": round((taken / (taken + missed + late) * 100) if (taken + missed + late) > 0 else 100, 1)
+                    },
+                    "cached": True  # Indicate this was a cached response
+                }
+    
     # Get patient's care plans
     plans_res = db.table("patient_plans").select("*").eq(
         "patient_id", str(patient_id)
@@ -789,6 +1212,14 @@ Date: {target_date}
     if diet_plan:
         context += f"Diet Plan: {diet_plan.get('title', 'Active')}\n"
         context += f"  Notes/Restrictions: {diet_plan.get('notes', 'None')}\n"
+        if diet_plan.get('calorie_target'):
+            context += f"  Daily Calorie Target: {diet_plan.get('calorie_target')} cal\n"
+        if diet_plan.get('protein_target'):
+            context += f"  Protein Target: {diet_plan.get('protein_target')}g\n"
+        if diet_plan.get('carb_target'):
+            context += f"  Carb Target: {diet_plan.get('carb_target')}g\n"
+        if diet_plan.get('fat_target'):
+            context += f"  Fat Target: {diet_plan.get('fat_target')}g\n"
     else:
         context += "Diet Plan: None set\n"
         
@@ -803,7 +1234,21 @@ Date: {target_date}
         context += "Exercise Plan: None set\n"
 
     context += f"\n=== MEALS ({len(meals)} logged) ===\n"
-    context += f"Total: {total_calories} cal, {total_protein}g protein, {total_carbs}g carbs, {total_fat}g fat\n"
+    context += f"Total Consumed: {total_calories} cal, {total_protein}g protein, {total_carbs}g carbs, {total_fat}g fat\n"
+    if diet_plan:
+        if diet_plan.get('calorie_target'):
+            diff = total_calories - diet_plan.get('calorie_target', 0)
+            context += f"Calorie Target: {diet_plan.get('calorie_target')} cal (actual: {total_calories} cal, difference: {diff:+d} cal)\n"
+        if diet_plan.get('protein_target'):
+            diff = total_protein - diet_plan.get('protein_target', 0)
+            context += f"Protein Target: {diet_plan.get('protein_target')}g (actual: {total_protein}g, difference: {diff:+.0f}g)\n"
+        if diet_plan.get('carb_target'):
+            diff = total_carbs - diet_plan.get('carb_target', 0)
+            context += f"Carb Target: {diet_plan.get('carb_target')}g (actual: {total_carbs}g, difference: {diff:+.0f}g)\n"
+        if diet_plan.get('fat_target'):
+            diff = total_fat - diet_plan.get('fat_target', 0)
+            context += f"Fat Target: {diet_plan.get('fat_target')}g (actual: {total_fat}g, difference: {diff:+.0f}g)\n"
+    context += "\n"
     
     # Check for diet plan violations using AI
     violations = []
@@ -886,8 +1331,10 @@ Date: {target_date}
     context += f"\n=== JOURNAL ENTRIES ({len(journal_entries)}) ===\n"
     for entry in journal_entries:
         mood = entry.get('mood', 'neutral')
-        transcript = entry.get('transcript', '')[:200]
-        context += f"- Mood: {mood}. Entry: {transcript}...\n"
+        # Include full transcript (up to 500 chars) for better summarization
+        transcript = entry.get('transcript', '')[:500]
+        logged_at = entry.get('logged_at', '')[:16]
+        context += f"- [{logged_at}] Mood: {mood}\n  What they said: \"{transcript}\"\n"
     
     # Use Cerebras to generate summary
     cerebras = get_cerebras_client()
@@ -921,7 +1368,7 @@ Patient Data:
 Respond in this exact JSON format:
 {{
   "summary": "2-3 sentences summarizing the day's key highlights, comparing actual behavior to care plans where applicable. Include specific numbers.",
-  "journal_summary": "1-2 sentences summarizing their mood/thoughts based on journal entries. If 0 entries, say 'No journal entries recorded.'",
+  "journal_summary": "Summarize WHAT the patient talked about across their journal entries - the topics, experiences, and thoughts they shared. Synthesize the content into a cohesive summary. Do NOT just count entries or list snippets. If 0 entries, say 'No journal entries recorded.'",
   "meals_summary": "2-3 sentences on nutrition. Compare actual intake to diet plan if one exists. Include specific numbers (calories, meals logged). Mention any violations of dietary restrictions. If 0 meals, say 'No meals logged.'",
   "activity_summary": "2-3 sentences on exercise. Compare actual activity to exercise plan targets if one exists. Include specific numbers (minutes, exercises logged). If 0 exercises, say 'No exercise logged.'",
   "alerts": [
@@ -974,13 +1421,19 @@ Be clinical, specific, and comparison-focused. Explicitly state whether the pati
     total_exercise_min = sum(e.get('duration_minutes', 0) or 0 for e in exercises)
     calories_burned = sum(e.get('calories_burned', 0) or 0 for e in exercises)
     
-    # Store summary in database
+    # Store summary in database with entry counts for cache invalidation
+    from datetime import datetime as dt
     summary_data = {
         "patient_id": str(patient_id),
         "user_id": user_id,
         "date": target_date,
         "ai_summary": summary,
+        "journal_summary": journal_summary,
+        "meals_summary": meals_summary,
+        "activity_summary": activity_summary,
         "ai_alerts": alerts,
+        "entry_counts": current_counts,  # Store counts for cache comparison
+        "generated_at": dt.utcnow().isoformat(),
         "total_calories_consumed": total_calories,
         "total_calories_burned": calories_burned,
         "total_exercise_minutes": total_exercise_min,
@@ -1055,7 +1508,8 @@ Be clinical, specific, and comparison-focused. Explicitly state whether the pati
             "medications_pending": pending,
             "adherence_percent": round((taken / (taken + missed + late)) * 100) if (taken + missed + late) > 0 else 100,
             "journal_entries": len(journal_entries)
-        }
+        },
+        "cached": False  # Freshly generated, not from cache
     }
 
 

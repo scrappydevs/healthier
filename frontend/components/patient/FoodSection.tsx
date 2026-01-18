@@ -285,6 +285,9 @@ function MealCard({
             <span className="text-xs text-muted-foreground">|</span>
             <span className="text-xs text-muted-foreground">{meal.total_calories} cal</span>
           </div>
+          {meal.ai_analysis && (
+            <p className="text-sm text-emerald-600 leading-relaxed mt-1">{meal.ai_analysis}</p>
+          )}
         </div>
 
         {/* Health rating */}
@@ -347,14 +350,6 @@ function MealCard({
                     </span>
                   ))}
                 </div>
-              </div>
-            )}
-
-            {/* Analysis */}
-            {meal.ai_analysis && (
-              <div>
-                <p className="text-[10px] text-muted-foreground mb-1">Analysis</p>
-                <p className="text-xs text-foreground leading-relaxed">{meal.ai_analysis}</p>
               </div>
             )}
 
