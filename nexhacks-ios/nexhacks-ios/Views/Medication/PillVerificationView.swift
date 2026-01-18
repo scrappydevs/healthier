@@ -11,7 +11,7 @@ import PhotosUI
 struct PillVerificationView: View {
     @Environment(\.dismiss) private var dismiss
     let medication: Medication
-    let onVerified: (Bool) -> Void
+    let onVerified: (VerificationStatus) -> Void
     private let useYoloForVerification = true
 
     @State private var selectedImage: UIImage?
@@ -22,9 +22,14 @@ struct PillVerificationView: View {
     @State private var verificationResult: PillVerificationResult?
     @State private var errorMessage: String?
     @State private var showError = false
+    @State private var showContinueAlert = false
 
     private let claudeService = ClaudeAPIService()
     private let pillDetectionService = PillDetectionService()
+    
+    private var isClaudeVerification: Bool {
+        !useYoloForVerification
+    }
 
     // Determine if verification passed (correct medication AND correct dose)
     private var canConfirm: Bool {
@@ -264,34 +269,38 @@ struct PillVerificationView: View {
             // Status Icon - based on both medication match AND dose correctness
             statusIconSection(result)
 
-            if !canConfirm {
-                // Pill Count Section (always show if we have a detected count)
-                if let detected = result.detectedPillCount {
-                    pillCountSection(detected: detected, expected: medication.expectedPillCount, isCorrect: result.isCorrectDose)
-                }
-
-                // Dosage Warning (if any)
-                if let warning = result.dosageWarning {
-                    dosageWarningSection(warning: warning, isOverdose: (result.detectedPillCount ?? 0) > medication.expectedPillCount)
-                }
-            }
-
-            // Medication match info
-            if result.isMatch {
-                medicationMatchSection(result)
+            if isClaudeVerification {
+                claudeWarningsSection(result)
             } else {
                 if !canConfirm {
-                    medicationMismatchSection(result)
+                    // Pill Count Section (always show if we have a detected count)
+                    if let detected = result.detectedPillCount {
+                        pillCountSection(detected: detected, expected: medication.expectedPillCount, isCorrect: result.isCorrectDose)
+                    }
+
+                    // Dosage Warning (if any)
+                    if let warning = result.dosageWarning {
+                        dosageWarningSection(warning: warning, isOverdose: (result.detectedPillCount ?? 0) > medication.expectedPillCount)
+                    }
                 }
-            }
 
-            if !canConfirm {
-                // Recommendation
-                recommendationSection(result)
+                // Medication match info
+                if result.isMatch {
+                    medicationMatchSection(result)
+                } else {
+                    if !canConfirm {
+                        medicationMismatchSection(result)
+                    }
+                }
 
-                // Warnings
-                if !result.warnings.isEmpty {
-                    warningsSection(result.warnings)
+                if !canConfirm {
+                    // Recommendation
+                    recommendationSection(result)
+
+                    // Warnings
+                    if !result.warnings.isEmpty {
+                        warningsSection(result.warnings)
+                    }
                 }
             }
 
@@ -474,13 +483,26 @@ struct PillVerificationView: View {
         .background(Color.warning.opacity(0.1))
         .cornerRadius(AppTheme.CornerRadius.sm)
     }
+    
+    private func claudeWarningsSection(_ result: PillVerificationResult) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+            Text("We could not confidently identify this pill. Please double-check before taking it.")
+                .font(AppTheme.Typography.body)
+                .foregroundColor(.textPrimary)
+            
+            warningsSection(result.warnings.isEmpty
+                            ? ["Please double-check the pill with the label or packaging."]
+                            : result.warnings)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
     private func actionButtonsSection(_ result: PillVerificationResult) -> some View {
         VStack(spacing: AppTheme.Spacing.md) {
             // Only show confirm button if verification passed
             if canConfirm {
                 Button {
-                    onVerified(true)
+                    onVerified(.verified)
                     dismiss()
                 } label: {
                     HStack {
@@ -492,6 +514,23 @@ struct PillVerificationView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, AppTheme.Spacing.md)
                     .background(Color.success)
+                    .cornerRadius(AppTheme.CornerRadius.md)
+                }
+            }
+            
+            if isClaudeVerification && !canConfirm {
+                Button {
+                    showContinueAlert = true
+                } label: {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("Continue Anyway")
+                    }
+                    .font(AppTheme.Typography.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppTheme.Spacing.md)
+                    .background(Color.warning)
                     .cornerRadius(AppTheme.CornerRadius.md)
                 }
             }
@@ -518,7 +557,7 @@ struct PillVerificationView: View {
             }
 
             // Show warning message if verification failed
-            if !canConfirm {
+            if !canConfirm && !isClaudeVerification {
                 Text("You must take a photo showing the correct number of pills before logging this dose.")
                     .font(AppTheme.Typography.caption)
                     .foregroundColor(.textSecondary)
@@ -527,6 +566,19 @@ struct PillVerificationView: View {
             }
         }
         .padding(.top, AppTheme.Spacing.md)
+        .alert("Continue anyway?", isPresented: $showContinueAlert) {
+            Button("Go Ahead Anyway", role: .destructive) {
+                onVerified(.warning)
+                dismiss()
+            }
+            Button("Retake Photo") {
+                selectedImage = nil
+                verificationResult = nil
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("We could not confirm this pill. If you proceed, it will be logged as a warning.")
+        }
     }
 
     // MARK: - Methods

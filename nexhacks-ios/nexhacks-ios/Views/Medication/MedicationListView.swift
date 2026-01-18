@@ -61,10 +61,8 @@ struct MedicationListView: View {
                 MedicationScanView(viewModel: viewModel)
             }
             .sheet(item: $medicationToVerify) { medication in
-                PillVerificationView(medication: medication) { verified in
-                    if verified {
-                        viewModel.logMedicationTaken(medication)
-                    }
+                PillVerificationView(medication: medication) { status in
+                    viewModel.logMedicationTaken(medication, verificationStatus: status)
                 }
             }
             .sheet(item: $viewModel.selectedMedication) { medication in
