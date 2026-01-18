@@ -10,6 +10,7 @@ import {
   Settings, 
   LogOut,
   Search,
+  Bell,
   MessageSquare,
   PanelLeftClose,
   PanelLeft,
@@ -18,7 +19,6 @@ import {
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
-import { NotificationDropdown } from "@/components/notifications/NotificationDropdown";
 import { useChatStore } from "@/stores/chatStore";
 import { useSidebarStore } from "@/stores/sidebarStore";
 import { logoutAction } from "./actions";
@@ -46,18 +46,18 @@ function NavItem({
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium tracking-tight transition-colors w-full relative",
+        "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-normal transition-all duration-150 w-full relative",
         collapsed && "justify-center px-2",
         isActive
-          ? "bg-primary/8 text-slate-900"
-          : "text-slate-500 hover:bg-muted/50 hover:text-slate-900"
+          ? "bg-primary/8 text-primary"
+          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       )}
       title={collapsed ? item.name : undefined}
     >
-      <item.icon className={cn("h-4 w-4 shrink-0", isActive ? "text-slate-900" : "text-slate-400")} />
+      <item.icon className={cn("h-4 w-4 shrink-0", isActive && "text-primary")} />
       {!collapsed && <span>{item.name}</span>}
       {isActive && !collapsed && (
-        <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-slate-900" />
+        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-primary rounded-r-full" />
       )}
     </Link>
   );
@@ -147,15 +147,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           "flex items-center justify-center h-12 border-b shrink-0",
           sidebarOpen ? "px-4" : "px-2"
         )}>
-          {sidebarOpen ? (
-            <Link href="/" className="text-xl font-semibold text-slate-900 tracking-tight">
-              healthier
-            </Link>
-          ) : (
-            <Link href="/" className="h-7 w-7 flex items-center justify-center text-lg font-semibold text-slate-900">
-              H
-            </Link>
-          )}
+          <Link href="/" className="text-2xl font-bold text-foreground tracking-tight" style={{ fontFamily: 'var(--font-inter-tight), -apple-system, sans-serif' }}>
+            {sidebarOpen ? "healthier" : "H"}
+          </Link>
         </div>
 
         {/* Navigation */}
@@ -190,7 +184,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <button 
               onClick={() => logoutAction()}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium tracking-tight text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 w-full",
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 w-full",
                 !sidebarOpen && "justify-center px-2"
               )}
               title={!sidebarOpen ? "Sign out" : undefined}
@@ -221,13 +215,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 onClick={toggleSidebar}
                 title={sidebarOpen ? "Collapse sidebar (⌘B)" : "Expand sidebar (⌘B)"}
               >
-                {sidebarOpen ? (
-                  <PanelLeftClose className="h-4 w-4" />
-                ) : (
-                  <PanelLeft className="h-4 w-4" />
-                )}
+                {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
               </Button>
-              <h1 className="text-sm font-semibold text-slate-900 tracking-tight">
+              <h1 className="text-sm font-medium text-foreground">
                 {navigation.find(n => pathname === n.href || 
                   (n.href !== "/dashboard" && pathname.startsWith(n.href)))?.name || "Dashboard"}
               </h1>
@@ -254,7 +244,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               >
                 <MessageSquare className="h-4 w-4" />
               </Button>
-              <NotificationDropdown />
+              <Button variant="ghost" size="icon" className="h-8 w-8 relative">
+                <Bell className="h-4 w-4" />
+                <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-destructive" />
+              </Button>
             </div>
           </header>
 

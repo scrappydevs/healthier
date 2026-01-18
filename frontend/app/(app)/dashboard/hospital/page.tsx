@@ -154,17 +154,7 @@ export default function HospitalViewPage() {
       }
     };
 
-    // Initial fetch
     fetchRoomDetails();
-
-    // Auto-refresh every 10 seconds to keep room details updated
-    const refreshInterval = setInterval(() => {
-      fetchRoomDetails();
-    }, 10000);
-
-    return () => {
-      clearInterval(refreshInterval);
-    };
   }, [selectedRoom]);
 
   const handleRoomClick = useCallback((room: Room) => {
@@ -393,20 +383,20 @@ export default function HospitalViewPage() {
                         <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">
                           Pending Tasks
                         </p>
-                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1 scrollbar-thin">
+                        <div className="space-y-1.5 max-h-28 overflow-y-auto">
                           {roomDetails.tasks.map((task) => (
                             <div 
                               key={task.id} 
-                              className="flex items-start gap-2 text-xs p-2 rounded bg-neutral-50 border border-neutral-100"
+                              className="flex items-start gap-2 text-xs"
                             >
                               <span
                                 className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
                                 style={{ backgroundColor: priorityColors[task.priority] || '#6b7280' }}
                               />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium text-neutral-900 leading-snug mb-0.5">{task.title}</p>
+                              <div className="min-w-0">
+                                <p className="font-medium text-neutral-900 truncate">{task.title}</p>
                                 {task.description && (
-                                  <p className="text-neutral-500 whitespace-pre-wrap break-words leading-relaxed">{task.description}</p>
+                                  <p className="text-neutral-500 truncate">{task.description}</p>
                                 )}
                               </div>
                             </div>
@@ -438,20 +428,20 @@ export default function HospitalViewPage() {
                         <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">
                           Active Alerts
                         </p>
-                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1 scrollbar-thin">
+                        <div className="space-y-1.5 max-h-28 overflow-y-auto">
                           {roomDetails.alerts.map((alert) => (
                             <div 
                               key={alert.id} 
-                              className="flex items-start gap-2 text-xs p-2 rounded bg-red-50 border border-red-100"
+                              className="flex items-start gap-2 text-xs"
                             >
                               <span
                                 className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
                                 style={{ backgroundColor: severityColors[alert.severity] || '#ef4444' }}
                               />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium text-red-800 leading-snug mb-0.5">{alert.title}</p>
+                              <div className="min-w-0">
+                                <p className="font-medium text-red-800">{alert.title}</p>
                                 {alert.message && (
-                                  <p className="text-red-600 whitespace-pre-wrap break-words leading-relaxed">{alert.message}</p>
+                                  <p className="text-red-600 truncate">{alert.message}</p>
                                 )}
                               </div>
                             </div>
@@ -459,15 +449,15 @@ export default function HospitalViewPage() {
                           {roomDetails.hazards.map((hazard) => (
                             <div 
                               key={hazard.id} 
-                              className="flex items-start gap-2 text-xs p-2 rounded bg-amber-50 border border-amber-100"
+                              className="flex items-start gap-2 text-xs"
                             >
                               <span
                                 className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
                                 style={{ backgroundColor: severityColors[hazard.severity] || '#f59e0b' }}
                               />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium text-amber-800 leading-snug mb-0.5">{hazard.type}</p>
-                                <p className="text-amber-600 whitespace-pre-wrap break-words leading-relaxed">{hazard.description}</p>
+                              <div className="min-w-0">
+                                <p className="font-medium text-amber-800">{hazard.type}</p>
+                                <p className="text-amber-600 truncate">{hazard.description}</p>
                               </div>
                             </div>
                           ))}
