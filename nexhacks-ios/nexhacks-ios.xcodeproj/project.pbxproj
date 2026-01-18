@@ -282,7 +282,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "nexhacks-ios/Info.plist";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need camera access to scan your rooms and create 3D models using AR.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "We need local network access to connect to the exercise analysis server.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to provide indoor positioning and location tracking features.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need microphone access for voice journaling.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "We need access to save scanned room models to your photo library.";
@@ -317,7 +320,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "nexhacks-ios/Info.plist";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need camera access to scan your rooms and create 3D models using AR.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "We need local network access to connect to the exercise analysis server.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to provide indoor positioning and location tracking features.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need microphone access for voice journaling.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "We need access to save scanned room models to your photo library.";
