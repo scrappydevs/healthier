@@ -77,6 +77,7 @@ class AppState: ObservableObject {
             mealRepository: mealRepository,
             exerciseRepository: exerciseRepository,
             roomRepository: roomRepository,
+            journalRepository: journalRepository,
             syncService: syncService,
             locationService: locationService,
             roomPlanService: roomPlanService,

@@ -18,60 +18,65 @@ struct HomeView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+        ZStack {
+            Color.appBackground.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // Header
-                    HStack {
-                        Text("Welcome Back, \(greetingName)")
-                            .font(AppTheme.Typography.title)
-                            .foregroundColor(.textPrimary)
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Text("Welcome Back, \(greetingName)")
+                        .font(AppTheme.Typography.title)
+                        .foregroundColor(.textPrimary)
 
-                        Spacer()
+                    Spacer()
+                }
+                .padding(.horizontal, AppTheme.Spacing.lg)
+                .padding(.top, AppTheme.Spacing.md)
+                .padding(.bottom, AppTheme.Spacing.md)
+
+                ScrollView {
+                    VStack(spacing: AppTheme.Spacing.lg) {
+                        // Health Breakdown
+                        healthBreakdownSection
+
+                        // Scan Room Button
+                        scanRoomButton
+
+                        // Sync Status Card
+                        syncStatusCard
+
+                        // Quick Stats
+                        quickStatsSection
+
+                        // Upcoming Reminders
+                        upcomingRemindersSection
                     }
                     .padding(.horizontal, AppTheme.Spacing.lg)
-                    .padding(.top, AppTheme.Spacing.md)
-                    .padding(.bottom, AppTheme.Spacing.md)
-
-                    ScrollView {
-                        VStack(spacing: AppTheme.Spacing.lg) {
-                            // Scan Room Button
-                            scanRoomButton
-
-                            // Daily Health Score
-                            dailyHealthScoreCard
-
-                            // Sync Status Card
-                            syncStatusCard
-
-                            // Health Breakdown
-                            healthBreakdownSection
-
-                            // Quick Stats
-                            quickStatsSection
-
-                            // Upcoming Reminders
-                            upcomingRemindersSection
-                        }
-                        .padding(.horizontal, AppTheme.Spacing.lg)
-                        .padding(.vertical, AppTheme.Spacing.lg)
-                    }
+                    .padding(.vertical, AppTheme.Spacing.lg)
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $showingRoomScanner) {
-                RoomPlanScannerView(viewModel: appState.roomViewModel)
-            }
+        }
+        .sheet(isPresented: $showingRoomScanner) {
+            RoomPlanScannerView(viewModel: appState.roomViewModel)
         }
     }
 
     // MARK: - Welcome Section
     private var greetingName: String {
         if let name = appState.currentUser?.name.trimmingCharacters(in: .whitespacesAndNewlines),
-           !name.isEmpty {
+           !name.isEmpty,
+           !isPlaceholderName(name) {
             return firstName(fromFullName: name)
+        }
+
+        if let authName = authFullName()?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !authName.isEmpty {
+            return firstName(fromFullName: authName)
+        }
+
+        if let authEmail = supabase.auth.currentUser?.email,
+           let gmailName = firstNameFromGmail(email: authEmail) {
+            return gmailName
         }
 
         if let email = appState.currentUser?.email,
@@ -120,54 +125,6 @@ struct HomeView: View {
             .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(PlainButtonStyle())
-    }
-
-    // MARK: - Daily Health Score Card
-    private var dailyHealthScoreCard: some View {
-        VStack(spacing: AppTheme.Spacing.md) {
-            HStack {
-                Text("Today's Health Score")
-                    .font(AppTheme.Typography.headline)
-                    .foregroundColor(.textPrimary)
-                
-                Spacer()
-            }
-            
-            HStack(spacing: AppTheme.Spacing.lg) {
-                // Health Score Circle
-                ZStack {
-                    Circle()
-                        .stroke(Color.divider, lineWidth: 10)
-                        .frame(width: 120, height: 120)
-                    
-                    Circle()
-                        .trim(from: 0, to: CGFloat(viewModel.dailyHealthScore / 100))
-                        .stroke(
-                            healthScoreColor(viewModel.dailyHealthScore),
-                            style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                        )
-                        .frame(width: 120, height: 120)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeInOut(duration: 0.5), value: viewModel.dailyHealthScore)
-                    
-                    VStack(spacing: 4) {
-                        Text("\(Int(viewModel.dailyHealthScore))")
-                            .font(AppTheme.Typography.largeTitle)
-                            .foregroundColor(.textPrimary)
-
-                        Text("Score")
-                            .font(AppTheme.Typography.caption)
-                            .foregroundColor(.textSecondary)
-                    }
-                }
-                
-                Spacer()
-            }
-        }
-        .padding(AppTheme.Spacing.md)
-        .background(Color.cardBackground)
-        .cornerRadius(AppTheme.CornerRadius.md)
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
     }
 
     // MARK: - Sync Status Card
@@ -255,6 +212,16 @@ struct HomeView: View {
         return parts.first.map { String($0) } ?? name
     }
 
+    private func authFullName() -> String? {
+        supabase.auth.currentUser?.userMetadata["full_name"]?.stringValue
+            ?? supabase.auth.currentUser?.userMetadata["name"]?.stringValue
+    }
+
+    private func isPlaceholderName(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed.lowercased() == "user"
+    }
+
     private func firstNameFromGmail(email: String) -> String? {
         let parts = email.lowercased().split(separator: "@", maxSplits: 1)
         guard parts.count == 2 else { return nil }
@@ -337,9 +304,9 @@ struct HomeView: View {
                 )
 
                 StatCard(
-                    icon: "house.fill",
-                    title: "Rooms",
-                    value: "\(viewModel.scannedRoomsCount)",
+                    icon: "book.fill",
+                    title: "Journals",
+                    value: "\(viewModel.todayJournalEntries.count)",
                     color: .appSecondary
                 )
             }

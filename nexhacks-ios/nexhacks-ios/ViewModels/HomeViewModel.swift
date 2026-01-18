@@ -25,9 +25,9 @@ class HomeViewModel: ObservableObject {
     @Published var todayCalories: Double = 0
     @Published var todayExerciseMinutes: Int = 0
     @Published var scannedRoomsCount: Int = 0
+    @Published var todayJournalEntries: [JournalEntry] = []
     
     // Health scores
-    @Published var dailyHealthScore: Double = 0
     @Published var mealHealthRating: Double = 0
     @Published var exerciseScore: Double = 0
     @Published var medicationAdherenceScore: Double = 0
@@ -43,6 +43,7 @@ class HomeViewModel: ObservableObject {
     private let mealRepository: MealRepository
     private let exerciseRepository: ExerciseRepository
     private let roomRepository: RoomRepository
+    private let journalRepository: JournalRepository
     private let syncService: SyncService
     private let locationService: LocationTrackingService
     private let roomPlanService: RoomPlanService
@@ -56,6 +57,7 @@ class HomeViewModel: ObservableObject {
         mealRepository: MealRepository,
         exerciseRepository: ExerciseRepository,
         roomRepository: RoomRepository,
+        journalRepository: JournalRepository,
         syncService: SyncService,
         locationService: LocationTrackingService,
         roomPlanService: RoomPlanService,
@@ -65,6 +67,7 @@ class HomeViewModel: ObservableObject {
         self.mealRepository = mealRepository
         self.exerciseRepository = exerciseRepository
         self.roomRepository = roomRepository
+        self.journalRepository = journalRepository
         self.syncService = syncService
         self.locationService = locationService
         self.roomPlanService = roomPlanService
@@ -142,6 +145,14 @@ class HomeViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Observe journal changes
+        journalRepository.$entries
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateJournalData()
+            }
+            .store(in: &cancellables)
+
         // Observe sync status
         syncService.$isSyncing
             .receive(on: DispatchQueue.main)
@@ -172,6 +183,7 @@ class HomeViewModel: ObservableObject {
         updateMealData()
         updateExerciseData()
         updateRoomData()
+        updateJournalData()
         updateSyncStatus()
         updateLocationStatus()
         updateRoomScanStatus()
@@ -212,6 +224,10 @@ class HomeViewModel: ObservableObject {
 
     private func updateRoomData() {
         scannedRoomsCount = roomRepository.getAll().count
+    }
+
+    private func updateJournalData() {
+        todayJournalEntries = journalRepository.getByDate(Date())
     }
 
     private func updateSyncStatus() {
@@ -267,18 +283,6 @@ class HomeViewModel: ObservableObject {
         // Calculate medication adherence score
         medicationAdherenceScore = calculateMedicationAdherence()
         
-        // Calculate overall daily health score (weighted average)
-        // Weights: Medication 40%, Meals 30%, Exercise 30%
-        let hasAnyActivity = !todaysMeals.isEmpty || todayExerciseMinutes > 0 || !todayMedications.isEmpty
-        
-        if hasAnyActivity {
-            let mealComponent = mealHealthRating * 0.30
-            let exerciseComponent = exerciseScore * 0.30
-            let medicationComponent = medicationAdherenceScore * 0.40
-            dailyHealthScore = mealComponent + exerciseComponent + medicationComponent
-        } else {
-            dailyHealthScore = 0
-        }
     }
     
     private func calculateMedicationAdherence() -> Double {
@@ -316,20 +320,4 @@ class HomeViewModel: ObservableObject {
         return (Double(takenCount) / Double(scheduledCount)) * 100
     }
     
-    /// Get health score color name
-    func getHealthScoreColor() -> String {
-        if dailyHealthScore >= 80 { return "success" }
-        if dailyHealthScore >= 60 { return "appPrimary" }
-        if dailyHealthScore >= 40 { return "warning" }
-        return "error"
-    }
-    
-    /// Get health score message
-    func getHealthScoreMessage() -> String {
-        if dailyHealthScore >= 80 { return "Excellent day!" }
-        if dailyHealthScore >= 60 { return "Good progress!" }
-        if dailyHealthScore >= 40 { return "Keep it up!" }
-        if dailyHealthScore > 0 { return "Room to improve" }
-        return "Start your healthy day"
-    }
 }
