@@ -156,6 +156,15 @@ export type Exercise = {
   completed: boolean;
   logged_at: string;
   created_at: string;
+  video_url?: string | null;
+  processed_video_url?: string | null;
+  pose_analysis?: {
+    summary?: string;
+    processed_video_url?: string;
+    video_info?: { duration_seconds: number; analyzed_frames: number };
+    symmetry_analysis?: Record<string, { left: number; right: number; difference: number; symmetric: boolean }>;
+    angle_statistics?: Record<string, { min: number; max: number; avg: number; range: number }>;
+  } | null;
 };
 
 export type PatientExercisesResponse = {

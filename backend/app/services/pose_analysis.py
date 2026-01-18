@@ -1,59 +1,72 @@
 """
-Pose Analysis Service - YOLO11-pose for exercise video analysis
+Pose Analysis Service - MediaPipe for exercise video analysis
 Extracts joint angles, symmetry, and generates natural language summaries
+Uses MediaPipe (bundled with pip, no separate download required)
 """
 
 import logging
 import tempfile
 import os
 import math
-import threading
 from typing import Dict, List, Optional, Any
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Thread-safe singleton for YOLO model
-_pose_model = None
-_model_lock = threading.Lock()
-
-# COCO 17-point keypoint definitions
-KEYPOINT_NAMES = {
-    0: "nose", 1: "left_eye", 2: "right_eye", 3: "left_ear", 4: "right_ear",
-    5: "left_shoulder", 6: "right_shoulder", 7: "left_elbow", 8: "right_elbow",
-    9: "left_wrist", 10: "right_wrist", 11: "left_hip", 12: "right_hip",
-    13: "left_knee", 14: "right_knee", 15: "left_ankle", 16: "right_ankle",
+# MediaPipe pose landmark indices (33 landmarks)
+# We map to common joint names for analysis
+LANDMARK_NAMES = {
+    0: "nose",
+    11: "left_shoulder", 12: "right_shoulder",
+    13: "left_elbow", 14: "right_elbow",
+    15: "left_wrist", 16: "right_wrist",
+    23: "left_hip", 24: "right_hip",
+    25: "left_knee", 26: "right_knee",
+    27: "left_ankle", 28: "right_ankle",
 }
 
-# Joint angle definitions: (point1, vertex, point2)
+# Joint angle definitions: (point1, vertex, point2) using MediaPipe indices
 JOINT_ANGLES = {
-    "left_elbow": (5, 7, 9),    # shoulder -> elbow -> wrist
-    "right_elbow": (6, 8, 10),
-    "left_knee": (11, 13, 15),  # hip -> knee -> ankle
-    "right_knee": (12, 14, 16),
-    "left_hip": (5, 11, 13),    # shoulder -> hip -> knee
-    "right_hip": (6, 12, 14),
-    "left_shoulder": (7, 5, 11),  # elbow -> shoulder -> hip
-    "right_shoulder": (8, 6, 12),
+    "left_elbow": (11, 13, 15),    # shoulder -> elbow -> wrist
+    "right_elbow": (12, 14, 16),
+    "left_knee": (23, 25, 27),     # hip -> knee -> ankle
+    "right_knee": (24, 26, 28),
+    "left_hip": (11, 23, 25),      # shoulder -> hip -> knee
+    "right_hip": (12, 24, 26),
+    "left_shoulder": (13, 11, 23), # elbow -> shoulder -> hip
+    "right_shoulder": (14, 12, 24),
 }
 
+# Skeleton connections for drawing (MediaPipe indices)
+SKELETON_CONNECTIONS = [
+    (11, 12),  # shoulders
+    (11, 13), (13, 15),  # left arm
+    (12, 14), (14, 16),  # right arm
+    (11, 23), (12, 24),  # torso sides
+    (23, 24),  # hips
+    (23, 25), (25, 27),  # left leg
+    (24, 26), (26, 28),  # right leg
+]
 
-def get_pose_model():
-    """Thread-safe lazy loading of YOLO11s-pose model with double-checked locking."""
-    global _pose_model
-    if _pose_model is None:
-        with _model_lock:
-            # Double-check inside lock to prevent multiple loads
-            if _pose_model is None:
-                try:
-                    from ultralytics import YOLO
-                    logger.info("Loading YOLOv8s-pose model...")
-                    _pose_model = YOLO("yolov8s-pose.pt")
-                    logger.info("YOLOv8s-pose model loaded successfully")
-                except Exception as e:
-                    logger.error(f"Failed to load YOLO pose model: {e}")
-                    return None
-    return _pose_model
+
+def get_pose_detector():
+    """Get MediaPipe Pose detector (loads instantly, no download)."""
+    try:
+        import mediapipe as mp
+        mp_pose = mp.solutions.pose
+        return mp_pose.Pose(
+            static_image_mode=False,
+            model_complexity=1,  # 0=lite, 1=full, 2=heavy
+            smooth_landmarks=True,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+    except ImportError:
+        logger.error("MediaPipe not installed. Run: pip install mediapipe")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to initialize MediaPipe Pose: {e}")
+        return None
 
 
 def calculate_angle(p1: Dict, p2: Dict, p3: Dict) -> Optional[float]:
@@ -71,12 +84,12 @@ def calculate_angle(p1: Dict, p2: Dict, p3: Dict) -> Optional[float]:
     return float(angle)
 
 
-def extract_joint_angles(keypoints: List[Dict]) -> Dict[str, Optional[float]]:
-    """Extract all joint angles from keypoints."""
+def extract_joint_angles(landmarks: List[Dict]) -> Dict[str, Optional[float]]:
+    """Extract all joint angles from landmarks."""
     angles = {}
     for name, (i1, i2, i3) in JOINT_ANGLES.items():
-        if len(keypoints) > max(i1, i2, i3):
-            angles[name] = calculate_angle(keypoints[i1], keypoints[i2], keypoints[i3])
+        if len(landmarks) > max(i1, i2, i3):
+            angles[name] = calculate_angle(landmarks[i1], landmarks[i2], landmarks[i3])
         else:
             angles[name] = None
     return angles
@@ -109,56 +122,42 @@ def analyze_symmetry(angles: Dict[str, Optional[float]]) -> Dict[str, Any]:
     return symmetry
 
 
-# Skeleton connections for drawing
-SKELETON_CONNECTIONS = [
-    (5, 6),   # shoulders
-    (5, 7), (7, 9),   # left arm
-    (6, 8), (8, 10),  # right arm
-    (5, 11), (6, 12), # torso sides
-    (11, 12),  # hips
-    (11, 13), (13, 15),  # left leg
-    (12, 14), (14, 16),  # right leg
-]
-
-
-def draw_pose_on_frame(frame, keypoints_raw, width, height):
+def draw_pose_on_frame(frame, landmarks, width, height):
     """Draw pose skeleton and keypoints on a frame with smooth, clean styling."""
     import cv2
     
     # Softer, more pleasing colors (BGR)
     KEYPOINT_COLOR = (100, 220, 255)  # Soft orange/peach
     SKELETON_COLOR = (200, 255, 150)  # Soft lime green
-    OUTLINE_COLOR = (50, 50, 50)      # Dark gray (softer than black)
+    OUTLINE_COLOR = (50, 50, 50)      # Dark gray
     
-    # Scale sizes based on video resolution - smaller, cleaner
+    # Scale sizes based on video resolution
     scale = max(width, height) / 1000
-    KEYPOINT_RADIUS = max(4, int(6 * scale))   # Smaller keypoints
-    LINE_THICKNESS = max(2, int(3 * scale))    # Thinner lines
+    KEYPOINT_RADIUS = max(4, int(6 * scale))
+    LINE_THICKNESS = max(2, int(3 * scale))
     OUTLINE_THICKNESS = max(1, int(1 * scale))
     
-    # Draw skeleton lines first (so joints draw on top)
+    # Draw skeleton lines first
     for (start_idx, end_idx) in SKELETON_CONNECTIONS:
-        if start_idx < len(keypoints_raw) and end_idx < len(keypoints_raw):
-            start_kp = keypoints_raw[start_idx]
-            end_kp = keypoints_raw[end_idx]
+        if start_idx < len(landmarks) and end_idx < len(landmarks):
+            start_lm = landmarks[start_idx]
+            end_lm = landmarks[end_idx]
             
-            # Check visibility
-            if start_kp[2] > 0.3 and end_kp[2] > 0.3:
-                start_pt = (int(start_kp[0]), int(start_kp[1]))
-                end_pt = (int(end_kp[0]), int(end_kp[1]))
-                # Draw soft outline for depth
+            if start_lm.get("visibility", 0) > 0.3 and end_lm.get("visibility", 0) > 0.3:
+                start_pt = (int(start_lm["x"] * width), int(start_lm["y"] * height))
+                end_pt = (int(end_lm["x"] * width), int(end_lm["y"] * height))
                 cv2.line(frame, start_pt, end_pt, OUTLINE_COLOR, LINE_THICKNESS + 2, cv2.LINE_AA)
-                # Draw colored line with anti-aliasing
                 cv2.line(frame, start_pt, end_pt, SKELETON_COLOR, LINE_THICKNESS, cv2.LINE_AA)
     
-    # Draw keypoints on top
-    for kp in keypoints_raw:
-        if kp[2] > 0.3:  # Visibility threshold
-            pt = (int(kp[0]), int(kp[1]))
-            # Draw soft outline
-            cv2.circle(frame, pt, KEYPOINT_RADIUS + OUTLINE_THICKNESS, OUTLINE_COLOR, -1, cv2.LINE_AA)
-            # Draw filled keypoint with anti-aliasing
-            cv2.circle(frame, pt, KEYPOINT_RADIUS, KEYPOINT_COLOR, -1, cv2.LINE_AA)
+    # Draw keypoints on top (only important ones)
+    important_indices = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
+    for idx in important_indices:
+        if idx < len(landmarks):
+            lm = landmarks[idx]
+            if lm.get("visibility", 0) > 0.3:
+                pt = (int(lm["x"] * width), int(lm["y"] * height))
+                cv2.circle(frame, pt, KEYPOINT_RADIUS + OUTLINE_THICKNESS, OUTLINE_COLOR, -1, cv2.LINE_AA)
+                cv2.circle(frame, pt, KEYPOINT_RADIUS, KEYPOINT_COLOR, -1, cv2.LINE_AA)
     
     return frame
 
@@ -169,8 +168,7 @@ def process_video_frames(
     output_video_path: str = None,
 ) -> Dict[str, Any]:
     """
-    Process video and extract pose data from sampled frames.
-    Optionally generates a processed video with pose overlay.
+    Process video and extract pose data from sampled frames using MediaPipe.
     
     Args:
         video_path: Path to video file
@@ -182,9 +180,9 @@ def process_video_frames(
     """
     import cv2
     
-    model = get_pose_model()
-    if model is None:
-        return {"error": "Pose model not available"}
+    pose = get_pose_detector()
+    if pose is None:
+        return {"error": "MediaPipe Pose not available"}
     
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -198,71 +196,54 @@ def process_video_frames(
     # Video writer for processed output
     video_writer = None
     if output_video_path:
-        # Try H.264 codec first (browser-compatible), fallback to mp4v
-        # Note: avc1/H264 requires proper codec installation on the system
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264 for browser compatibility
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
         video_writer = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
-        
-        # Check if writer opened successfully, fallback to mp4v if not
         if not video_writer.isOpened():
             logger.warning("H.264 codec not available, falling back to mp4v")
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             video_writer = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
-        
         logger.info(f"Video writer initialized: fps={fps}, size={width}x{height}")
     
     frames_data = []
     all_angles = {name: [] for name in JOINT_ANGLES.keys()}
     frame_idx = 0
-    last_keypoints_raw = None  # Cache for drawing on non-analyzed frames
+    last_landmarks = None
     
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        keypoints_raw_for_drawing = None
-        
-        # Run pose estimation (for analysis on sampled frames, for drawing on all frames if generating video)
-        should_analyze = (frame_idx % sample_rate == 0)
-        should_run_model = should_analyze or (output_video_path and frame_idx % 2 == 0)  # More frequent for smoother video
-        
-        if should_run_model:
-            results = model(frame, verbose=False)[0]
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
             
-            if results.keypoints is not None and len(results.keypoints) > 0:
-                # Get the largest person (most likely the exerciser)
-                best_idx = 0
-                best_area = 0
+            current_landmarks = None
+            
+            # Run pose estimation
+            should_analyze = (frame_idx % sample_rate == 0)
+            should_run_model = should_analyze or (output_video_path and frame_idx % 2 == 0)
+            
+            if should_run_model:
+                # Convert BGR to RGB for MediaPipe
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                results = pose.process(rgb_frame)
                 
-                for idx, box in enumerate(results.boxes):
-                    if int(box.cls[0]) == 0:  # Person class
-                        bbox = box.xyxy[0].tolist()
-                        area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-                        if area > best_area:
-                            best_area = area
-                            best_idx = idx
-                
-                kpts = results.keypoints[best_idx]
-                if kpts.data is not None and len(kpts.data) > 0:
-                    kpts_data = kpts.data[0].cpu().numpy()
-                    keypoints_raw_for_drawing = kpts_data
-                    last_keypoints_raw = kpts_data  # Cache for next frames
+                if results.pose_landmarks:
+                    # Convert landmarks to our format
+                    landmarks = []
+                    for idx, lm in enumerate(results.pose_landmarks.landmark):
+                        landmarks.append({
+                            "x": lm.x,
+                            "y": lm.y,
+                            "z": lm.z,
+                            "visibility": lm.visibility,
+                        })
                     
-                    # Only store detailed analysis on sampled frames
+                    current_landmarks = landmarks
+                    last_landmarks = landmarks
+                    
+                    # Detailed analysis on sampled frames
                     if should_analyze:
-                        keypoints = []
-                        for kp_idx, kp in enumerate(kpts_data):
-                            keypoints.append({
-                                "x": float(kp[0]) / width,
-                                "y": float(kp[1]) / height,
-                                "visibility": float(kp[2]),
-                                "name": KEYPOINT_NAMES.get(kp_idx, f"kp_{kp_idx}"),
-                            })
+                        angles = extract_joint_angles(landmarks)
                         
-                        angles = extract_joint_angles(keypoints)
-                        
-                        # Store for aggregation
                         for name, val in angles.items():
                             if val is not None:
                                 all_angles[name].append(val)
@@ -270,18 +251,19 @@ def process_video_frames(
                         frames_data.append({
                             "frame": frame_idx,
                             "time": frame_idx / fps if fps > 0 else 0,
-                            "keypoints": keypoints,
                             "angles": angles,
                         })
-        
-        # Write processed frame with pose overlay
-        if video_writer:
-            draw_kpts = keypoints_raw_for_drawing if keypoints_raw_for_drawing is not None else last_keypoints_raw
-            if draw_kpts is not None:
-                frame = draw_pose_on_frame(frame.copy(), draw_kpts, width, height)
-            video_writer.write(frame)
-        
-        frame_idx += 1
+            
+            # Write processed frame
+            if video_writer:
+                draw_lms = current_landmarks if current_landmarks else last_landmarks
+                if draw_lms:
+                    frame = draw_pose_on_frame(frame.copy(), draw_lms, width, height)
+                video_writer.write(frame)
+            
+            frame_idx += 1
+    finally:
+        pose.close()
     
     cap.release()
     if video_writer:
@@ -299,7 +281,7 @@ def process_video_frames(
                 "range": round(max(values) - min(values), 1),
             }
     
-    # Analyze symmetry from average angles
+    # Analyze symmetry
     avg_angles = {name: stats["avg"] if name in angle_stats else None 
                   for name, stats in angle_stats.items()}
     symmetry = analyze_symmetry(avg_angles)
@@ -315,7 +297,7 @@ def process_video_frames(
         },
         "angle_statistics": angle_stats,
         "symmetry_analysis": symmetry,
-        "frames": frames_data[:20],  # Limit stored frames
+        "frames": frames_data[:20],
     }
 
 
@@ -336,7 +318,6 @@ def generate_natural_language_summary(
     # Build context for AI
     context_parts = []
     
-    # Video info
     duration = video_info.get("duration_seconds", 0)
     context_parts.append(f"Video duration: {duration:.1f} seconds")
     context_parts.append(f"Frames analyzed: {video_info.get('analyzed_frames', 0)}")
@@ -394,17 +375,13 @@ Be specific with numbers but keep it concise and actionable."""
     
     # Fallback to rule-based summary
     summary_parts = []
-    
-    # Duration
     summary_parts.append(f"Analyzed {duration:.0f}s of {exercise_type or 'exercise'}.")
     
-    # Symmetry assessment
     if symmetry_issues:
         summary_parts.append(f"Detected asymmetry in {len(symmetry_issues)} joint(s): {', '.join([s.split(':')[0] for s in symmetry_issues])}.")
     else:
         summary_parts.append("Movement appears bilaterally symmetric.")
     
-    # ROM observation
     if "left_knee" in angle_stats or "right_knee" in angle_stats:
         knee_stats = angle_stats.get("left_knee") or angle_stats.get("right_knee")
         if knee_stats and knee_stats["range"] > 60:
@@ -423,23 +400,12 @@ async def analyze_exercise_video(
     cerebras_client: Any = None,
 ) -> Dict[str, Any]:
     """
-    Main entry point: Download video, analyze, generate processed video with pose overlay,
+    Main entry point: Download video, analyze with MediaPipe, generate processed video,
     upload to Supabase, and generate summary.
-    
-    Args:
-        video_url: URL or path in exercise-videos bucket
-        exercise_type: Type of exercise (e.g., "squat", "lunge")
-        exercise_id: ID of the exercise record (for naming processed video)
-        supabase_client: Supabase client for downloading/uploading video
-        cerebras_client: Optional Cerebras client for AI summaries
-        
-    Returns:
-        Complete analysis including raw data, natural language summary, and processed video URL
     """
     import httpx
     import uuid
     
-    # Create temp files for input and output
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_in:
         tmp_input_path = tmp_in.name
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_out:
@@ -452,7 +418,6 @@ async def analyze_exercise_video(
         if video_url.startswith("http"):
             download_url = video_url
         else:
-            # Get public URL from bucket
             download_url = supabase_client.storage.from_("exercise-videos").get_public_url(video_url)
         
         # Download video
@@ -463,31 +428,31 @@ async def analyze_exercise_video(
             with open(tmp_input_path, "wb") as f:
                 f.write(response.content)
         
-        # Process video and generate pose overlay video
+        # Process video with MediaPipe
         analysis = process_video_frames(
             tmp_input_path, 
             sample_rate=5,
             output_video_path=tmp_output_path
         )
         
-        # Upload processed video to Supabase
+        # Upload processed video
         output_size = os.path.getsize(tmp_output_path) if os.path.exists(tmp_output_path) else 0
         logger.info(f"Processed video file size: {output_size} bytes")
         
         if output_size > 0:
             try:
-                # Re-encode with ffmpeg for browser compatibility (H.264)
+                # Re-encode with ffmpeg for browser compatibility
                 import subprocess
                 ffmpeg_output_path = tmp_output_path.replace(".mp4", "_h264.mp4")
                 
                 ffmpeg_cmd = [
-                    "ffmpeg", "-y",  # Overwrite output
+                    "ffmpeg", "-y",
                     "-i", tmp_output_path,
-                    "-c:v", "libx264",  # H.264 codec
+                    "-c:v", "libx264",
                     "-preset", "fast",
-                    "-crf", "23",  # Quality (lower = better, 18-28 is good range)
-                    "-pix_fmt", "yuv420p",  # Pixel format for browser compatibility
-                    "-movflags", "+faststart",  # Web optimization
+                    "-crf", "23",
+                    "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart",
                     ffmpeg_output_path
                 ]
                 
@@ -506,7 +471,7 @@ async def analyze_exercise_video(
                     upload_path = tmp_output_path
                 
             except FileNotFoundError:
-                logger.warning("FFmpeg not installed. Using original file (may not play in browsers).")
+                logger.warning("FFmpeg not installed. Using original file.")
                 upload_path = tmp_output_path
             except subprocess.TimeoutExpired:
                 logger.warning("FFmpeg timed out. Using original file.")
@@ -516,27 +481,22 @@ async def analyze_exercise_video(
                 upload_path = tmp_output_path
             
             try:
-                # Generate unique filename for processed video
                 processed_filename = f"processed/{exercise_id}_{uuid.uuid4().hex[:8]}.mp4"
                 
-                # Read processed video
                 with open(upload_path, "rb") as f:
                     video_data = f.read()
                 
                 logger.info(f"Uploading video: {len(video_data)} bytes to {processed_filename}")
                 
-                # Upload to exercise-videos bucket
-                upload_response = supabase_client.storage.from_("exercise-videos").upload(
+                supabase_client.storage.from_("exercise-videos").upload(
                     processed_filename,
                     video_data,
                     file_options={"content-type": "video/mp4", "upsert": "true"}
                 )
                 
-                # Get public URL
                 processed_video_url = supabase_client.storage.from_("exercise-videos").get_public_url(processed_filename)
                 logger.info(f"Uploaded processed video: {processed_video_url}")
                 
-                # Cleanup ffmpeg output
                 if 'ffmpeg_output_path' in locals() and os.path.exists(ffmpeg_output_path):
                     os.unlink(ffmpeg_output_path)
                 
@@ -563,7 +523,6 @@ async def analyze_exercise_video(
             "summary": f"Unable to analyze video: {str(e)}",
         }
     finally:
-        # Cleanup temp files
         for path in [tmp_input_path, tmp_output_path]:
             if os.path.exists(path):
                 try:

@@ -202,17 +202,11 @@ async def get_patient_meals(
     query = db.table("meals").select("*").eq("user_id", user_id).order("consumed_at", desc=True)
     
     if date:
-        # Filter by date (start and end of day) - use proper date range
-        from datetime import datetime, timezone
-        try:
-            date_obj = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            date_start = date_obj.isoformat()
-            date_end = (date_obj.replace(hour=23, minute=59, second=59, microsecond=999999)).isoformat()
-            query = query.gte("consumed_at", date_start).lte("consumed_at", date_end)
-        except Exception as e:
-            print(f"Date filtering error for meals: {e}")
-            # Fallback to simple string comparison
-            query = query.gte("consumed_at", f"{date}T00:00:00").lt("consumed_at", f"{date}T23:59:59.999999")
+        # Filter by date using string-based comparison (timezone-agnostic)
+        # This matches the approach used in generate_daily_summary
+        date_start = f"{date}T00:00:00"
+        date_end = f"{date}T23:59:59"
+        query = query.gte("consumed_at", date_start).lte("consumed_at", date_end)
     
     response = query.execute()
     meals = response.data or []
@@ -253,42 +247,15 @@ async def get_patient_exercises(
                 response = query.order("logged_at", desc=True).execute()
                 exercises = response.data or []
     
-    # Apply date filter if provided
+    # Apply date filter if provided (timezone-agnostic string filtering)
     if date:
-        from datetime import datetime, timezone
-        try:
-            # Parse date and create date range in UTC
-            date_obj = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            date_start = date_obj.isoformat()
-            date_end = (date_obj.replace(hour=23, minute=59, second=59, microsecond=999999)).isoformat()
-            
-            # Filter exercises by date (handle timezone-aware timestamps)
-            filtered_exercises = []
-            for e in exercises:
-                logged_at = e.get("logged_at")
-                if logged_at:
-                    # Parse the timestamp (handle both with and without timezone)
-                    try:
-                        if isinstance(logged_at, str):
-                            # Try parsing with timezone
-                            try:
-                                ts = datetime.fromisoformat(logged_at.replace('Z', '+00:00'))
-                            except:
-                                ts = datetime.strptime(logged_at.split('.')[0], "%Y-%m-%dT%H:%M:%S")
-                                ts = ts.replace(tzinfo=timezone.utc)
-                        else:
-                            continue
-                        
-                        # Compare dates (ignore time)
-                        if date_start.split('T')[0] <= ts.isoformat().split('T')[0] <= date_end.split('T')[0]:
-                            filtered_exercises.append(e)
-                    except:
-                        # If parsing fails, include it (better to show than hide)
-                        filtered_exercises.append(e)
-            exercises = filtered_exercises
-        except Exception as e:
-            print(f"Date filtering error: {e}")
-            # If date parsing fails, return all exercises
+        # Filter using simple string comparison matching generate_daily_summary
+        filtered_exercises = []
+        for e in exercises:
+            logged_at = e.get("logged_at", "")
+            if logged_at and logged_at.startswith(date):
+                filtered_exercises.append(e)
+        exercises = filtered_exercises
     
     # Calculate summary
     total_minutes = sum(e.get("duration_minutes") or 0 for e in exercises)
@@ -720,25 +687,12 @@ async def get_patient_journal(
         "tags, mood, sentiment_score, ai_analysis, metadata, logged_at, created_at"
     ).eq("patient_id", patient_id_str)
     
+    # Use simple string-based date filtering (timezone-agnostic)
     if start_date:
-        from datetime import datetime, timezone
-        try:
-            date_obj = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            date_start = date_obj.isoformat()
-            query = query.gte("logged_at", date_start)
-        except Exception as e:
-            print(f"Start date filtering error: {e}")
-            query = query.gte("logged_at", f"{start_date}T00:00:00")
+        query = query.gte("logged_at", f"{start_date}T00:00:00")
     
     if end_date:
-        from datetime import datetime, timezone
-        try:
-            date_obj = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            date_end = (date_obj.replace(hour=23, minute=59, second=59, microsecond=999999)).isoformat()
-            query = query.lte("logged_at", date_end)
-        except Exception as e:
-            print(f"End date filtering error: {e}")
-            query = query.lte("logged_at", f"{end_date}T23:59:59.999999")
+        query = query.lte("logged_at", f"{end_date}T23:59:59")
     
     response = query.order("logged_at", desc=True).execute()
     
@@ -952,28 +906,30 @@ Date: {target_date}
             }
         }
     
-    prompt = f"""You are a healthcare assistant. Based on the patient data for {target_date}, provide brief summaries.
+    prompt = f"""You are a healthcare assistant. Analyze the patient data for {target_date} and provide detailed summaries that compare their actual behavior against their prescribed care plans.
 
-RULES:
-- Be extremely concise. Each summary should be 1-2 short sentences max.
-- Focus on key facts only, no filler words.
-- Only flag genuine clinical concerns as alerts.
+CRITICAL INSTRUCTIONS:
+- Compare what the patient DID vs. what they were SUPPOSED TO DO according to their care plans
+- Be specific about adherence (followed plan vs. didn't follow plan)
+- Highlight gaps between prescribed targets and actual behavior
+- Include relevant numbers (calories, minutes, medications, etc.)
+- Only flag genuine clinical concerns as alerts
 
 Patient Data:
 {context}
 
 Respond in this exact JSON format:
 {{
-  "summary": "1-2 sentences max. Key highlights of the day only.",
-  "journal_summary": "1 sentence on mood/emotional state. Say 'No entries' if none.",
-  "meals_summary": "1 sentence on nutrition. Include calorie total if meals logged.",
-  "activity_summary": "1 sentence on exercise. Include duration if activity logged.",
+  "summary": "2-3 sentences summarizing the day's key highlights, comparing actual behavior to care plans where applicable. Include specific numbers.",
+  "journal_summary": "1-2 sentences summarizing their mood/thoughts based on journal entries. If 0 entries, say 'No journal entries recorded.'",
+  "meals_summary": "2-3 sentences on nutrition. Compare actual intake to diet plan if one exists. Include specific numbers (calories, meals logged). Mention any violations of dietary restrictions. If 0 meals, say 'No meals logged.'",
+  "activity_summary": "2-3 sentences on exercise. Compare actual activity to exercise plan targets if one exists. Include specific numbers (minutes, exercises logged). If 0 exercises, say 'No exercise logged.'",
   "alerts": [
-    {{"severity": "high|medium|low", "type": "missed_dose|low_adherence|nutrition|inactivity|mood|diet_violation|other", "message": "Brief alert"}}
+    {{"severity": "high|medium|low", "type": "missed_dose|low_adherence|nutrition|inactivity|mood|diet_violation|other", "message": "Specific alert describing the issue and why it matters"}}
   ]
 }}
 
-Be clinical and factual. No repetition."""
+Be clinical, specific, and comparison-focused. Explicitly state whether the patient followed their care plans or not."""
 
     try:
         response = cerebras.chat.completions.create(

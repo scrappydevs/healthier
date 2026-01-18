@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, AlertCircle, Calendar, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ArrowLeft, AlertCircle, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { getPatient, type Patient } from "@/lib/api";
@@ -23,9 +23,6 @@ export default function PatientDetailPage({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
 
   useEffect(() => {
     async function fetchPatient() {
@@ -47,31 +44,6 @@ export default function PatientDetailPage({
     if (rate >= 85) return "good";
     if (rate >= 70) return "warning";
     return "critical";
-  };
-
-  const changeDate = (delta: number) => {
-    const date = new Date(selectedDate);
-    date.setDate(date.getDate() + delta);
-    setSelectedDate(date.toISOString().split("T")[0]);
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    if (dateStr === today.toISOString().split("T")[0]) {
-      return "Today";
-    }
-    if (dateStr === yesterday.toISOString().split("T")[0]) {
-      return "Yesterday";
-    }
-    return date.toLocaleDateString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
   };
 
   if (isLoading) {
@@ -131,26 +103,6 @@ export default function PatientDetailPage({
           </div>
         </div>
 
-        {/* Date Selector (for food/exercise tabs) */}
-        {(activeTab === "food" || activeTab === "exercise") && (
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={() => changeDate(-1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-md">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{formatDate(selectedDate)}</span>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => changeDate(1)}
-              disabled={selectedDate >= new Date().toISOString().split("T")[0]}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Tabs */}
@@ -177,10 +129,10 @@ export default function PatientDetailPage({
           <OverviewTab patient={patient} setActiveTab={setActiveTab} />
         )}
         {activeTab === "food" && (
-          <FoodSection patientId={id} date={selectedDate} />
+          <FoodSection patientId={id} />
         )}
         {activeTab === "exercise" && (
-          <ExerciseSection patientId={id} date={selectedDate} />
+          <ExerciseSection patientId={id} />
         )}
         {activeTab === "medications" && (
           <MedicationSection patientId={id} />

@@ -59,9 +59,16 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
+  
+  // Helper to get local date string (YYYY-MM-DD)
+  const getLocalDate = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalDate(new Date()));
 
   useEffect(() => {
     async function fetchData() {
@@ -109,19 +116,22 @@ export default function DashboardPage() {
   };
 
   const changeDate = (delta: number) => {
-    const date = new Date(selectedDate);
+    const [year, month, day] = selectedDate.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
     date.setDate(date.getDate() + delta);
-    setSelectedDate(date.toISOString().split("T")[0]);
+    setSelectedDate(getLocalDate(date));
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    if (dateStr === today.toISOString().split("T")[0]) return "Today";
-    if (dateStr === yesterday.toISOString().split("T")[0]) return "Yesterday";
+    if (dateStr === getLocalDate(today)) return "Today";
+    if (dateStr === getLocalDate(yesterday)) return "Yesterday";
     return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   };
 
@@ -195,12 +205,12 @@ export default function DashboardPage() {
                     </span>
                     {hasMeds ? (
                       <div className="flex items-center gap-1">
-                        <span className={cn(
-                          "text-xs font-semibold tabular-nums",
+                      <span className={cn(
+                        "text-xs font-semibold tabular-nums",
                           "text-muted-foreground"
-                        )}>
-                          {Math.round(patient.adherence_rate)}%
-                        </span>
+                      )}>
+                        {Math.round(patient.adherence_rate)}%
+                      </span>
                         {status === "critical" && (
                           <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -252,28 +262,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Date Selector */}
-              {(activeTab === "food" || activeTab === "exercise") && (
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => changeDate(-1)}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <div className="flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-foreground">
-                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                    {formatDate(selectedDate)}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => changeDate(1)}
-                    disabled={selectedDate >= new Date().toISOString().split("T")[0]}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-
               <Button 
                 variant="outline" 
                 size="sm"
@@ -313,12 +301,12 @@ export default function DashboardPage() {
               )}
               {activeTab === "food" && (
                 <div className="bg-white rounded-lg border p-4">
-                  <FoodSection patientId={selectedPatient.id} date={selectedDate} />
+                  <FoodSection patientId={selectedPatient.id} />
                 </div>
               )}
               {activeTab === "exercise" && (
                 <div className="bg-white rounded-lg border p-4">
-                  <ExerciseSection patientId={selectedPatient.id} date={selectedDate} />
+                  <ExerciseSection patientId={selectedPatient.id} />
                 </div>
               )}
               {activeTab === "medications" && (
@@ -515,13 +503,13 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
           </p>
         </div>
         
-        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
           {/* Status indicator */}
           {isAnalyzing ? (
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
               Analyzing...
-            </span>
+              </span>
           ) : hasAnalysis ? (
             <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
               Analyzed
@@ -540,9 +528,9 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
               <Video className="h-3 w-3" />
               <span>{showVideo ? "Hide" : "Video"}</span>
             </button>
-          )}
-        </div>
-      </div>
+            )}
+          </div>
+          </div>
 
       {/* Expandable Video Section */}
       {hasVideo && showVideo && (
@@ -572,7 +560,7 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
               >
                 Pose Analysis
               </button>
-            </div>
+          </div>
           )}
           
           {/* Video Player */}
@@ -592,15 +580,15 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
                 : "bg-black/50 text-white"
             )}>
               {videoView === "analyzed" && hasProcessedVideo ? "Pose Overlay" : "Original"}
-            </div>
+          </div>
           </div>
           
           {/* Pose Analysis Section */}
           <div className="p-3 bg-slate-50">
             {hasAnalysis ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {/* AI Summary */}
-                <p className="text-sm text-foreground leading-relaxed">{analysis.summary}</p>
+                <p className="text-sm font-medium text-foreground leading-relaxed">{analysis.summary}</p>
                 
                 {/* Asymmetry Alerts */}
                 {asymmetryIssues.length > 0 && (
@@ -654,9 +642,9 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
                   </>
                 )}
               </button>
-            )}
-          </div>
+          )}
         </div>
+      </div>
       )}
     </div>
   );
@@ -712,47 +700,47 @@ function PlansContent({ patient }: { patient: Patient }) {
 
   return (
     <div className="space-y-4">
-      {/* Medication Assignment */}
-      <div className="bg-white rounded-lg border p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Pill className="h-4 w-4 text-primary" />
+        {/* Medication Assignment */}
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Pill className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-medium text-foreground">Medication Plans</h3>
-          </div>
-          <button 
-            onClick={() => setShowMedForm(!showMedForm)}
-            className="text-xs text-primary hover:underline flex items-center gap-1"
-          >
-            <Plus className="h-3 w-3" />
+            </div>
+            <button 
+              onClick={() => setShowMedForm(!showMedForm)}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              <Plus className="h-3 w-3" />
             {showMedForm ? "Cancel" : "Assign"}
-          </button>
-        </div>
-        
-        {showMedForm && (
-          <MedicationAssignForm 
-            patientId={patient.id} 
-            onClose={() => setShowMedForm(false)} 
-          />
-        )}
-        
-        {!showMedForm && (
+            </button>
+          </div>
+          
+          {showMedForm && (
+            <MedicationAssignForm 
+              patientId={patient.id} 
+              onClose={() => setShowMedForm(false)} 
+            />
+          )}
+          
+          {!showMedForm && (
           <p className="text-sm text-muted-foreground">
             {isLoading ? "Loading..." : `${medicationCount} active prescriptions`}
-          </p>
-        )}
-      </div>
+            </p>
+          )}
+        </div>
 
-      {/* Diet Instructions */}
-      <div className="bg-white rounded-lg border p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Utensils className="h-4 w-4 text-amber-600" />
-            <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
-          </div>
-          <button 
-            onClick={() => setShowDietForm(!showDietForm)}
-            className="text-xs text-primary hover:underline flex items-center gap-1"
-          >
+        {/* Diet Instructions */}
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Utensils className="h-4 w-4 text-amber-600" />
+              <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
+            </div>
+            <button 
+              onClick={() => setShowDietForm(!showDietForm)}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
             {showDietForm ? (
               <>
                 <span>Cancel</span>
@@ -763,22 +751,22 @@ function PlansContent({ patient }: { patient: Patient }) {
               </>
             ) : (
               <>
-                <Plus className="h-3 w-3" />
+              <Plus className="h-3 w-3" />
                 <span>Add</span>
               </>
             )}
-          </button>
-        </div>
-        
-        {showDietForm && (
-          <DietInstructionForm 
-            patientId={patient.id} 
+            </button>
+          </div>
+          
+          {showDietForm && (
+            <DietInstructionForm 
+              patientId={patient.id} 
             existingPlan={dietPlan}
             onClose={() => { setShowDietForm(false); handlePlanSaved(); }} 
-          />
-        )}
-        
-        {!showDietForm && (
+            />
+          )}
+          
+          {!showDietForm && (
           <div className="space-y-2">
             {dietPlan ? (
               <div className="p-3 bg-amber-50 rounded border">
@@ -791,20 +779,20 @@ function PlansContent({ patient }: { patient: Patient }) {
               <p className="text-sm text-muted-foreground">No diet plan set</p>
             )}
           </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      {/* Exercise Plan */}
-      <div className="bg-white rounded-lg border p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
+        {/* Exercise Plan */}
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
             <Activity className="h-4 w-4 text-slate-600" />
-            <h3 className="text-sm font-medium text-foreground">Exercise Plan</h3>
-          </div>
-          <button 
-            onClick={() => setShowExerciseForm(!showExerciseForm)}
-            className="text-xs text-primary hover:underline flex items-center gap-1"
-          >
+              <h3 className="text-sm font-medium text-foreground">Exercise Plan</h3>
+            </div>
+            <button 
+              onClick={() => setShowExerciseForm(!showExerciseForm)}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
             {showExerciseForm ? (
               <>
                 <span>Cancel</span>
@@ -815,36 +803,28 @@ function PlansContent({ patient }: { patient: Patient }) {
               </>
             ) : (
               <>
-                <Plus className="h-3 w-3" />
+              <Plus className="h-3 w-3" />
                 <span>Add</span>
               </>
             )}
-          </button>
-        </div>
-        
-        {showExerciseForm && (
-          <ExercisePlanForm 
-            patientId={patient.id} 
+            </button>
+          </div>
+          
+          {showExerciseForm && (
+            <ExercisePlanForm 
+              patientId={patient.id} 
             existingPlan={exercisePlan}
             onClose={() => { setShowExerciseForm(false); handlePlanSaved(); }} 
-          />
-        )}
-        
-        {!showExerciseForm && (
+            />
+          )}
+          
+          {!showExerciseForm && (
           <div className="space-y-2">
             {exercisePlan ? (
               <div className="p-3 bg-slate-50 rounded border">
-                <p className="text-base font-medium text-foreground">{exercisePlan.title || "Exercise Plan"}</p>
-                {(exercisePlan.exercise_minutes_target || exercisePlan.exercise_days_per_week) && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {exercisePlan.exercise_minutes_target && `${exercisePlan.exercise_minutes_target} min/session`}
-                    {exercisePlan.exercise_minutes_target && exercisePlan.exercise_days_per_week && " · "}
-                    {exercisePlan.exercise_days_per_week && `${exercisePlan.exercise_days_per_week} days/week`}
-                  </p>
-                )}
-                {exercisePlan.notes && <p className="text-base text-foreground leading-relaxed mt-2">{exercisePlan.notes}</p>}
+                <p className="text-base text-foreground leading-relaxed">{exercisePlan.notes || "No guidelines specified"}</p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Updated {new Date(exercisePlan.updated_at || exercisePlan.created_at).toLocaleDateString()}
+                  Added {new Date(exercisePlan.created_at).toLocaleDateString()}
                 </p>
               </div>
             ) : (
@@ -894,42 +874,57 @@ function OverviewContent({ patient }: { patient: Patient }) {
   const [aiSummary, setAiSummary] = useState<DailySummaryResponse | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
-  const [mealsExpanded, setMealsExpanded] = useState(true);
-  const [exercisesExpanded, setExercisesExpanded] = useState(true);
-  const [journalExpanded, setJournalExpanded] = useState(true);
+  const [mealsExpanded, setMealsExpanded] = useState(false);
+  const [exercisesExpanded, setExercisesExpanded] = useState(false);
+  const [journalExpanded, setJournalExpanded] = useState(false);
   const [journalSectionSummary, setJournalSectionSummary] = useState<string>("");
   const [mealsSectionSummary, setMealsSectionSummary] = useState<string>("");
   const [exercisesSectionSummary, setExercisesSectionSummary] = useState<string>("");
   const [lastDataHash, setLastDataHash] = useState("");
-  const todayDate = new Date().toISOString().split("T")[0];
+  
+  // Helper to get local date string (YYYY-MM-DD)
+  const getLocalDateString = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  
+  const todayDate = getLocalDateString(new Date());
   const [selectedDate, setSelectedDate] = useState<string>(todayDate);
   const [viewMode, setViewMode] = useState<"day" | "all">("day"); // "day" for specific day (default: today), "all" for all recent
 
   // Helper to format date for display
   const formatDateDisplay = (dateStr: string) => {
-    const date = new Date(dateStr + "T00:00:00");
+    // Parse as local date
+    const [year, month, day] = dateStr.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
     if (dateStr === todayDate) return "Today";
-    if (dateStr === yesterday.toISOString().split("T")[0]) return "Yesterday";
+    if (dateStr === getLocalDateString(yesterday)) return "Yesterday";
     return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   };
 
   // Navigate to previous day
   const goToPreviousDay = () => {
-    const date = new Date(selectedDate + "T00:00:00");
+    const [year, month, day] = selectedDate.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
     date.setDate(date.getDate() - 1);
-    setSelectedDate(date.toISOString().split("T")[0]);
+    setSelectedDate(getLocalDateString(date));
     setViewMode("day");
   };
 
   // Navigate to next day
   const goToNextDay = () => {
-    const date = new Date(selectedDate + "T00:00:00");
+    const [year, month, day] = selectedDate.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
     date.setDate(date.getDate() + 1);
-    const nextDate = date.toISOString().split("T")[0];
+    const nextDate = getLocalDateString(date);
     if (nextDate <= todayDate) {
       setSelectedDate(nextDate);
       setViewMode("day");
@@ -1009,7 +1004,9 @@ function OverviewContent({ patient }: { patient: Patient }) {
   const handleGenerateSummary = async () => {
     setIsGeneratingSummary(true);
     try {
-      const summary = await generateDailySummary(patient.id, todayDate);
+      // Use selected date instead of always using today
+      const summaryDate = viewMode === "day" ? selectedDate : todayDate;
+      const summary = await generateDailySummary(patient.id, summaryDate);
       setAiSummary(summary);
       // Set section summaries from the response
       if (summary.journal_summary) setJournalSectionSummary(summary.journal_summary);
@@ -1073,11 +1070,22 @@ function OverviewContent({ patient }: { patient: Patient }) {
 
   const totalActivity = meals.length + exercises.length + journalEntries.length;
 
-  // Group items by date for display
+  // Helper to get local date from timestamp
+  const getLocalDateFromTimestamp = (timestamp: string): string => {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  // Group items by date for display (using local timezone)
   const groupByDate = <T extends { logged_at?: string; consumed_at?: string }>(items: T[]) => {
     const groups: Record<string, T[]> = {};
     items.forEach(item => {
-      const dateStr = (item.logged_at || item.consumed_at || "").split("T")[0];
+      const timestamp = item.logged_at || item.consumed_at || "";
+      if (!timestamp) return;
+      const dateStr = getLocalDateFromTimestamp(timestamp);
       if (!groups[dateStr]) groups[dateStr] = [];
       groups[dateStr].push(item);
     });
@@ -1157,7 +1165,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
             <p className="text-sm text-muted-foreground">Loading...</p>
           ) : aiSummary ? (
             <>
-              <p className="text-sm text-foreground leading-relaxed">{aiSummary.summary}</p>
+              <p className="text-sm font-medium text-foreground leading-relaxed">{aiSummary.summary}</p>
               <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
                 <span>{aiSummary.stats.meals} meals</span>
                 <span>·</span>
@@ -1177,215 +1185,178 @@ function OverviewContent({ patient }: { patient: Patient }) {
       </div>
 
       {/* Journal Section */}
-      <div className="bg-white rounded-lg border">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <h3 className="text-sm font-medium text-foreground">Journal</h3>
-          <span className="text-xs text-muted-foreground">{journalEntries.length} entries</span>
-        </div>
-        <div className="p-4">
+      <div className="bg-white rounded-lg shadow-sm">
+        <div className="px-4 py-3">
+          <button
+            onClick={() => setJournalExpanded(!journalExpanded)}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Journal</h3>
+              <span className="text-xs text-muted-foreground">{journalEntries.length} {journalEntries.length === 1 ? "entry" : "entries"}</span>
+            </div>
+            <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", journalExpanded && "rotate-180")} />
+          </button>
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
+            <div className="mt-2 space-y-2">
+              <div className="h-3 bg-slate-100 rounded w-3/4 animate-pulse"></div>
+              <div className="h-3 bg-slate-100 rounded w-1/2 animate-pulse"></div>
+            </div>
           ) : journalEntries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No journal entries {viewMode === "all" ? "recorded" : "today"}</p>
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              No journal entries {viewMode === "all" ? "recorded" : "today"}
+            </p>
+          ) : journalSectionSummary ? (
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              {journalSectionSummary}
+            </p>
           ) : (
-            <>
-              <p className="text-sm text-foreground leading-relaxed mb-3">
-                {journalSectionSummary || (aiSummary ? 
-                  `Patient recorded ${journalEntries.length} journal ${journalEntries.length === 1 ? 'entry' : 'entries'}.` : 
-                  "Loading summary..."
-                )}
-              </p>
-              {journalEntries.length > 0 && (
-                <button
-                  onClick={() => setJournalExpanded(!journalExpanded)}
-                  className="text-xs text-primary hover:underline mb-2"
-                >
-                  {journalExpanded ? "Hide entries" : "View entries"}
-                </button>
-              )}
-              {journalExpanded && (
-                <div className="mt-3 space-y-3">
-                  {viewMode === "all" ? (
-                    // Group by date
-                    groupByDate(journalEntries).map(([dateStr, entries]) => (
-                      <div key={dateStr}>
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                          {formatDateDisplay(dateStr)}
-                        </p>
-                        <div className="space-y-2">
-                          {entries.map((entry) => (
-                            <div key={entry.id} className="p-3 bg-slate-50/50 rounded">
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                                <span>{getMoodEmoji(entry.mood)}</span>
-                                <span>{formatTime(entry.logged_at)}</span>
-                                {entry.duration_seconds && <span>· {formatDuration(entry.duration_seconds)}</span>}
-                              </div>
-                              <p className="text-sm text-foreground">{entry.transcript}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    // Single day view
-                    journalEntries.map((entry) => (
-                      <div key={entry.id} className="p-3 bg-slate-50/50 rounded">
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                          <span>{getMoodEmoji(entry.mood)}</span>
-                          <span>{formatTime(entry.logged_at)}</span>
-                          {entry.duration_seconds && <span>· {formatDuration(entry.duration_seconds)}</span>}
-                        </div>
-                        <p className="text-sm text-foreground">{entry.transcript}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </>
+            <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
+              Analyzing journal entries...
+            </div>
           )}
         </div>
+        {journalExpanded && journalEntries.length > 0 && (
+          <div className="px-4 pb-4 border-t">
+            <div className="pt-3 space-y-3">
+              {(viewMode === "all" ? groupByDate(journalEntries) : [[formatDateDisplay(selectedDate), journalEntries] as [string, typeof journalEntries]]).map(([dateStr, entries]) => (
+                <div key={dateStr} className="space-y-2">
+                  {viewMode === "all" && (
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{dateStr}</p>
+                  )}
+                  {entries.map((entry) => (
+                    <div key={entry.id} className="py-2 border-b border-slate-100 last:border-b-0">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
+                        <span>{getMoodEmoji(entry.mood)}</span>
+                        <span>{formatTime(entry.logged_at)}</span>
+                        {entry.duration_seconds && <span>· {formatDuration(entry.duration_seconds)}</span>}
+                      </div>
+                      <p className="text-sm text-foreground leading-relaxed">{entry.transcript}</p>
+                    </div>
+                  ))}
+                </div>
+            ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Meals Section */}
-      <div className="bg-white rounded-lg border">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <h3 className="text-sm font-medium text-foreground">Meals</h3>
-          <span className="text-xs text-muted-foreground">{meals.length} logged</span>
-        </div>
-        <div className="p-4">
+      <div className="bg-white rounded-lg shadow-sm">
+        <div className="px-4 py-3">
+          <button
+            onClick={() => setMealsExpanded(!mealsExpanded)}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Meals</h3>
+              <span className="text-xs text-muted-foreground">{meals.length} logged · {meals.reduce((sum, m) => sum + (m.total_calories || 0), 0)} cal</span>
+            </div>
+            <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", mealsExpanded && "rotate-180")} />
+          </button>
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
+            <div className="mt-2 space-y-2">
+              <div className="h-3 bg-slate-100 rounded w-3/4 animate-pulse"></div>
+              <div className="h-3 bg-slate-100 rounded w-1/2 animate-pulse"></div>
+            </div>
           ) : meals.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No meals logged {viewMode === "all" ? "yet" : "today"}</p>
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              No meals logged {viewMode === "all" ? "yet" : "today"}
+            </p>
+          ) : mealsSectionSummary ? (
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              {mealsSectionSummary}
+            </p>
           ) : (
-            <>
-              <p className="text-sm text-foreground leading-relaxed mb-3">
-                {mealsSectionSummary || (aiSummary ? 
-                  `Patient logged ${meals.length} ${meals.length === 1 ? 'meal' : 'meals'} totaling ${meals.reduce((sum, m) => sum + (m.total_calories || 0), 0)} calories.` : 
-                  "Loading summary..."
-                )}
-              </p>
-              {meals.length > 0 && (
-                <button
-                  onClick={() => setMealsExpanded(!mealsExpanded)}
-                  className="text-xs text-primary hover:underline mb-2"
-                >
-                  {mealsExpanded ? "Hide meals" : "View meals"}
-                </button>
-              )}
-              {mealsExpanded && (
-                <div className="mt-3 space-y-3">
-                  {viewMode === "all" ? (
-                    // Group by date
-                    groupByDate(meals.map(m => ({ ...m, logged_at: m.consumed_at }))).map(([dateStr, dateMeals]) => (
-                      <div key={dateStr}>
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                          {formatDateDisplay(dateStr)}
-                        </p>
-                        <div className="space-y-2">
-                          {dateMeals.map((meal) => (
-                            <div key={meal.id} className="flex items-center gap-3 p-3 bg-slate-50/50 rounded">
-                              {meal.image_url ? (
-                                <img src={meal.image_url} alt={meal.name} className="w-12 h-12 rounded object-cover flex-shrink-0" />
-                              ) : (
-                                <div className="w-12 h-12 rounded bg-slate-200 flex items-center justify-center flex-shrink-0">
-                                  <Utensils className="h-5 w-5 text-slate-400" />
-                                </div>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-foreground text-sm">{meal.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {mealTypeLabel(meal.meal_type)} · {formatTime(meal.consumed_at)}
-                                  {meal.total_calories > 0 && ` · ${meal.total_calories} cal`}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    // Single day view
-                    meals.map((meal) => (
-                      <div key={meal.id} className="flex items-center gap-3 p-3 bg-slate-50/50 rounded">
-                        {meal.image_url ? (
-                          <img src={meal.image_url} alt={meal.name} className="w-12 h-12 rounded object-cover flex-shrink-0" />
-                        ) : (
-                          <div className="w-12 h-12 rounded bg-slate-200 flex items-center justify-center flex-shrink-0">
-                            <Utensils className="h-5 w-5 text-slate-400" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-foreground text-sm">{meal.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {mealTypeLabel(meal.meal_type)} · {formatTime(meal.consumed_at)}
-                            {meal.total_calories > 0 && ` · ${meal.total_calories} cal`}
-                          </p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </>
+            <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
+              Analyzing nutrition...
+            </div>
           )}
         </div>
+        {mealsExpanded && meals.length > 0 && (
+          <div className="px-4 pb-4 border-t">
+            <div className="pt-3 space-y-2">
+              {(viewMode === "all" ? groupByDate(meals.map(m => ({ ...m, logged_at: m.consumed_at }))) : [[formatDateDisplay(selectedDate), meals] as [string, typeof meals]]).map(([dateStr, dateMeals]) => (
+                <div key={dateStr}>
+                  {viewMode === "all" && (
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
+                  )}
+                  {dateMeals.map((meal) => (
+                    <div key={meal.id} className="flex items-center gap-3 py-2 border-b border-slate-100 last:border-b-0">
+                      {meal.image_url ? (
+                        <img src={meal.image_url} alt={meal.name} className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center flex-shrink-0">
+                          <Utensils className="h-4 w-4 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground text-sm">{meal.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {mealTypeLabel(meal.meal_type)} · {formatTime(meal.consumed_at)}
+                          {meal.total_calories > 0 && ` · ${meal.total_calories} cal`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Activity Section */}
-      <div className="bg-white rounded-lg border">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <h3 className="text-sm font-medium text-foreground">Activity</h3>
-          <span className="text-xs text-muted-foreground">{exercises.length} logged</span>
-        </div>
-        <div className="p-4">
+      <div className="bg-white rounded-lg shadow-sm">
+        <div className="px-4 py-3">
+          <button
+            onClick={() => setExercisesExpanded(!exercisesExpanded)}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Activity</h3>
+              <span className="text-xs text-muted-foreground">{exercises.length} logged · {exercises.reduce((sum, e) => sum + (e.duration_minutes || 0), 0)} min</span>
+            </div>
+            <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", exercisesExpanded && "rotate-180")} />
+          </button>
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
+            <div className="mt-2 space-y-2">
+              <div className="h-3 bg-slate-100 rounded w-3/4 animate-pulse"></div>
+              <div className="h-3 bg-slate-100 rounded w-1/2 animate-pulse"></div>
+            </div>
           ) : exercises.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No exercises logged {viewMode === "all" ? "yet" : "today"}</p>
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              No exercises logged {viewMode === "all" ? "yet" : "today"}
+            </p>
+          ) : exercisesSectionSummary ? (
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              {exercisesSectionSummary}
+            </p>
           ) : (
-            <>
-              <p className="text-sm text-foreground leading-relaxed mb-3">
-                {exercisesSectionSummary || (aiSummary ? 
-                  `Patient completed ${exercises.length} ${exercises.length === 1 ? 'activity' : 'activities'} totaling ${exercises.reduce((sum, e) => sum + (e.duration_minutes || 0), 0)} minutes.` : 
-                  "Loading summary..."
-                )}
-              </p>
-              {exercises.length > 0 && (
-                <button
-                  onClick={() => setExercisesExpanded(!exercisesExpanded)}
-                  className="text-xs text-primary hover:underline mb-2"
-                >
-                  {exercisesExpanded ? "Hide activities" : "View activities"}
-                </button>
-              )}
-              {exercisesExpanded && (
-                <div className="mt-3 space-y-3">
-                  {viewMode === "all" ? (
-                    // Group by date
-                    groupByDate(exercises).map(([dateStr, dateExercises]) => (
-                      <div key={dateStr}>
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                          {formatDateDisplay(dateStr)}
-                        </p>
-                        <div className="space-y-3">
-                          {dateExercises.map((exercise) => (
-                            <ExerciseCard key={exercise.id} exercise={exercise} />
-                          ))}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    // Single day view
-                    exercises.map((exercise) => (
-                      <ExerciseCard key={exercise.id} exercise={exercise} />
-                    ))
-                  )}
-                </div>
-              )}
-            </>
+            <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
+              Analyzing activity...
+            </div>
           )}
         </div>
+        {exercisesExpanded && exercises.length > 0 && (
+          <div className="px-4 pb-4 border-t">
+            <div className="pt-3 space-y-2">
+              {(viewMode === "all" ? groupByDate(exercises) : [[formatDateDisplay(selectedDate), exercises] as [string, typeof exercises]]).map(([dateStr, dateExercises]) => (
+                <div key={dateStr}>
+                  {viewMode === "all" && (
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
+                  )}
+                  {dateExercises.map((exercise) => (
+                    <ExerciseCard key={exercise.id} exercise={exercise} />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1532,7 +1503,7 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
           notes: notes.trim(),
         });
         if (result.plan) {
-          onClose();
+    onClose();
         } else {
           setError("Failed to update plan");
         }
@@ -1585,36 +1556,29 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
 
 // Inline Exercise Plan Form
 function ExercisePlanForm({ patientId, existingPlan, onClose }: { patientId: string; existingPlan?: PatientPlan | null; onClose: () => void }) {
-  const [title, setTitle] = useState("");
-  const [exerciseType, setExerciseType] = useState("");
-  const [minutesTarget, setMinutesTarget] = useState("30");
-  const [daysPerWeek, setDaysPerWeek] = useState("3");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(existingPlan?.notes || "");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (existingPlan) {
-      setTitle(existingPlan.title || "");
-      setExerciseType(existingPlan.goals && existingPlan.goals.length > 0 ? existingPlan.goals[0] : "");
-      setMinutesTarget(existingPlan.exercise_minutes_target?.toString() || "30");
-      setDaysPerWeek(existingPlan.exercise_days_per_week?.toString() || "3");
       setNotes(existingPlan.notes || "");
     }
   }, [existingPlan]);
 
   const handleSubmit = async () => {
+    if (!notes.trim()) {
+      setError("Please enter exercise guidelines");
+      return;
+    }
+    
     setIsSaving(true);
     setError(null);
     try {
       if (existingPlan) {
         // Update existing plan
         const result = await updatePatientPlan(patientId, existingPlan.id, {
-          title: title || `${exerciseType || "Exercise"} Plan`,
-          notes: notes.trim() || null,
-          exercise_minutes_target: minutesTarget ? parseInt(minutesTarget) : null,
-          exercise_days_per_week: daysPerWeek ? parseInt(daysPerWeek) : null,
-          goals: exerciseType ? [exerciseType] : [],
+          notes: notes.trim(),
         });
         if (result.plan) {
           onClose();
@@ -1625,11 +1589,8 @@ function ExercisePlanForm({ patientId, existingPlan, onClose }: { patientId: str
         // Create new plan
         const result = await createPatientPlan(patientId, {
           plan_type: "exercise",
-          title: title || `${exerciseType || "Exercise"} Plan`,
-          notes: notes.trim() || null,
-          exercise_minutes_target: minutesTarget ? parseInt(minutesTarget) : null,
-          exercise_days_per_week: daysPerWeek ? parseInt(daysPerWeek) : null,
-          goals: exerciseType ? [exerciseType] : [],
+          title: "Exercise Plan",
+          notes: notes.trim(),
         });
         if (result.plan) {
           onClose();
@@ -1648,68 +1609,18 @@ function ExercisePlanForm({ patientId, existingPlan, onClose }: { patientId: str
   return (
     <div className="space-y-3 pt-3 border-t">
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">Plan Title</label>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="e.g., Daily Walking Plan"
-          className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-foreground mb-1">Activity Type</label>
-        <select
-          value={exerciseType}
-          onChange={(e) => setExerciseType(e.target.value)}
-          className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
-        >
-          <option value="">Select type</option>
-          <option value="walking">Walking</option>
-          <option value="stretching">Stretching</option>
-          <option value="swimming">Swimming</option>
-          <option value="cycling">Cycling</option>
-          <option value="strength">Strength Training</option>
-          <option value="yoga">Yoga</option>
-          <option value="tai_chi">Tai Chi</option>
-          <option value="gardening">Gardening</option>
-        </select>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Minutes/session</label>
-          <input
-            type="number"
-            value={minutesTarget}
-            onChange={(e) => setMinutesTarget(e.target.value)}
-            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Days/week</label>
-          <input
-            type="number"
-            value={daysPerWeek}
-            onChange={(e) => setDaysPerWeek(e.target.value)}
-            min="1"
-            max="7"
-            className="w-full h-9 px-3 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </div>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-foreground mb-1">Notes</label>
+        <label className="block text-sm font-medium text-foreground mb-1">Exercise Guidelines</label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Additional instructions or goals..."
-          rows={2}
+          placeholder="e.g., 30 minutes walking daily, strength training 3x per week, gentle stretching..."
+          rows={3}
           className="w-full px-3 py-2 text-sm bg-muted/30 rounded border border-muted focus:outline-none focus:ring-1 focus:ring-primary resize-none"
         />
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSubmit} disabled={isSaving}>
+        <Button size="sm" onClick={handleSubmit} disabled={isSaving || !notes.trim()}>
           {isSaving ? "Saving..." : existingPlan ? "Update Exercise Plan" : "Save Exercise Plan"}
         </Button>
         <button onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground px-3 py-1">
