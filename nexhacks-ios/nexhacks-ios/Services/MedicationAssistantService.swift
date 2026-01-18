@@ -219,6 +219,7 @@ class MedicationAssistantService: NSObject, ObservableObject {
     private func sendVisionContextNow(trigger: String) async {
         guard isVoiceConnected else { return }
         guard let room = liveKitRoom else { return }
+        if isAgentResponding { return }
 
         let vision = currentVisionDescriptionForAgent()
         guard let vision else { return }
@@ -415,8 +416,10 @@ class MedicationAssistantService: NSObject, ObservableObject {
 
                 // Push every new vision description to the agent.
                 if isVoiceConnected {
-                    Task { @MainActor in
-                        await self.sendVisionContextNow(trigger: "vision_update")
+                    if !isAgentResponding {
+                        Task { @MainActor in
+                            await self.sendVisionContextNow(trigger: "vision_update")
+                        }
                     }
                 }
             }
