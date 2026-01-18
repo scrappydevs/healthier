@@ -73,6 +73,7 @@ wssMedication.on('connection', (ws) => {
   let overshootSession = null;
   let frameCount = 0;
   let lastDescription = '';
+  let lastDescriptionSentAt = 0;
   let medicationContext = '';
   let resultTimeout = null;
   let firstResultReceived = false;
@@ -179,14 +180,17 @@ wssMedication.on('connection', (ws) => {
                   }
                 }
 
-                // Only send if description changed meaningfully
-                if (description && description !== lastDescription) {
+                const now = Date.now();
+                const changed = description && description !== lastDescription;
+                const shouldSend = description && (changed || now - lastDescriptionSentAt > 1500);
+                if (shouldSend) {
                   lastDescription = description;
+                  lastDescriptionSentAt = now;
                   console.log("Medication vision sending description:", description.slice(0, 100));
                   ws.send(JSON.stringify({
                     type: 'vision',
                     description: description,
-                    timestamp: Date.now()
+                    timestamp: now
                   }));
                 }
               },
