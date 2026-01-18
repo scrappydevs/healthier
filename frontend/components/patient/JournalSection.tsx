@@ -179,7 +179,7 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
                 {loadingSummaries && !daySummaries[dayKey] ? (
                   <p className="text-sm text-muted-foreground italic">Generating AI summary...</p>
                 ) : (
-                  <p className="text-sm text-foreground leading-relaxed">{daySummaries[dayKey]}</p>
+                  <p className="text-sm font-semibold text-neutral-950 leading-relaxed">{daySummaries[dayKey]}</p>
                 )}
               </div>
             )}

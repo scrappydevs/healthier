@@ -339,12 +339,6 @@ async def assign_patient_medication(
     
     dosage_amount = pill_res.data.get("strength", 1)  # Default to 1 if not specified
     
-    # #region agent log
-    import json
-    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-        f.write(json.dumps({"location":"v1.py:assign_medication:input","message":"Assignment input","data":{"days_of_week_raw":days_of_week,"times_of_day_raw":times_of_day,"frequency":frequency},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
-    # #endregion
-    
     # Day name to integer mapping (0=Mon, 1=Tue, ..., 6=Sun)
     day_mapping = {
         "Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, 
@@ -355,11 +349,6 @@ async def assign_patient_medication(
     day_names = [d.strip() for d in days_of_week.split(",") if d.strip()]
     days_list = [day_mapping.get(d, 0) for d in day_names]  # Convert to integers
     times_list = [t.strip() for t in times_of_day.split(",") if t.strip()]
-    
-    # #region agent log
-    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-        f.write(json.dumps({"location":"v1.py:assign_medication:parsed","message":"Parsed values","data":{"day_names":day_names,"days_list":days_list,"times_list":times_list},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
-    # #endregion
     
     # Create patient_pills record
     patient_pill_data = {
@@ -374,11 +363,6 @@ async def assign_patient_medication(
     }
     
     result = db.table("patient_pills").insert(patient_pill_data).execute()
-    
-    # #region agent log
-    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-        f.write(json.dumps({"location":"v1.py:assign_medication:patient_pill_created","message":"patient_pills record created","data":{"patient_pill_id":result.data[0]["id"] if result.data else None,"times_of_day":times_list},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
-    # #endregion
     
     # Create pill_logs for today's scheduled times
     if result.data and times_list:
@@ -413,11 +397,6 @@ async def assign_patient_medication(
                 }
                 
                 db.table("pill_logs").insert(pill_log_data).execute()
-        
-        # #region agent log
-        with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({"location":"v1.py:assign_medication:pill_logs_created","message":"pill_logs created for today","data":{"patient_pill_id":patient_pill_id,"today_in_schedule":today_weekday in days_list,"times_count":len(times_list)},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
-        # #endregion
     
     return {
         "success": True,
@@ -823,11 +802,6 @@ async def get_patient_pill_logs(
 ):
     """Get pill logs for a patient, optionally filtered by date."""
     patient_id_str = str(patient_id)
-    # #region agent log
-    import json
-    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-        f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:entry","message":"Endpoint called","data":{"patient_id":patient_id_str,"date":date},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","hypothesisId":"H2,H4"}) + '\n')
-    # #endregion
     
     query = db.table("pill_logs").select(
         "id, patient_id, patient_pill_id, scheduled_time, taken_time, status, "
@@ -839,43 +813,18 @@ async def get_patient_pill_logs(
     if date:
         date_start = f"{date}T00:00:00"
         date_end = f"{date}T23:59:59"
-        # #region agent log
-        with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:date_filter","message":"Date filtering","data":{"date_start":date_start,"date_end":date_end},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","hypothesisId":"H2"}) + '\n')
-        # #endregion
         query = query.gte("scheduled_time", date_start).lte("scheduled_time", date_end)
     
-    # #region agent log
-    # Check all pill_logs for this patient (no date filter) to see if any exist
-    all_logs_response = db.table("pill_logs").select("id, scheduled_time, status").eq("patient_id", patient_id_str).execute()
-    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-        f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:all_logs","message":"All pill logs for patient","data":{"total_all_logs":len(all_logs_response.data or []),"all_logs_sample":all_logs_response.data[:5] if all_logs_response.data else []},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","hypothesisId":"H1,H2"}) + '\n')
-    # #endregion
-    
-    # #region agent log
-    # Check patient_pills to see if medications are assigned (include frequency and days_of_week for scheduling)
+    # Check patient_pills to see if medications are assigned (needed for generating logs if none exist)
     patient_pills_response = db.table("patient_pills").select("id, patient_id, pill_id, is_active, times_of_day, frequency, days_of_week").eq("patient_id", patient_id_str).eq("is_active", True).execute()
-    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-        f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:patient_pills","message":"Active patient_pills records","data":{"total_patient_pills":len(patient_pills_response.data or []),"patient_pills_sample":patient_pills_response.data if patient_pills_response.data else []},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","hypothesisId":"H1"}) + '\n')
-    # #endregion
     
     response = query.order("scheduled_time", desc=False).execute()
-    
-    # #region agent log
-    with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-        f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:response","message":"Query result","data":{"total_logs":len(response.data or []),"logs_preview":response.data[:3] if response.data else [],"raw_count":len(response.data) if response.data else 0},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H1,H3,H5"}) + '\n')
-    # #endregion
     
     # If no pill_logs exist but patient has active medications, generate them for the requested date
     if date and len(response.data or []) == 0 and len(patient_pills_response.data or []) > 0:
         from datetime import datetime
         target_date = __import__('datetime').date.fromisoformat(date)
         target_weekday = target_date.weekday()
-        
-        # #region agent log
-        with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:generate_logs","message":"No logs found, generating from patient_pills","data":{"target_date":date,"target_weekday":target_weekday,"patient_pills_count":len(patient_pills_response.data)},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
-        # #endregion
         
         generated_logs = []
         for patient_pill in patient_pills_response.data:
@@ -886,11 +835,6 @@ async def get_patient_pill_logs(
             # If days_of_week is empty and it's a daily medication, treat as every day
             if len(days_of_week) == 0 and "daily" in frequency:
                 days_of_week = [0, 1, 2, 3, 4, 5, 6]  # All days
-            
-            # #region agent log
-            with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:check_schedule","message":"Checking patient_pill schedule","data":{"patient_pill_id":patient_pill.get("id"),"days_of_week":days_of_week,"frequency":frequency,"times_of_day":times_of_day,"target_weekday":target_weekday,"is_scheduled_today":target_weekday in days_of_week},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
-            # #endregion
             
             # Check if target date is in the schedule
             if target_weekday in days_of_week:
@@ -917,11 +861,6 @@ async def get_patient_pill_logs(
                     insert_result = db.table("pill_logs").insert(pill_log_data).execute()
                     if insert_result.data:
                         generated_logs.append(insert_result.data[0])
-        
-        # #region agent log
-        with open('/Users/julianng-thow-hing/healthier/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({"location":"v1.py:get_patient_pill_logs:generated","message":"pill_logs generated","data":{"generated_count":len(generated_logs)},"timestamp":__import__('datetime').datetime.utcnow().isoformat(),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"FIX"}) + '\n')
-        # #endregion
         
         # Re-query to get the full data with joins
         if generated_logs:

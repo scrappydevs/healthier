@@ -1040,14 +1040,8 @@ function OverviewContent({ patient }: { patient: Patient }) {
           setExercises(exercisesRes.exercises);
           setJournalEntries(journalRes.entries);
           setPillLogs(pillLogsRes.logs);
-          // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/b12fea9c-4114-4d21-8093-3b36063386e1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:964',message:'Journal data fetched (all mode)',data:{entryCount:journalRes.entries.length,firstEntry:journalRes.entries[0]?{id:journalRes.entries[0].id,hasTranscript:!!journalRes.entries[0].transcript,transcriptPreview:journalRes.entries[0].transcript?.substring(0,50),hasAiAnalysis:!!journalRes.entries[0].ai_analysis,aiAnalysisType:typeof journalRes.entries[0].ai_analysis}:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-          // #endregion
         } else {
           // Fetch data for specific date
-          // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/b12fea9c-4114-4d21-8093-3b36063386e1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:fetch_start',message:'Fetching data for date',data:{selectedDate,patientId:patient.id,viewMode},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
-          // #endregion
           const [mealsRes, exercisesRes, journalRes, pillLogsRes] = await Promise.all([
             getPatientMeals(patient.id, selectedDate),
             getPatientExercises(patient.id, selectedDate),
@@ -1055,17 +1049,10 @@ function OverviewContent({ patient }: { patient: Patient }) {
             getPatientPillLogs(patient.id, selectedDate),
           ]);
           
-          // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/b12fea9c-4114-4d21-8093-3b36063386e1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:pill_logs_fetched',message:'Pill logs response',data:{total:pillLogsRes.total,logsCount:pillLogsRes.logs?.length || 0,logsSample:pillLogsRes.logs?.slice(0,3) || []},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H4,H5'})}).catch(()=>{});
-          // #endregion
-          
           setMeals(mealsRes.meals);
           setExercises(exercisesRes.exercises);
           setJournalEntries(journalRes.entries);
           setPillLogs(pillLogsRes.logs);
-          // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/b12fea9c-4114-4d21-8093-3b36063386e1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:975',message:'Journal data fetched (day mode)',data:{entryCount:journalRes.entries.length,firstEntry:journalRes.entries[0]?{id:journalRes.entries[0].id,hasTranscript:!!journalRes.entries[0].transcript,transcriptPreview:journalRes.entries[0].transcript?.substring(0,50),hasAiAnalysis:!!journalRes.entries[0].ai_analysis,aiAnalysisType:typeof journalRes.entries[0].ai_analysis}:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-          // #endregion
         }
         
         // Create hash of data to detect changes
@@ -1320,11 +1307,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
                   {viewMode === "all" && (
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{dateStr}</p>
                   )}
-                  {entries.map((entry) => {
-                    // #region agent log
-                    fetch('http://127.0.0.1:7246/ingest/b12fea9c-4114-4d21-8093-3b36063386e1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:1228',message:'Journal entry data',data:{entryId:entry.id,hasTranscript:!!entry.transcript,transcriptLength:entry.transcript?.length,transcriptPreview:entry.transcript?.substring(0,50),hasAiSummary:!!entry.ai_analysis?.summary,aiSummaryPreview:entry.ai_analysis?.summary?.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-H2'})}).catch(()=>{});
-                    // #endregion
-                    return (
+                  {entries.map((entry) => (
                     <div key={entry.id} className="py-3 border-b border-slate-100 last:border-b-0 space-y-2">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span>{getMoodEmoji(entry.mood)}</span>
@@ -1351,7 +1334,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
                         </div>
                       )}
                     </div>
-                  )})}
+                  ))}
                 </div>
             ))}
             </div>
