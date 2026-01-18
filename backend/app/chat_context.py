@@ -157,6 +157,7 @@ PATIENT ASSIGNMENT:
 PATIENTS:
 - list_all_patients / search_patients / get_patient_details
 - get_patient_medications / update_patient_status
+- get_patient_meals: Meals logged by a patient (defaults to today, optional date)
 - add_food_instructions: Assign dietary instructions to patient
 
 HAZARDS & ALERTS:

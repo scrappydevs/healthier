@@ -22,7 +22,8 @@ import {
   Video,
   BarChart3,
   Loader2,
-  Info
+  Info,
+  RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ import {
   updatePatientPlan,
   analyzeExercisePose,
   getExercisePoseAnalysis,
+  updateExercise,
   updatePatient,
   getExerciseCatalog,
   getPrescribedExercises,
@@ -313,6 +315,10 @@ export default function DashboardPage() {
                             if (selectedPatient?.id === patient.id) {
                               setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
                             }
+                            // Invalidate hospital room cache (triggers auto-discharge via DB trigger)
+                            window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
+                              detail: { keys: ['rooms', 'patients'], timestamp: Date.now() }
+                            }));
                           } catch (err) {
                             console.error("Failed to update care setting:", err);
                           }
@@ -340,6 +346,10 @@ export default function DashboardPage() {
                             if (selectedPatient?.id === patient.id) {
                               setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
                             }
+                            // Invalidate hospital room cache
+                            window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
+                              detail: { keys: ['rooms', 'patients'], timestamp: Date.now() }
+                            }));
                           } catch (err) {
                             console.error("Failed to update care setting:", err);
                           }
@@ -385,6 +395,10 @@ export default function DashboardPage() {
                           setPatients(prev => prev.map(p => 
                             p.id === selectedPatient.id ? { ...p, care_setting: newSetting } : p
                           ));
+                          // Invalidate hospital room cache (triggers auto-discharge via DB trigger)
+                          window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
+                            detail: { keys: ['rooms', 'patients'], timestamp: Date.now() }
+                          }));
                         } catch (err) {
                           console.error("Failed to update care setting:", err);
                         }
@@ -517,6 +531,42 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
   const [processedUrl, setProcessedUrl] = useState(initialProcessedUrl);
   const autoAnalyzeTriggeredRef = useRef(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Inline editing state - prioritize name over exercise_type
+  const displayName = exercise.name || exercise.exercise_type || "Exercise";
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedName, setEditedName] = useState(displayName);
+  const [isSaving, setIsSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  const handleSaveName = async () => {
+    const trimmedName = editedName.trim();
+    if (!trimmedName || trimmedName === displayName) {
+      setIsEditing(false);
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      // Update the name field (prioritized for display and AI analysis)
+      await updateExercise(exercise.id, { name: trimmedName });
+      // Update local display - the parent will refetch on next interval
+      exercise.name = trimmedName;
+    } catch (err) {
+      console.error("Failed to update exercise name:", err);
+      setEditedName(displayName);
+    } finally {
+      setIsSaving(false);
+      setIsEditing(false);
+    }
+  };
+  
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
 
   const formatTime = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -619,6 +669,10 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
   const hasVideo = !!exercise.video_url;
   const hasAnalysis = !!analysis?.summary;
   const hasProcessedVideo = !!processedUrl;
+  
+  // Check if analysis failed (contains error message)
+  const analysisError = analysis?.summary?.includes("Unable to analyze") || analysis?.summary?.includes("not available");
+  const hasSuccessfulAnalysis = hasAnalysis && !analysisError;
 
   // Get asymmetry issues
   const asymmetryIssues = analysis?.symmetry_analysis 
@@ -637,13 +691,75 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="font-medium text-foreground text-sm">{exercise.exercise_type || exercise.name || "Exercise"}</p>
+              {isEditing ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  onBlur={handleSaveName}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSaveName();
+                    } else if (e.key === "Escape") {
+                      setEditedName(exercise.name || exercise.exercise_type || "");
+                      setIsEditing(false);
+                    }
+                  }}
+                  disabled={isSaving}
+                  className="font-medium text-foreground text-sm bg-muted/50 border border-foreground/20 rounded px-2 py-0.5 focus:border-foreground focus:outline-none w-40"
+                  placeholder="e.g. Squat, Lunge, Curl"
+                />
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditing(true);
+                  }}
+                  className="font-medium text-foreground text-sm hover:bg-muted/50 rounded px-1 -ml-1 border border-dashed border-muted-foreground/30 hover:border-foreground/50 transition-colors cursor-text"
+                  title="Click to rename exercise"
+                >
+                  {exercise.name || exercise.exercise_type || "Exercise"}
+                </button>
+              )}
               {isAnalyzing ? (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
                 </span>
-              ) : hasAnalysis ? (
+              ) : hasSuccessfulAnalysis ? (
                 <span className="text-xs text-emerald-600">✓</span>
+              ) : analysisError ? (
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setAnalysis(null);
+                    autoAnalyzeTriggeredRef.current = false;
+                    setIsAnalyzing(true);
+                    try {
+                      const result = await analyzeExercisePose(exercise.id, true);
+                      if (result.status === "completed" && result.pose_analysis) {
+                        setAnalysis(result.pose_analysis);
+                        const pUrl = result.processed_video_url || result.pose_analysis?.processed_video_url;
+                        if (pUrl) {
+                          setProcessedUrl(pUrl);
+                          setVideoView("analyzed");
+                        }
+                        setIsAnalyzing(false);
+                      } else if (result.status === "processing") {
+                        startPolling(exercise.id);
+                      }
+                    } catch (err) {
+                      console.error("Retry analysis failed:", err);
+                      setIsAnalyzing(false);
+                    }
+                  }}
+                  className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700"
+                  title="Analysis failed - click to retry"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  <span>⚠ Retry</span>
+                </button>
               ) : null}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -712,7 +828,7 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
           </div>
           
           {/* Pose Analysis Summary */}
-          {hasAnalysis && (
+          {hasSuccessfulAnalysis && (
             <div className="mt-3 space-y-2">
               <p className="text-sm text-foreground leading-relaxed">{analysis.summary}</p>
               
@@ -738,11 +854,102 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
                   })}
                 </div>
               )}
+              
+              {/* Form tips for this exercise */}
+              {analysis.form_tips && analysis.form_tips.length > 0 && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                    Form tips for {exercise.name || exercise.exercise_type || "this exercise"}
+                  </summary>
+                  <ul className="mt-1 space-y-1 pl-4 text-muted-foreground list-disc">
+                    {analysis.form_tips.map((tip: string, idx: number) => (
+                      <li key={idx}>{tip}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              
+              {/* Re-analyze button (useful after renaming exercise) */}
+              <button
+                onClick={async () => {
+                  setAnalysis(null);
+                  autoAnalyzeTriggeredRef.current = false;
+                  setIsAnalyzing(true);
+                  try {
+                    const result = await analyzeExercisePose(exercise.id, true);
+                    if (result.status === "completed" && result.pose_analysis) {
+                      setAnalysis(result.pose_analysis);
+                      const pUrl = result.processed_video_url || result.pose_analysis?.processed_video_url;
+                      if (pUrl) {
+                        setProcessedUrl(pUrl);
+                        setVideoView("analyzed");
+                      }
+                      setIsAnalyzing(false);
+                    } else if (result.status === "processing") {
+                      startPolling(exercise.id);
+                    }
+                  } catch (err) {
+                    console.error("Re-analysis failed:", err);
+                    setIsAnalyzing(false);
+                  }
+                }}
+                disabled={isAnalyzing}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>Re-analyze</span>
+              </button>
+            </div>
+          )}
+          
+          {/* Analysis Error with Retry */}
+          {analysisError && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-amber-700 leading-relaxed">{analysis?.summary}</p>
+              <button
+                onClick={async () => {
+                  // Clear local state and force re-analysis
+                  setAnalysis(null);
+                  autoAnalyzeTriggeredRef.current = false;
+                  setIsAnalyzing(true);
+                  try {
+                    const result = await analyzeExercisePose(exercise.id, true); // force=true
+                    if (result.status === "completed" && result.pose_analysis) {
+                      setAnalysis(result.pose_analysis);
+                      const pUrl = result.processed_video_url || result.pose_analysis?.processed_video_url;
+                      if (pUrl) {
+                        setProcessedUrl(pUrl);
+                        setVideoView("analyzed");
+                      }
+                      setIsAnalyzing(false);
+                    } else if (result.status === "processing") {
+                      startPolling(exercise.id);
+                    }
+                  } catch (err) {
+                    console.error("Retry analysis failed:", err);
+                    setIsAnalyzing(false);
+                  }
+                }}
+                disabled={isAnalyzing}
+                className="flex items-center gap-2 text-xs text-primary hover:underline disabled:opacity-50"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span>Retrying...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-3 w-3" />
+                    <span>Retry analysis</span>
+                  </>
+                )}
+              </button>
             </div>
           )}
           
           {/* Analyze button if no analysis */}
-          {!hasAnalysis && (
+          {!hasAnalysis && !analysisError && (
             <button
               onClick={handleAnalyze}
               disabled={isAnalyzing}

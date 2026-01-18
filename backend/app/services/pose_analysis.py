@@ -301,12 +301,152 @@ def process_video_frames(
     }
 
 
+def get_exercise_specific_guidance(exercise_type: str) -> Dict[str, Any]:
+    """Get exercise-specific metrics to focus on and ideal ranges."""
+    exercise_lower = (exercise_type or "").lower()
+    
+    # Default guidance
+    guidance = {
+        "focus_joints": ["knee", "hip", "shoulder"],
+        "ideal_ranges": {},
+        "form_tips": [],
+        "key_metrics": "overall symmetry and range of motion"
+    }
+    
+    # Squat variations
+    if any(x in exercise_lower for x in ["squat", "squats"]):
+        guidance = {
+            "focus_joints": ["knee", "hip"],
+            "ideal_ranges": {
+                "knee": {"min": 70, "max": 100, "note": "Knee flexion should reach 90° for proper depth"},
+                "hip": {"min": 60, "max": 90, "note": "Hip hinge is crucial for proper form"},
+            },
+            "form_tips": [
+                "Knees should track over toes, not cave inward",
+                "Hips should descend below knee level for full squat",
+                "Maintain neutral spine throughout",
+            ],
+            "key_metrics": "knee depth, hip hinge, bilateral symmetry"
+        }
+    
+    # Lunge variations
+    elif any(x in exercise_lower for x in ["lunge", "lunges", "split squat"]):
+        guidance = {
+            "focus_joints": ["knee", "hip"],
+            "ideal_ranges": {
+                "knee": {"min": 80, "max": 100, "note": "Front knee should reach ~90° flexion"},
+                "hip": {"min": 50, "max": 80, "note": "Rear hip extension matters for hip flexor stretch"},
+            },
+            "form_tips": [
+                "Front knee should not extend past toes",
+                "Keep torso upright",
+                "Rear knee should nearly touch ground",
+            ],
+            "key_metrics": "front knee angle, hip extension, balance"
+        }
+    
+    # Deadlift variations
+    elif any(x in exercise_lower for x in ["deadlift", "rdl", "hip hinge"]):
+        guidance = {
+            "focus_joints": ["hip", "knee"],
+            "ideal_ranges": {
+                "hip": {"min": 30, "max": 90, "note": "Hip hinge should be primary movement"},
+                "knee": {"min": 10, "max": 30, "note": "Slight knee bend, not a squat"},
+            },
+            "form_tips": [
+                "Maintain flat back throughout",
+                "Push hips back, not down",
+                "Bar should stay close to body",
+            ],
+            "key_metrics": "hip hinge depth, spine neutrality, knee softness"
+        }
+    
+    # Arm exercises (bicep curl, shoulder press, etc.)
+    elif any(x in exercise_lower for x in ["curl", "bicep", "arm"]):
+        guidance = {
+            "focus_joints": ["elbow", "shoulder"],
+            "ideal_ranges": {
+                "elbow": {"min": 30, "max": 150, "note": "Full range: 30° to 150° flexion"},
+            },
+            "form_tips": [
+                "Keep elbows stationary at sides",
+                "Control the eccentric (lowering) phase",
+                "Avoid swinging or momentum",
+            ],
+            "key_metrics": "elbow range of motion, control, bilateral symmetry"
+        }
+    
+    # Shoulder exercises
+    elif any(x in exercise_lower for x in ["press", "shoulder", "overhead", "raise"]):
+        guidance = {
+            "focus_joints": ["shoulder", "elbow"],
+            "ideal_ranges": {
+                "shoulder": {"min": 20, "max": 170, "note": "Full overhead range important"},
+                "elbow": {"min": 90, "max": 180, "note": "Should extend fully at top"},
+            },
+            "form_tips": [
+                "Keep core engaged",
+                "Avoid excessive lower back arch",
+                "Control the weight path",
+            ],
+            "key_metrics": "overhead reach, elbow extension, shoulder symmetry"
+        }
+    
+    # Push-up / plank
+    elif any(x in exercise_lower for x in ["push", "pushup", "push-up", "plank"]):
+        guidance = {
+            "focus_joints": ["elbow", "shoulder"],
+            "ideal_ranges": {
+                "elbow": {"min": 70, "max": 170, "note": "Should reach ~90° at bottom"},
+            },
+            "form_tips": [
+                "Maintain straight line from head to heels",
+                "Lower chest to near ground",
+                "Keep elbows at 45° angle, not flared",
+            ],
+            "key_metrics": "elbow depth, body alignment, elbow position"
+        }
+    
+    # Step-ups / stairs
+    elif any(x in exercise_lower for x in ["step", "stair", "climb"]):
+        guidance = {
+            "focus_joints": ["knee", "hip"],
+            "ideal_ranges": {
+                "knee": {"min": 60, "max": 100, "note": "Working leg knee drives movement"},
+            },
+            "form_tips": [
+                "Push through heel of working leg",
+                "Avoid pushing off back leg",
+                "Keep torso upright",
+            ],
+            "key_metrics": "knee drive, balance, step control"
+        }
+    
+    # Walking / gait
+    elif any(x in exercise_lower for x in ["walk", "gait", "march"]):
+        guidance = {
+            "focus_joints": ["knee", "hip"],
+            "ideal_ranges": {
+                "knee": {"min": 0, "max": 60, "note": "Normal gait knee flexion"},
+                "hip": {"min": 10, "max": 40, "note": "Hip extension in stance phase"},
+            },
+            "form_tips": [
+                "Heel strike, toe off pattern",
+                "Arms swing naturally",
+                "Even stride length bilaterally",
+            ],
+            "key_metrics": "gait symmetry, stride length, step rhythm"
+        }
+    
+    return guidance
+
+
 def generate_natural_language_summary(
     analysis: Dict[str, Any],
     exercise_type: str,
     cerebras_client: Any = None
 ) -> str:
-    """Generate a clinician-friendly summary of the pose analysis."""
+    """Generate a clinician-friendly summary of the pose analysis with exercise-specific insights."""
     
     if "error" in analysis:
         return f"Unable to analyze video: {analysis['error']}"
@@ -315,6 +455,9 @@ def generate_natural_language_summary(
     angle_stats = analysis.get("angle_statistics", {})
     symmetry = analysis.get("symmetry_analysis", {})
     
+    # Get exercise-specific guidance
+    guidance = get_exercise_specific_guidance(exercise_type)
+    
     # Build context for AI
     context_parts = []
     
@@ -322,14 +465,27 @@ def generate_natural_language_summary(
     context_parts.append(f"Video duration: {duration:.1f} seconds")
     context_parts.append(f"Frames analyzed: {video_info.get('analyzed_frames', 0)}")
     
-    # Range of motion
+    # Range of motion with exercise-specific evaluation
     rom_notes = []
+    rom_evaluation = []
     for joint, stats in angle_stats.items():
         if stats:
+            joint_base = joint.replace("left_", "").replace("right_", "")
             rom_notes.append(f"{joint.replace('_', ' ')}: {stats['min']}° to {stats['max']}° (range: {stats['range']}°)")
+            
+            # Compare to ideal ranges if available
+            if joint_base in guidance["ideal_ranges"]:
+                ideal = guidance["ideal_ranges"][joint_base]
+                if stats["max"] < ideal["min"]:
+                    rom_evaluation.append(f"{joint}: Limited range - max {stats['max']}° below ideal minimum of {ideal['min']}°")
+                elif stats["range"] < 30:
+                    rom_evaluation.append(f"{joint}: Restricted movement range ({stats['range']}°)")
     
     if rom_notes:
         context_parts.append("Range of motion:\n" + "\n".join(rom_notes))
+    
+    if rom_evaluation:
+        context_parts.append("Range concerns:\n" + "\n".join(rom_evaluation))
     
     # Symmetry
     symmetry_issues = []
@@ -349,45 +505,89 @@ def generate_natural_language_summary(
     # Use AI to generate summary if available
     if cerebras_client:
         try:
+            # Build exercise-specific prompt
+            exercise_context = f"""Exercise type: {exercise_type or 'Unknown exercise'}
+
+Key metrics to evaluate for this exercise: {guidance['key_metrics']}
+
+Form tips for {exercise_type or 'this exercise'}:
+{chr(10).join('- ' + tip for tip in guidance['form_tips']) if guidance['form_tips'] else '- Standard form evaluation'}
+"""
+            
             prompt = f"""You are a physical therapist assistant analyzing a patient's exercise video.
-Exercise type: {exercise_type or 'Unknown'}
+
+{exercise_context}
 
 Analysis data:
 {context}
 
-Write a brief (2-3 sentences) clinical summary for the doctor. Focus on:
-1. Overall movement quality
-2. Any bilateral asymmetry or imbalances
-3. Range of motion observations
-4. Specific concerns or positive observations
+Write a brief (3-4 sentences) clinical summary. Include:
+1. Specific observations about their {exercise_type or 'exercise'} form based on the joint angles
+2. Whether their range of motion is adequate for this exercise type
+3. Any bilateral asymmetry concerns
+4. One actionable recommendation for improvement
 
-Be specific with numbers but keep it concise and actionable."""
+Be specific with angle measurements and relate them to proper {exercise_type or 'exercise'} technique."""
 
             response = cerebras_client.chat.completions.create(
                 model="llama-3.3-70b",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=200,
+                max_tokens=250,
                 temperature=0.3,
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error(f"AI summary generation failed: {e}")
     
-    # Fallback to rule-based summary
+    # Fallback to rule-based summary with exercise-specific insights
     summary_parts = []
     summary_parts.append(f"Analyzed {duration:.0f}s of {exercise_type or 'exercise'}.")
     
+    # Exercise-specific evaluation
+    exercise_lower = (exercise_type or "").lower()
+    
+    # Knee-focused exercises (squats, lunges, step-ups)
+    if any(x in exercise_lower for x in ["squat", "lunge", "step"]):
+        knee_stats = angle_stats.get("left_knee") or angle_stats.get("right_knee")
+        hip_stats = angle_stats.get("left_hip") or angle_stats.get("right_hip")
+        
+        if knee_stats:
+            if knee_stats["max"] >= 90:
+                summary_parts.append(f"Good depth achieved with knee flexion to {knee_stats['max']}°.")
+            elif knee_stats["max"] >= 70:
+                summary_parts.append(f"Moderate depth ({knee_stats['max']}° knee flexion). Consider going deeper for full range.")
+            else:
+                summary_parts.append(f"Shallow depth ({knee_stats['max']}° knee flexion). Work on mobility to achieve proper depth.")
+        
+        if hip_stats and hip_stats["range"] < 40:
+            summary_parts.append(f"Limited hip hinge ({hip_stats['range']}° range). Focus on hip mobility.")
+    
+    # Arm exercises (curls, presses)
+    elif any(x in exercise_lower for x in ["curl", "press", "arm", "bicep", "shoulder"]):
+        elbow_stats = angle_stats.get("left_elbow") or angle_stats.get("right_elbow")
+        
+        if elbow_stats:
+            if elbow_stats["range"] >= 100:
+                summary_parts.append(f"Excellent range of motion ({elbow_stats['range']}° elbow movement).")
+            elif elbow_stats["range"] >= 60:
+                summary_parts.append(f"Good elbow range ({elbow_stats['range']}°). Consider fuller extension/flexion.")
+            else:
+                summary_parts.append(f"Limited elbow range ({elbow_stats['range']}°). Focus on full range of motion.")
+    
+    # General exercises
+    else:
+        if "left_knee" in angle_stats or "right_knee" in angle_stats:
+            knee_stats = angle_stats.get("left_knee") or angle_stats.get("right_knee")
+            if knee_stats and knee_stats["range"] > 60:
+                summary_parts.append(f"Good knee flexion range ({knee_stats['range']}°).")
+            elif knee_stats:
+                summary_parts.append(f"Limited knee flexion range ({knee_stats['range']}°).")
+    
+    # Symmetry evaluation
     if symmetry_issues:
-        summary_parts.append(f"Detected asymmetry in {len(symmetry_issues)} joint(s): {', '.join([s.split(':')[0] for s in symmetry_issues])}.")
+        summary_parts.append(f"Asymmetry detected in {len(symmetry_issues)} joint(s): {', '.join([s.split(':')[0] for s in symmetry_issues])}. Consider unilateral work to address imbalances.")
     else:
         summary_parts.append("Movement appears bilaterally symmetric.")
-    
-    if "left_knee" in angle_stats or "right_knee" in angle_stats:
-        knee_stats = angle_stats.get("left_knee") or angle_stats.get("right_knee")
-        if knee_stats and knee_stats["range"] > 60:
-            summary_parts.append(f"Good knee flexion range ({knee_stats['range']}°).")
-        elif knee_stats:
-            summary_parts.append(f"Limited knee flexion range ({knee_stats['range']}°).")
     
     return " ".join(summary_parts)
 
@@ -503,6 +703,9 @@ async def analyze_exercise_video(
             except Exception as upload_err:
                 logger.error(f"Failed to upload processed video: {upload_err}")
         
+        # Get exercise-specific guidance
+        guidance = get_exercise_specific_guidance(exercise_type)
+        
         # Generate summary
         summary = generate_natural_language_summary(
             analysis, 
@@ -513,6 +716,9 @@ async def analyze_exercise_video(
         analysis["summary"] = summary
         analysis["exercise_type"] = exercise_type
         analysis["processed_video_url"] = processed_video_url
+        analysis["form_tips"] = guidance["form_tips"]
+        analysis["key_metrics"] = guidance["key_metrics"]
+        analysis["ideal_ranges"] = guidance["ideal_ranges"]
         
         return analysis
         
