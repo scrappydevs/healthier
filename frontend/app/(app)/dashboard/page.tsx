@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { 
   Search, 
   AlertCircle,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -20,7 +21,8 @@ import {
   Play,
   Video,
   BarChart3,
-  Loader2
+  Loader2,
+  Info
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
@@ -42,6 +44,7 @@ import {
   type Pill as PillType,
   type PillLog,
   type DailySummaryResponse,
+  type DailySummaryAlert,
   type JournalEntry,
   type PatientPlan
 } from "@/lib/api";
@@ -494,160 +497,125 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
   const currentVideoUrl = videoView === "analyzed" && hasProcessedVideo ? processedUrl : exercise.video_url;
 
   return (
-    <div className="p-3 bg-slate-50/50 rounded">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-foreground text-sm">{exercise.exercise_type || exercise.name || "Exercise"}</p>
-          <p className="text-xs text-muted-foreground">
-            {formatTime(exercise.logged_at)}
-            {exercise.duration_minutes && ` · ${exercise.duration_minutes} min`}
-            {exercise.calories_burned && ` · ${exercise.calories_burned} cal`}
-          </p>
+    <div className="py-3 border-b last:border-b-0">
+      {/* Header - inline layout */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-foreground text-sm">{exercise.exercise_type || exercise.name || "Exercise"}</p>
+              {isAnalyzing ? (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                </span>
+              ) : hasAnalysis ? (
+                <span className="text-xs text-emerald-600">✓</span>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {formatTime(exercise.logged_at)}
+              {exercise.duration_minutes && ` · ${exercise.duration_minutes} min`}
+              {exercise.calories_burned && ` · ${exercise.calories_burned} cal`}
+            </p>
+          </div>
         </div>
         
-          <div className="flex items-center gap-2">
-          {/* Status indicator */}
-          {isAnalyzing ? (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Analyzing...
-              </span>
-          ) : hasAnalysis ? (
-            <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-              Analyzed
-            </span>
-          ) : null}
-          
-          {/* Video Toggle */}
-          {hasVideo && (
-            <button
-              onClick={() => setShowVideo(!showVideo)}
-              className={cn(
-                "flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors",
-                showVideo ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
-              )}
-            >
-              <Video className="h-3 w-3" />
-              <span>{showVideo ? "Hide" : "Video"}</span>
-            </button>
+        {/* Video Toggle */}
+        {hasVideo && (
+          <button
+            onClick={() => setShowVideo(!showVideo)}
+            className={cn(
+              "flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors",
+              showVideo ? "bg-primary text-white" : "text-primary hover:bg-primary/10"
             )}
-          </div>
-          </div>
+          >
+            <Video className="h-3 w-3" />
+            <span>{showVideo ? "Hide" : "Video"}</span>
+          </button>
+        )}
+      </div>
 
       {/* Expandable Video Section */}
       {hasVideo && showVideo && (
-        <div className="mt-3 rounded-lg overflow-hidden border bg-white">
-          {/* Video View Toggle (Raw / Analyzed) */}
+        <div className="mt-3 border-t pt-3">
+          {/* Video View Toggle */}
           {hasProcessedVideo && (
-            <div className="flex bg-slate-100">
+            <div className="flex gap-2 mb-2">
               <button
                 onClick={() => setVideoView("raw")}
                 className={cn(
-                  "flex-1 px-2 py-1 text-[10px] font-medium transition-colors",
+                  "text-xs px-2 py-0.5 rounded transition-colors",
                   videoView === "raw" 
-                    ? "bg-white text-foreground" 
+                    ? "bg-slate-200 text-foreground" 
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                Raw Video
+                Original Video
               </button>
               <button
                 onClick={() => setVideoView("analyzed")}
                 className={cn(
-                  "flex-1 px-2 py-1 text-[10px] font-medium transition-colors",
+                  "text-xs px-2 py-0.5 rounded transition-colors",
                   videoView === "analyzed" 
-                    ? "bg-white text-foreground" 
+                    ? "bg-emerald-100 text-emerald-700" 
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                Pose Analysis
+                Pose Overlay
               </button>
-          </div>
+            </div>
           )}
           
           {/* Video Player */}
-          <div className="relative bg-black flex items-center justify-center min-h-[200px] max-h-[400px]">
+          <div className="relative bg-black rounded overflow-hidden flex items-center justify-center min-h-[180px] max-h-[300px]">
             <video
               key={currentVideoUrl}
               src={currentVideoUrl!}
               controls
-              className="max-w-full max-h-[400px] w-auto h-auto"
+              className="max-w-full max-h-[300px] w-auto h-auto"
               preload="metadata"
             />
-            {/* Video type indicator */}
-            <div className={cn(
-              "absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-medium",
-              videoView === "analyzed" && hasProcessedVideo
-                ? "bg-emerald-500 text-white"
-                : "bg-black/50 text-white"
-            )}>
-              {videoView === "analyzed" && hasProcessedVideo ? "Pose Overlay" : "Original"}
-          </div>
           </div>
           
-          {/* Pose Analysis Section */}
-          <div className="p-3 bg-slate-50">
-            {hasAnalysis ? (
-              <div className="space-y-3">
-                {/* AI Summary */}
-                <p className="text-sm font-medium text-foreground leading-relaxed">{analysis.summary}</p>
-                
-                {/* Asymmetry Alerts */}
-                {asymmetryIssues.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {asymmetryIssues.map(({ joint, left, right, difference }) => (
-                      <span
-                        key={joint}
-                        className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded"
-                        title={`Left: ${left}° | Right: ${right}°`}
-                      >
-                        <AlertCircle className="h-3 w-3" />
-                        {joint}: {difference.toFixed(0)}° diff
-                      </span>
-                    ))}
-                  </div>
-                )}
-                
-                {/* Range of Motion Details */}
-                {analysis.angle_statistics && Object.keys(analysis.angle_statistics).length > 0 && (
-                  <details className="group">
-                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1">
-                      <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-                      Range of motion details
-                    </summary>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {Object.entries(analysis.angle_statistics).slice(0, 4).map(([joint, stats]) => (
-                        <div key={joint} className="text-xs px-2 py-1.5 bg-white rounded border">
-                          <span className="text-muted-foreground">{joint.replace(/_/g, " ")}:</span>
-                          <span className="ml-1 font-medium">{stats.range}° range</span>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-              </div>
-            ) : (
-              <button
-                onClick={handleAnalyze}
-                disabled={isAnalyzing}
-                className="w-full flex items-center justify-center gap-2 text-sm py-2 text-primary hover:bg-primary/5 rounded transition-colors disabled:opacity-50"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Analyzing movement...</span>
-                  </>
-                ) : (
-                  <>
-                    <BarChart3 className="h-4 w-4" />
-                    <span>Analyze movement</span>
-                  </>
-                )}
-              </button>
+          {/* Pose Analysis Summary */}
+          {hasAnalysis && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-foreground leading-relaxed">{analysis.summary}</p>
+              
+              {/* Asymmetry inline */}
+              {asymmetryIssues.length > 0 && (
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  {asymmetryIssues.map(({ joint, difference }) => (
+                    <span key={joint}>
+                      {joint}: {difference.toFixed(0)}° diff
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Analyze button if no analysis */}
+          {!hasAnalysis && (
+            <button
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+              className="mt-2 flex items-center gap-2 text-xs text-primary hover:underline disabled:opacity-50"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Analyzing...</span>
+                </>
+              ) : (
+                <>
+                  <BarChart3 className="h-3 w-3" />
+                  <span>Analyze movement</span>
+                </>
+              )}
+            </button>
           )}
         </div>
-      </div>
       )}
     </div>
   );
@@ -1242,18 +1210,36 @@ function OverviewContent({ patient }: { patient: Patient }) {
             </button>
           )}
         </div>
-        <div className="p-4">
+        <div className="px-4 py-3">
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading...</p>
           ) : aiSummary ? (
             <>
-              <p className="text-sm font-medium text-foreground leading-relaxed">{aiSummary.summary}</p>
-              <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+              {aiSummary.alerts && aiSummary.alerts.length > 0 ? (
+                <div className="space-y-2">
+                  {aiSummary.alerts.map((alert: DailySummaryAlert, idx: number) => (
+                    <p
+                      key={idx}
+                      className={cn(
+                        "text-sm text-foreground leading-snug pl-3 border-l-2",
+                        alert.severity === "high" && "border-red-500",
+                        alert.severity === "medium" && "border-amber-500",
+                        alert.severity === "low" && "border-blue-500"
+                      )}
+                    >
+                      {alert.message}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No alerts for this period.</p>
+              )}
+              <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
                 <span>{aiSummary.stats.meals} meals</span>
                 <span>·</span>
                 <span>{aiSummary.stats.exercises} exercises</span>
                 <span>·</span>
-                <span>{aiSummary.stats.adherence_percent}% meds</span>
+                <span>{aiSummary.stats.medications_taken}/{aiSummary.stats.medications_taken + aiSummary.stats.medications_missed + (aiSummary.stats.medications_pending || 0)} meds</span>
                 <span>·</span>
                 <span>{aiSummary.stats.journal_entries} journal</span>
               </div>
@@ -1289,7 +1275,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
               No journal entries {viewMode === "all" ? "recorded" : "today"}
             </p>
           ) : journalSectionSummary ? (
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-sm font-medium text-foreground mt-2 leading-relaxed">
               {journalSectionSummary}
             </p>
           ) : (
@@ -1365,7 +1351,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
               No meals logged {viewMode === "all" ? "yet" : "today"}
             </p>
           ) : mealsSectionSummary ? (
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-sm font-medium text-foreground mt-2 leading-relaxed">
               {mealsSectionSummary}
             </p>
           ) : (
@@ -1436,7 +1422,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
               No exercises logged {viewMode === "all" ? "yet" : "today"}
             </p>
           ) : exercisesSectionSummary ? (
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-sm font-medium text-foreground mt-2 leading-relaxed">
               {exercisesSectionSummary}
             </p>
           ) : (
@@ -1449,16 +1435,45 @@ function OverviewContent({ patient }: { patient: Patient }) {
         {exercisesExpanded && exercises.length > 0 && (
           <div className="px-4 pb-4 border-t">
             <div className="pt-3 space-y-2">
-              {(viewMode === "all" ? groupByDate(exercises) : [[formatDateDisplay(selectedDate), exercises] as [string, typeof exercises]]).map(([dateStr, dateExercises]) => (
-                <div key={dateStr}>
-                  {viewMode === "all" && (
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
-                  )}
-                  {dateExercises.map((exercise) => (
-                    <ExerciseCard key={exercise.id} exercise={exercise} />
-                  ))}
-                </div>
-              ))}
+              {(viewMode === "all" ? groupByDate(exercises) : [[formatDateDisplay(selectedDate), exercises] as [string, typeof exercises]]).map(([dateStr, dateExercises], idx) => {
+                const isToday = dateStr === "Today";
+                const exerciseCount = dateExercises.length;
+                const totalMin = dateExercises.reduce((sum, e) => sum + (e.duration_minutes || 0), 0);
+                const totalCal = dateExercises.reduce((sum, e) => sum + (e.calories_burned || 0), 0);
+                
+                // For "all" view, make past days collapsible
+                if (viewMode === "all" && !isToday) {
+                  return (
+                    <details key={dateStr} className="group border-b last:border-b-0">
+                      <summary className="flex items-center justify-between py-2 cursor-pointer hover:bg-slate-50 -mx-4 px-4">
+                        <div className="flex items-center gap-2">
+                          <ChevronRight className="h-3 w-3 text-muted-foreground transition-transform group-open:rotate-90" />
+                          <span className="text-xs font-medium text-muted-foreground">{dateStr}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {exerciseCount} {exerciseCount === 1 ? "workout" : "workouts"} · {totalMin} min · {totalCal} cal
+                        </span>
+                      </summary>
+                      <div className="pt-1 pb-2">
+                        {dateExercises.map((exercise) => (
+                          <ExerciseCard key={exercise.id} exercise={exercise} />
+                        ))}
+                      </div>
+                    </details>
+                  );
+                }
+                
+                return (
+                  <div key={dateStr}>
+                    {viewMode === "all" && (
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">{dateStr}</p>
+                    )}
+                    {dateExercises.map((exercise) => (
+                      <ExerciseCard key={exercise.id} exercise={exercise} />
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1474,7 +1489,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-foreground">Medications</h3>
               <span className="text-xs text-muted-foreground">
-                {pillLogs.filter(l => l.status === "taken" || l.status === "late").length} taken · {pillLogs.filter(l => l.status === "missed").length} missed · {pillLogs.filter(l => l.status === "pending").length} pending
+                {pillLogs.filter(l => l.status === "taken" || l.status === "late").length} taken · {pillLogs.filter(l => l.status === "missed").length} missed · {pillLogs.filter(l => l.status === "pending").length} upcoming
               </span>
             </div>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", medicationsExpanded && "rotate-180")} />
@@ -1490,7 +1505,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
             </p>
           ) : (
             <div className="mt-2">
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p className="text-sm font-medium text-foreground leading-relaxed">
                 {pillLogs.filter(l => l.status === "taken" || l.status === "late").length} of {pillLogs.length} medications taken
                 {pillLogs.filter(l => l.status === "missed").length > 0 && `, ${pillLogs.filter(l => l.status === "missed").length} missed`}
               </p>
@@ -1502,14 +1517,20 @@ function OverviewContent({ patient }: { patient: Patient }) {
             <div className="pt-3 space-y-2">
               {pillLogs.map((log) => {
                 const pill = log.patient_pills?.pills;
-                const statusColors = {
+                const statusColors: Record<string, string> = {
                   taken: "text-emerald-600 bg-emerald-50",
                   late: "text-amber-600 bg-amber-50",
                   missed: "text-red-600 bg-red-50",
-                  pending: "text-slate-600 bg-slate-50"
+                  pending: "text-blue-600 bg-blue-50"
+                };
+                const statusLabels: Record<string, string> = {
+                  taken: "taken",
+                  late: "late",
+                  missed: "missed",
+                  pending: "upcoming"
                 };
                 return (
-                  <div key={log.id} className="flex items-center justify-between p-2 border rounded">
+                  <div key={log.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
                     <div className="flex-1">
                       <p className="text-sm font-medium text-foreground">
                         {pill?.name || "Unknown"} {pill?.strength}{pill?.unit}
@@ -1518,8 +1539,8 @@ function OverviewContent({ patient }: { patient: Patient }) {
                         Scheduled: {new Date(log.scheduled_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
                       </p>
                     </div>
-                    <span className={cn("text-xs font-medium px-2 py-1 rounded capitalize", statusColors[log.status])}>
-                      {log.status}
+                    <span className={cn("text-xs font-medium px-2 py-1 rounded", statusColors[log.status])}>
+                      {statusLabels[log.status] || log.status}
                     </span>
                   </div>
                 );
