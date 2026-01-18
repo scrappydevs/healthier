@@ -8,11 +8,13 @@
 import SwiftUI
 import PhotosUI
 import AVKit
+import UIKit
 
 struct ExerciseView: View {
     @StateObject var viewModel: ExerciseViewModel
     @State private var showingAddExercise = false
     @State private var showingVideoCapture = false
+    @State private var showingLiveRecording = false
     
     init(viewModel: ExerciseViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -52,25 +54,44 @@ struct ExerciseView: View {
                     }
                 }
                 
-                // Floating Action Button
+                // Floating Action Buttons
                 VStack {
                     Spacer()
-                    HStack {
+                    HStack(spacing: 16) {
                         Spacer()
+                        
+                        // Upload existing video
                         Button {
                             showingVideoCapture = true
                         } label: {
-                            Image(systemName: "video.fill")
-                                .font(.title2)
+                            Image(systemName: "photo.on.rectangle")
+                                .font(.title3)
                                 .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Color.appPrimary)
+                                .frame(width: 50, height: 50)
+                                .background(Color.textSecondary)
                                 .clipShape(Circle())
                                 .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
                         }
-                        .padding(.trailing, AppTheme.Spacing.lg)
-                        .padding(.bottom, AppTheme.Spacing.lg)
+                        
+                        // Live record with AI feedback
+                        Button {
+                            showingLiveRecording = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "video.fill")
+                                Text("Live")
+                                    .font(.headline)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .frame(height: 60)
+                            .background(Color.appPrimary)
+                            .clipShape(Capsule())
+                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                        }
                     }
+                    .padding(.trailing, AppTheme.Spacing.lg)
+                    .padding(.bottom, AppTheme.Spacing.lg)
                 }
             }
             .navigationTitle("")
@@ -81,6 +102,9 @@ struct ExerciseView: View {
             }
             .sheet(isPresented: $showingVideoCapture) {
                 VideoUploadView(viewModel: viewModel)
+            }
+            .fullScreenCover(isPresented: $showingLiveRecording) {
+                LiveExerciseView(viewModel: viewModel)
             }
         }
     }
@@ -514,6 +538,7 @@ struct VideoUploadView: View {
     @State private var selectedVideoURL: URL?
     @State private var selectedVideoItem: PhotosPickerItem?
     @State private var showVideoPicker = false
+    @State private var showCameraRecorder = false
     @State private var name = ""
     @State private var selectedType: ExerciseType = .other
     @State private var durationMinutes: Int = 30
@@ -624,6 +649,9 @@ struct VideoUploadView: View {
             } message: {
                 Text(errorMessage)
             }
+            .fullScreenCover(isPresented: $showCameraRecorder) {
+                VideoCameraRecorder(videoURL: $selectedVideoURL)
+            }
         }
     }
     
@@ -642,19 +670,36 @@ struct VideoUploadView: View {
                 .foregroundColor(.textSecondary)
                 .multilineTextAlignment(.center)
             
-            Button {
-                showVideoPicker = true
-            } label: {
-                HStack {
-                    Image(systemName: "photo.on.rectangle")
-                    Text("Choose Video from Library")
+            VStack(spacing: AppTheme.Spacing.md) {
+                Button {
+                    showCameraRecorder = true
+                } label: {
+                    HStack {
+                        Image(systemName: "video.fill")
+                        Text("Record New Video")
+                    }
+                    .font(AppTheme.Typography.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppTheme.Spacing.md)
+                    .background(Color.appAccent)
+                    .cornerRadius(AppTheme.CornerRadius.md)
                 }
-                .font(AppTheme.Typography.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppTheme.Spacing.md)
-                .background(Color.appPrimary)
-                .cornerRadius(AppTheme.CornerRadius.md)
+                
+                Button {
+                    showVideoPicker = true
+                } label: {
+                    HStack {
+                        Image(systemName: "photo.on.rectangle")
+                        Text("Choose from Library")
+                    }
+                    .font(AppTheme.Typography.headline)
+                    .foregroundColor(.appPrimary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppTheme.Spacing.md)
+                    .background(Color.appPrimary.opacity(0.1))
+                    .cornerRadius(AppTheme.CornerRadius.md)
+                }
             }
         }
         .padding(AppTheme.Spacing.lg)
@@ -718,6 +763,58 @@ struct VideoTransferable: Transferable {
                 .appendingPathExtension("mp4")
             try FileManager.default.copyItem(at: received.file, to: tempURL)
             return Self(url: tempURL)
+        }
+    }
+}
+
+// MARK: - Video Camera Recorder
+
+struct VideoCameraRecorder: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var videoURL: URL?
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.mediaTypes = ["public.movie"]
+        picker.videoQuality = .typeMedium
+        picker.videoMaximumDuration = 300 // 5 minutes max
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: VideoCameraRecorder
+        
+        init(_ parent: VideoCameraRecorder) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let url = info[.mediaURL] as? URL {
+                // Copy to temp location
+                let tempURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension("mp4")
+                
+                do {
+                    try FileManager.default.copyItem(at: url, to: tempURL)
+                    parent.videoURL = tempURL
+                } catch {
+                    print("Failed to copy video: \(error)")
+                }
+            }
+            parent.dismiss()
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
         }
     }
 }

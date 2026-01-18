@@ -16,6 +16,8 @@ class JournalViewModel: ObservableObject {
     
     @Published var recordingState: RecordingState = .idle
     @Published var currentTranscript: String = ""
+    @Published var lastCompletedTranscript: String = ""
+    @Published var lastRecordingDuration: TimeInterval?
     @Published var agentMessage: String = ""
     @Published var connectionStatus: String = "Disconnected"
     
@@ -30,7 +32,7 @@ class JournalViewModel: ObservableObject {
     private let journalRepository: JournalRepository
     private let liveKitService: LiveKitService
     private var cancellables = Set<AnyCancellable>()
-    private var currentEntryStartTime: Date?
+    @Published private(set) var currentEntryStartTime: Date?
 
     init(
         journalRepository: JournalRepository,
@@ -71,7 +73,10 @@ class JournalViewModel: ObservableObject {
     func startRecording() async {
         recordingState = .connecting
         connectionStatus = "Connecting..."
+        errorMessage = nil
         currentTranscript = ""
+        lastCompletedTranscript = ""
+        lastRecordingDuration = nil
         agentMessage = ""
         currentEntryStartTime = Date()
 
@@ -91,12 +96,13 @@ class JournalViewModel: ObservableObject {
         connectionStatus = "Saving..."
 
         let duration = currentEntryStartTime.map { Date().timeIntervalSince($0) }
+        let finalTranscript = currentTranscript
         
         await liveKitService.disableMicrophone()
         
-        if !currentTranscript.isEmpty {
+        if !finalTranscript.isEmpty {
             let entry = JournalEntry(
-                transcript: currentTranscript,
+                transcript: finalTranscript,
                 date: currentEntryStartTime ?? Date(),
                 duration: duration,
                 tags: []
@@ -112,8 +118,24 @@ class JournalViewModel: ObservableObject {
 
         await liveKitService.disconnect()
         
+        lastCompletedTranscript = finalTranscript
+        lastRecordingDuration = duration
         currentTranscript = ""
         agentMessage = ""
+        recordingState = .idle
+        connectionStatus = "Disconnected"
+        currentEntryStartTime = nil
+    }
+    
+    func cancelRecording() async {
+        await liveKitService.disableMicrophone()
+        await liveKitService.disconnect()
+        
+        errorMessage = nil
+        currentTranscript = ""
+        agentMessage = ""
+        lastCompletedTranscript = ""
+        lastRecordingDuration = nil
         recordingState = .idle
         connectionStatus = "Disconnected"
         currentEntryStartTime = nil

@@ -76,84 +76,97 @@ struct JournalDetailView: View {
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-            Text(entry.date, style: .date)
-                .font(AppTheme.Typography.title2)
-                .foregroundColor(.textPrimary)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                    Text(entry.date, style: .date)
+                        .font(AppTheme.Typography.title)
+                        .foregroundColor(.textPrimary)
 
-            Text(entry.date, style: .time)
-                .font(AppTheme.Typography.subheadline)
-                .foregroundColor(.textSecondary)
-
-            if let duration = entry.duration {
-                HStack(spacing: AppTheme.Spacing.xs) {
-                    Image(systemName: "clock.fill")
-                        .font(.caption)
-                        .foregroundColor(.appPrimary)
-
-                    Text(formatDuration(duration))
-                        .font(AppTheme.Typography.caption)
-                        .foregroundColor(.appPrimary)
+                    Text(entry.date, style: .time)
+                        .font(AppTheme.Typography.subheadline)
+                        .foregroundColor(.textSecondary)
                 }
-                .padding(.horizontal, AppTheme.Spacing.sm)
-                .padding(.vertical, AppTheme.Spacing.xs)
-                .background(Color.appPrimary.opacity(0.1))
-                .cornerRadius(AppTheme.CornerRadius.sm)
+                
+                Spacer()
+                
+                if let duration = entry.duration {
+                    VStack(spacing: 4) {
+                        Image(systemName: "waveform")
+                            .font(.title3)
+                            .foregroundColor(.appPrimary)
+                        Text(formatDuration(duration))
+                            .font(AppTheme.Typography.caption)
+                            .foregroundColor(.appPrimary)
+                    }
+                    .padding(AppTheme.Spacing.sm)
+                    .background(Color.appPrimary.opacity(0.1))
+                    .cornerRadius(AppTheme.CornerRadius.md)
+                }
+            }
+            
+            // Reading time estimate
+            HStack(spacing: AppTheme.Spacing.md) {
+                InfoBadge(
+                    icon: "text.word.spacing",
+                    text: "\(wordCount) words"
+                )
+                
+                InfoBadge(
+                    icon: "clock.fill",
+                    text: "\(readingTime) min read"
+                )
             }
         }
+        .padding(AppTheme.Spacing.md)
+        .background(Color.cardBackground)
+        .cornerRadius(AppTheme.CornerRadius.md)
+    }
+    
+    private var wordCount: Int {
+        editedTranscript.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .count
+    }
+    
+    private var readingTime: Int {
+        max(1, wordCount / 200)
     }
 
     private var transcriptSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
-            Text("Transcript")
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            Text("Entry")
                 .font(AppTheme.Typography.headline)
                 .foregroundColor(.textPrimary)
 
             Text(editedTranscript)
                 .font(AppTheme.Typography.body)
                 .foregroundColor(.textPrimary)
-                .lineSpacing(4)
+                .lineSpacing(6)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(AppTheme.Spacing.md)
+        .padding(AppTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.cardBackground)
         .cornerRadius(AppTheme.CornerRadius.md)
     }
 
     private var metadataSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             Text("Details")
                 .font(AppTheme.Typography.headline)
                 .foregroundColor(.textPrimary)
 
-            HStack {
-                Text("Created")
-                    .font(AppTheme.Typography.subheadline)
-                    .foregroundColor(.textSecondary)
-
-                Spacer()
-
-                Text(entry.createdAt, style: .date)
-                    .font(AppTheme.Typography.subheadline)
-                    .foregroundColor(.textPrimary)
-            }
-
-            if entry.updatedAt != entry.createdAt {
-                HStack {
-                    Text("Updated")
-                        .font(AppTheme.Typography.subheadline)
-                        .foregroundColor(.textSecondary)
-
-                    Spacer()
-
-                    Text(entry.updatedAt, style: .date)
-                        .font(AppTheme.Typography.subheadline)
-                        .foregroundColor(.textPrimary)
+            VStack(spacing: AppTheme.Spacing.sm) {
+                DetailRow(label: "Created", value: formatDateTime(entry.createdAt))
+                
+                if entry.updatedAt != entry.createdAt {
+                    DetailRow(label: "Updated", value: formatDateTime(entry.updatedAt))
                 }
             }
 
             if !entry.tags.isEmpty {
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                     Text("Tags")
                         .font(AppTheme.Typography.subheadline)
                         .foregroundColor(.textSecondary)
@@ -176,11 +189,60 @@ struct JournalDetailView: View {
         .background(Color.cardBackground)
         .cornerRadius(AppTheme.CornerRadius.md)
     }
+    
+    private func formatDateTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        }
+        return "\(seconds)s"
+    }
+}
+
+struct InfoBadge: View {
+    let icon: String
+    let text: String
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .foregroundColor(.textSecondary)
+            Text(text)
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, 4)
+        .background(Color.appBackground)
+        .cornerRadius(AppTheme.CornerRadius.sm)
+    }
+}
+
+struct DetailRow: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(AppTheme.Typography.subheadline)
+                .foregroundColor(.textSecondary)
+
+            Spacer()
+
+            Text(value)
+                .font(AppTheme.Typography.subheadline)
+                .foregroundColor(.textPrimary)
+        }
     }
 }
 

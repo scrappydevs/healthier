@@ -27,12 +27,13 @@ CREATE INDEX idx_journal_logs_tags ON journal_logs USING gin(tags);
 CREATE INDEX idx_journal_logs_transcript_search ON journal_logs USING gin(to_tsvector('english', transcript));
 
 -- ============================================
--- ROW LEVEL SECURITY
+-- ACCESS
 -- ============================================
-ALTER TABLE journal_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE journal_logs DISABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- TRIGGERS
 -- ============================================
 CREATE TRIGGER update_journal_logs_updated_at BEFORE UPDATE ON journal_logs 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+

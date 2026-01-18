@@ -10,6 +10,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
     @StateObject var viewModel: HomeViewModel
+    @State private var showingRoomScanner = false
 
     init(viewModel: HomeViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -17,45 +18,136 @@ struct HomeView: View {
 
     var body: some View {
         NavigationView {
-            ZStack {
-                Color.appBackground.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: AppTheme.Spacing.lg) {
+                    // Welcome Section
+                    welcomeSection
+                    
+                    // Scan Room Button
+                    scanRoomButton
+                    
+                    // Daily Health Score
+                    dailyHealthScoreCard
 
-                VStack(spacing: 0) {
-                    // Header
-                    HStack {
-                        Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
-                            .font(AppTheme.Typography.title)
+                    // Sync Status Card
+                    syncStatusCard
+                    
+                    // Health Breakdown
+                    healthBreakdownSection
+
+                    // Quick Stats
+                    quickStatsSection
+
+                    // Upcoming Reminders
+                    upcomingRemindersSection
+                }
+                .padding(AppTheme.Spacing.md)
+            }
+            .background(Color.appBackground)
+            .navigationTitle("Home")
+            .sheet(isPresented: $showingRoomScanner) {
+                RoomPlanScannerView(viewModel: appState.roomViewModel)
+            }
+        }
+    }
+
+    // MARK: - Welcome Section
+    private var welcomeSection: some View {
+        HStack {
+            Text("Welcome Back, \(appState.currentUser?.name ?? "User")")
+                .font(AppTheme.Typography.title)
+                .foregroundColor(.textPrimary)
+
+            Spacer()
+        }
+    }
+    
+    // MARK: - Scan Room Button
+    private var scanRoomButton: some View {
+        Button {
+            showingRoomScanner = true
+        } label: {
+            HStack(spacing: AppTheme.Spacing.md) {
+                Image(systemName: "camera.fill")
+                    .font(.title3)
+                    .foregroundColor(.white)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Scan Room")
+                        .font(AppTheme.Typography.headline)
+                        .foregroundColor(.white)
+                    
+                    Text("Create 3D room model")
+                        .font(AppTheme.Typography.caption)
+                        .foregroundColor(.white.opacity(0.9))
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.callout)
+                    .foregroundColor(.white.opacity(0.8))
+            }
+            .padding(AppTheme.Spacing.md)
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.appPrimary, Color.appPrimary.opacity(0.8)]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(AppTheme.CornerRadius.md)
+            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Daily Health Score Card
+    private var dailyHealthScoreCard: some View {
+        VStack(spacing: AppTheme.Spacing.md) {
+            HStack {
+                Text("Today's Health Score")
+                    .font(AppTheme.Typography.headline)
+                    .foregroundColor(.textPrimary)
+                
+                Spacer()
+            }
+            
+            HStack(spacing: AppTheme.Spacing.lg) {
+                // Health Score Circle
+                ZStack {
+                    Circle()
+                        .stroke(Color.divider, lineWidth: 10)
+                        .frame(width: 120, height: 120)
+                    
+                    Circle()
+                        .trim(from: 0, to: CGFloat(viewModel.dailyHealthScore / 100))
+                        .stroke(
+                            healthScoreColor(viewModel.dailyHealthScore),
+                            style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                        )
+                        .frame(width: 120, height: 120)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeInOut(duration: 0.5), value: viewModel.dailyHealthScore)
+                    
+                    VStack(spacing: 4) {
+                        Text("\(Int(viewModel.dailyHealthScore))")
+                            .font(AppTheme.Typography.largeTitle)
                             .foregroundColor(.textPrimary)
-
-                        Spacer()
-                    }
-                    .padding(.horizontal, AppTheme.Spacing.lg)
-                    .padding(.top, AppTheme.Spacing.md)
-                    .padding(.bottom, AppTheme.Spacing.md)
-
-                    ScrollView {
-                        VStack(spacing: AppTheme.Spacing.lg) {
-                            // Sync Status Card
-                            syncStatusCard
-
-                            // Health Breakdown
-                            healthBreakdownSection
-
-                            // Quick Stats
-                            quickStatsSection
-
-                            // Upcoming Reminders
-                            upcomingRemindersSection
-                        }
-                        .padding(.horizontal, AppTheme.Spacing.lg)
-                        .padding(.vertical, AppTheme.Spacing.lg)
+                        
+                        Text("Score")
+                            .font(AppTheme.Typography.caption)
+                            .foregroundColor(.textSecondary)
                     }
                 }
+                
+                Spacer()
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarHidden(true)
         }
+        .padding(AppTheme.Spacing.md)
+        .background(Color.cardBackground)
+        .cornerRadius(AppTheme.CornerRadius.md)
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
     }
 
     // MARK: - Sync Status Card

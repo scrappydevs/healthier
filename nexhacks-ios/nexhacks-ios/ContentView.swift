@@ -37,12 +37,6 @@ struct ContentView: View {
                     Label("Exercise", systemImage: "figure.run")
                 }
 
-            // Rooms Tab
-            RoomsListView(viewModel: appState.roomViewModel)
-                .tabItem {
-                    Label("Rooms", systemImage: "camera.fill")
-                }
-
             // Journal Tab
             JournalListView(viewModel: appState.journalViewModel)
                 .tabItem {
