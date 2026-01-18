@@ -153,28 +153,26 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
   );
 
   return (
-    <div className="space-y-6">
+    <div className="border rounded-md overflow-hidden bg-white divide-y">
       {sortedDays.map((dayKey) => {
         const dayEntries = groupedEntries[dayKey];
         const firstEntry = dayEntries[0];
         
         return (
-          <div key={dayKey} className="bg-white rounded-lg border">
+          <div key={dayKey} className="bg-white">
             {/* Day Header */}
-            <div className="px-4 py-3 border-b bg-muted/20">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-foreground">
-                  {formatDate(firstEntry.logged_at)}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {dayEntries.length} {dayEntries.length === 1 ? "entry" : "entries"}
-                </span>
-              </div>
+            <div className="px-4 py-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-foreground">
+                {formatDate(firstEntry.logged_at)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {dayEntries.length} {dayEntries.length === 1 ? "entry" : "entries"}
+              </span>
             </div>
 
             {/* Day Summary */}
             {(loadingSummaries || daySummaries[dayKey]) && (
-              <div className="px-4 py-3 bg-slate-50/50 border-b">
+              <div className="px-4 pb-3">
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Summary</p>
                 {loadingSummaries && !daySummaries[dayKey] ? (
                   <p className="text-sm text-muted-foreground italic">Generating AI summary...</p>
@@ -185,7 +183,7 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
             )}
 
             {/* Day Entries - Raw Transcripts */}
-            <div className="divide-y">
+            <div className="px-4 pb-4 space-y-3">
               {dayEntries.map((entry) => {
                 const moodInfo = entry.mood ? moodIcons[entry.mood] : null;
                 const MoodIcon = moodInfo?.icon;
@@ -193,7 +191,7 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
                 return (
                   <div 
                     key={entry.id} 
-                    className="px-4 py-3"
+                    className="py-2"
                   >
                     <div className="flex items-start gap-3">
                       {/* Time */}

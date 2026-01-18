@@ -86,6 +86,7 @@ class MedicationViewModel: ObservableObject {
     func loadMedications() {
         medications = medicationRepository.getAll()
         activeMedications = medicationRepository.getActive()
+        scheduleNotificationsForActiveMedications()
     }
 
     func addMedication(_ medication: Medication) {
@@ -102,11 +103,8 @@ class MedicationViewModel: ObservableObject {
         do {
             try medicationRepository.update(medication)
 
-            // Update notifications
-            notificationService.cancelMedicationReminders(medicationId: medication.id)
-            if medication.isActive {
-                scheduleNotifications(for: medication)
-            }
+            // Update notifications (idempotent: clears old + reschedules current)
+            scheduleNotifications(for: medication)
 
             loadMedications()
         } catch {
@@ -256,6 +254,22 @@ class MedicationViewModel: ObservableObject {
                 try await notificationService.scheduleMedicationReminder(medication: medication)
             } catch {
                 errorMessage = "Failed to schedule notifications: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func scheduleNotificationsForActiveMedications() {
+        let medsToSchedule = activeMedications
+        guard !medsToSchedule.isEmpty else { return }
+
+        Task {
+            for medication in medsToSchedule {
+                do {
+                    try await notificationService.scheduleMedicationReminder(medication: medication)
+                } catch {
+                    // Keep the app usable even if notifications fail.
+                    print("Failed to schedule medication reminder: \(error)")
+                }
             }
         }
     }

@@ -1545,7 +1545,8 @@ async def admit_new_patient(
         # Create patient record
         patient_data = {
             "user_id": user_id,
-            "status": status or "stable"
+            "status": status or "stable",
+            "care_setting": "in_clinic"  # New patients admitted to rooms are in-clinic
         }
         if age:
             patient_data["age"] = age

@@ -33,6 +33,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: "Request failed" }));
+      console.error("API Error:", { status: response.status, error });
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
 
@@ -107,8 +108,7 @@ export async function updatePatient(
 ): Promise<Patient> {
   return request<Patient>(`/api/v1/patients/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: data,
   });
 }
 
@@ -857,8 +857,7 @@ export async function updatePrescribedExercise(
     `/api/v1/patients/${patientId}/prescribed-exercises/${prescriptionId}`,
     {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
+      body: updates,
     }
   );
 }

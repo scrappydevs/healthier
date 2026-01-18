@@ -330,12 +330,12 @@ async def assign_patient_medication(
 ):
     """Assign a medication to a patient."""
     # Verify patient exists
-    patient_res = db.table("patients").select("id").eq("id", str(patient_id)).single().execute()
+    patient_res = db.table("patients").select("id, user_id").eq("id", str(patient_id)).single().execute()
     if not patient_res.data:
         raise HTTPException(status_code=404, detail="Patient not found")
     
     # Get pill info to extract dosage
-    pill_res = db.table("pills").select("strength").eq("id", pill_id).single().execute()
+    pill_res = db.table("pills").select("name, strength, unit, dosage_form, instructions").eq("id", pill_id).single().execute()
     if not pill_res.data:
         raise HTTPException(status_code=404, detail="Pill not found")
     
@@ -364,12 +364,41 @@ async def assign_patient_medication(
         "start_date": date.today().isoformat(),
     }
     
-    result = db.table("patient_pills").insert(patient_pill_data).execute()
+    existing_res = (
+        db.table("patient_pills")
+        .select("id")
+        .eq("patient_id", str(patient_id))
+        .eq("pill_id", pill_id)
+        .eq("is_active", True)
+        .order("updated_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    existing_id = existing_res.data[0]["id"] if existing_res.data else None
+
+    if existing_id:
+        patient_pill_id = existing_id
+        result = (
+            db.table("patient_pills")
+            .update(
+                {
+                    "dosage_amount": dosage_amount,
+                    "frequency": frequency,
+                    "days_of_week": days_list,
+                    "times_of_day": times_list,
+                    "is_active": True,
+                }
+            )
+            .eq("id", patient_pill_id)
+            .execute()
+        )
+    else:
+        result = db.table("patient_pills").insert(patient_pill_data).execute()
+        patient_pill_id = result.data[0]["id"] if result.data else None
     
     # Create pill_logs for today's scheduled times
-    if result.data and times_list:
+    if patient_pill_id and times_list:
         from datetime import datetime, timedelta
-        patient_pill_id = result.data[0]["id"]
         today = date.today()
         
         # If days_list is empty and it's a daily medication, treat as every day
@@ -379,14 +408,23 @@ async def assign_patient_medication(
         today_weekday = today.weekday()  # Python: 0=Monday, 6=Sunday
         if today_weekday in effective_days:
             # Create a pill_log for each scheduled time today
+            from datetime import timezone
             for time_str in times_list:
                 # Parse time and create scheduled datetime
+                # Assume times_of_day are in US Eastern Time (EST/EDT)
                 hour, minute = map(int, time_str.split(":"))
-                scheduled_datetime = datetime.combine(today, datetime.min.time().replace(hour=hour, minute=minute))
                 
-                # Determine status: if time has passed, mark as missed, otherwise pending
-                now = datetime.now()
-                if scheduled_datetime < now:
+                # Create the local datetime (what the patient sees: "08:00" = 8am local)
+                scheduled_local = datetime.combine(today, datetime.min.time().replace(hour=hour, minute=minute))
+                
+                # Convert to UTC: EST is UTC-5, so 08:00 EST = 13:00 UTC
+                # Note: This assumes EST for simplicity; production should use pytz/zoneinfo
+                utc_offset_hours = 5  # EST offset from UTC
+                scheduled_utc = scheduled_local.replace(tzinfo=timezone.utc) + timedelta(hours=utc_offset_hours)
+                
+                # Determine status using local time comparison
+                now_local = datetime.now()
+                if scheduled_local < now_local:
                     status = "missed"
                 else:
                     status = "pending"
@@ -394,16 +432,74 @@ async def assign_patient_medication(
                 pill_log_data = {
                     "patient_pill_id": patient_pill_id,
                     "patient_id": str(patient_id),
-                    "scheduled_time": scheduled_datetime.isoformat(),
+                    "scheduled_time": scheduled_utc.isoformat(),
                     "status": status,
                 }
                 
                 db.table("pill_logs").insert(pill_log_data).execute()
+
+        # Mirror clinician-assigned schedule into iOS-facing "medications" table.
+        # The iOS app reads from "medications" and schedules reminders from "reminder_times".
+        try:
+            user_id = patient_res.data.get("user_id")
+            if user_id:
+                pill_name = pill_res.data.get("name") or "Medication"
+                pill_strength = (pill_res.data.get("strength") or "").strip()
+                pill_unit = (pill_res.data.get("unit") or "").strip()
+
+                dosage_text = pill_strength
+                if pill_strength and pill_unit and not pill_strength.lower().endswith(pill_unit.lower()):
+                    dosage_text = f"{pill_strength}{pill_unit}"
+
+                def map_frequency_for_ios(value: str) -> str:
+                    v = (value or "").strip().lower()
+                    if v in ("once_daily", "daily"):
+                        return "Daily"
+                    if v in ("twice_daily", "twice daily"):
+                        return "Twice Daily"
+                    if v in ("three_times_daily", "three times daily"):
+                        return "Three Times Daily"
+                    if v == "weekly":
+                        return "Weekly"
+                    if v == "as_needed":
+                        return "As Needed"
+                    return "Custom"
+
+                ios_medication = {
+                    # Use patient_pills.id so we can update the same record later if needed
+                    "id": patient_pill_id,
+                    "user_id": user_id,
+                    "name": pill_name,
+                    "dosage": dosage_text or (pill_unit or ""),
+                    "frequency": map_frequency_for_ios(frequency),
+                    "form": (pill_res.data.get("dosage_form") or "tablet").strip().lower(),
+                    "instructions": pill_res.data.get("instructions"),
+                    "prescribed_by": None,
+                    # Store times as "HH:mm" strings - the iOS app can parse these into daily reminders
+                    "reminder_times": times_list,
+                    "is_active": True,
+                }
+
+                db.table("medications").upsert(ios_medication).execute()
+        except Exception as e:
+            # Do not fail clinician assignment if the iOS mirror fails, but log for debugging.
+            print(f"Failed to mirror medication to iOS table: {e}")
     
-    return {
-        "success": True,
-        "patient_pill": result.data[0] if result.data else None
-    }
+    patient_pill_row = result.data[0] if result.data else None
+    if not patient_pill_row and patient_pill_id:
+        try:
+            patient_pill_row = (
+                db.table("patient_pills")
+                .select("*")
+                .eq("id", patient_pill_id)
+                .single()
+                .execute()
+                .data
+            )
+        except Exception:
+            patient_pill_row = None
+
+    return {"success": True, "patient_pill": patient_pill_row}
 
 
 # ============================================

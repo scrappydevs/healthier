@@ -149,6 +149,11 @@ struct MedicationScheduleView: View {
 
             // Date selector
             datePickerSection
+
+            Text("Tip: Turn on Announce Notifications in iPhone Settings for spoken reminders.")
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.textSecondary)
+                .padding(.horizontal, AppTheme.Spacing.lg)
         }
         .padding(.bottom, AppTheme.Spacing.md)
     }

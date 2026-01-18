@@ -148,7 +148,7 @@ export function FoodSection({ patientId }: FoodSectionProps) {
   const mealsByDate = groupMealsByDate(meals);
 
   return (
-    <div className="space-y-4">
+    <div className="divide-y">
       {Array.from(mealsByDate.entries()).map(([dateKey, dateMeals]) => {
         const isExpanded = expandedDays.has(dateKey);
         const dayTotals = dateMeals.reduce(
@@ -163,7 +163,7 @@ export function FoodSection({ patientId }: FoodSectionProps) {
         const dayFat = dateMeals.reduce((sum, m) => sum + Number(m.total_fat || 0), 0);
 
         return (
-          <div key={dateKey} className="border rounded-md overflow-hidden bg-white">
+          <div key={dateKey} className="bg-white">
             {/* Day Header - Collapsible */}
             <button
               onClick={() => toggleDay(dateKey)}
@@ -186,7 +186,7 @@ export function FoodSection({ patientId }: FoodSectionProps) {
 
             {/* Day Content */}
             {isExpanded && (
-              <div className="px-4 pb-4 border-t">
+              <div className="px-4 pb-4">
                 <div className="pt-3 space-y-3">
                   {/* Day Summary (inline) */}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -205,13 +205,13 @@ export function FoodSection({ patientId }: FoodSectionProps) {
                   </div>
 
                   {/* Meals by Type */}
-                  <div className="divide-y">
+                  <div className="space-y-4">
                     {mealTypeOrder.map((type) => {
                       const typeMeals = dateMeals.filter((m) => m.meal_type === type);
                       if (typeMeals.length === 0) return null;
 
                       return (
-                        <div key={type} className="py-3 first:pt-0">
+                        <div key={type}>
                           <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
                             {mealTypeLabels[type]}
                           </h4>

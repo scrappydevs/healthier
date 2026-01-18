@@ -51,56 +51,97 @@ class NotificationService: ObservableObject {
 
     /// Schedule medication reminder
     func scheduleMedicationReminder(medication: Medication) async throws {
-        guard isAuthorized else {
+        if !isAuthorized {
             try await requestPermissions()
-            return
+            await checkAuthorizationStatus()
+            guard isAuthorized else { return }
         }
 
+        let newPrefix = "med-\(medication.id.uuidString)-"
+        let legacyPrefix = "\(medication.id.uuidString)-"
+
+        let pending = await notificationCenter.pendingNotificationRequests()
+        let identifiersToRemove = pending
+            .map(\.identifier)
+            .filter { $0.hasPrefix(newPrefix) || $0.hasPrefix(legacyPrefix) }
+
+        if !identifiersToRemove.isEmpty {
+            notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+        }
+        scheduledNotifications.removeAll { $0.medicationId == medication.id }
+
+        guard medication.isActive else { return }
+        guard !medication.reminderTimes.isEmpty else { return }
+
+        let calendar = Calendar.current
+
+        let timeFormatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "h:mm a"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            return formatter
+        }()
+
         for reminderTime in medication.reminderTimes {
+            let hour = calendar.component(.hour, from: reminderTime)
+            let minute = calendar.component(.minute, from: reminderTime)
+            let identifier = "\(newPrefix)\(String(format: "%02d%02d", hour, minute))"
+
             let content = UNMutableNotificationContent()
-            content.title = "Medication Reminder"
-            content.body = "Upcoming: Take \(medication.name) in 15 minutes (\(medication.dosage))"
+            content.title = "Medication time"
+            let timeLabel = timeFormatter.string(from: reminderTime)
+            let doseLabel = "\(medication.name) \(medication.dosage)".trimmingCharacters(in: .whitespacesAndNewlines)
+            content.body = "It is \(timeLabel). Take \(doseLabel)."
             content.sound = .default
             content.categoryIdentifier = "MEDICATION_REMINDER"
+            content.userInfo = [
+                "type": "medication_reminder",
+                "medication_id": medication.id.uuidString,
+                "scheduled_time": String(format: "%02d:%02d", hour, minute)
+            ]
 
-            // Schedule 15 minutes before
-            let triggerDate = reminderTime.addingTimeInterval(-15 * 60)
-
-            // Create date components for the reminder
-            let dateComponents = Calendar.current.dateComponents([.hour, .minute], from: triggerDate)
+            var dateComponents = DateComponents()
+            dateComponents.hour = hour
+            dateComponents.minute = minute
             let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
 
             let request = UNNotificationRequest(
-                identifier: "\(medication.id.uuidString)-\(reminderTime.timeIntervalSince1970)",
+                identifier: identifier,
                 content: content,
                 trigger: trigger
             )
 
             try await notificationCenter.add(request)
 
-            // Track scheduled notification
-            scheduledNotifications.append(ScheduledNotification(
-                id: request.identifier,
-                title: content.title,
-                body: content.body,
-                scheduledDate: reminderTime,
-                medicationId: medication.id
-            ))
+            scheduledNotifications.append(
+                ScheduledNotification(
+                    id: request.identifier,
+                    title: content.title,
+                    body: content.body,
+                    scheduledDate: reminderTime,
+                    medicationId: medication.id
+                )
+            )
         }
-
-        print("Scheduled reminders for \(medication.name)")
     }
 
     /// Cancel medication reminders
     func cancelMedicationReminders(medicationId: UUID) {
-        let identifiersToRemove = scheduledNotifications
-            .filter { $0.medicationId == medicationId }
-            .map { $0.id }
+        let newPrefix = "med-\(medicationId.uuidString)-"
+        let legacyPrefix = "\(medicationId.uuidString)-"
 
-        notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
-        scheduledNotifications.removeAll { $0.medicationId == medicationId }
+        Task { @MainActor in
+            let pending = await notificationCenter.pendingNotificationRequests()
+            let identifiersToRemove = pending
+                .map(\.identifier)
+                .filter { $0.hasPrefix(newPrefix) || $0.hasPrefix(legacyPrefix) }
 
-        print("Cancelled reminders for medication \(medicationId)")
+            if !identifiersToRemove.isEmpty {
+                notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiersToRemove)
+            }
+
+            scheduledNotifications.removeAll { $0.medicationId == medicationId }
+        }
     }
 
     /// Cancel all notifications

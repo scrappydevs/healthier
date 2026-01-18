@@ -286,7 +286,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between mt-0.5">
+                  <div className="flex items-center justify-between mt-1">
                     <button
                       onClick={() => {
                         setSelectedPatient(patient);
@@ -298,27 +298,62 @@ export default function DashboardPage() {
                         {patient.medication_count} meds · {formatLastActive(patient.last_active)}
                       </span>
                     </button>
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        const newSetting = patient.care_setting === "in_clinic" ? "at_home" : "in_clinic";
-                        try {
-                          await updatePatient(patient.id, { care_setting: newSetting });
-                          setPatients(prev => prev.map(p => 
-                            p.id === patient.id ? { ...p, care_setting: newSetting } : p
-                          ));
-                          if (selectedPatient?.id === patient.id) {
-                            setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const newSetting = "at_home";
+                          if (patient.care_setting === newSetting) return;
+                          try {
+                            await updatePatient(patient.id, { care_setting: newSetting });
+                            setPatients(prev => prev.map(p => 
+                              p.id === patient.id ? { ...p, care_setting: newSetting } : p
+                            ));
+                            if (selectedPatient?.id === patient.id) {
+                              setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
+                            }
+                          } catch (err) {
+                            console.error("Failed to update care setting:", err);
                           }
-                        } catch (err) {
-                          console.error("Failed to update care setting:", err);
-                        }
-                      }}
-                      title={patient.care_setting === "in_clinic" ? "Move to At-Home" : "Move to In-Clinic"}
-                      className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-                    >
-                      {patient.care_setting === "in_clinic" ? "Clinic" : "Home"}
-                    </button>
+                        }}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded transition-colors",
+                          patient.care_setting === "at_home"
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-400 hover:text-slate-600"
+                        )}
+                        title="Set to At-Home"
+                      >
+                        Home
+                      </button>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const newSetting = "in_clinic";
+                          if (patient.care_setting === newSetting) return;
+                          try {
+                            await updatePatient(patient.id, { care_setting: newSetting });
+                            setPatients(prev => prev.map(p => 
+                              p.id === patient.id ? { ...p, care_setting: newSetting } : p
+                            ));
+                            if (selectedPatient?.id === patient.id) {
+                              setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
+                            }
+                          } catch (err) {
+                            console.error("Failed to update care setting:", err);
+                          }
+                        }}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded transition-colors",
+                          patient.care_setting === "in_clinic"
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-400 hover:text-slate-600"
+                        )}
+                        title="Set to In-Clinic"
+                      >
+                        Clinic
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -339,9 +374,25 @@ export default function DashboardPage() {
                     <h1 className="text-base font-semibold text-slate-900 tracking-tight">
                       {selectedPatient.full_name}
                     </h1>
-                    <span className="text-xs text-slate-500">
+                    <button
+                      onClick={async () => {
+                        const newSetting = selectedPatient.care_setting === "in_clinic" ? "at_home" : "in_clinic";
+                        try {
+                          await updatePatient(selectedPatient.id, { care_setting: newSetting });
+                          // Update local state immediately
+                          setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
+                          setPatients(prev => prev.map(p => 
+                            p.id === selectedPatient.id ? { ...p, care_setting: newSetting } : p
+                          ));
+                        } catch (err) {
+                          console.error("Failed to update care setting:", err);
+                        }
+                      }}
+                      className="px-2 py-0.5 text-xs rounded border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+                      title={`Switch to ${selectedPatient.care_setting === "in_clinic" ? "At-Home" : "In-Clinic"}`}
+                    >
                       {selectedPatient.care_setting === "in_clinic" ? "In-Clinic" : "At-Home"}
-                    </span>
+                    </button>
                     <StatusBadge status={getStatusFromAdherence(selectedPatient.adherence_rate)} />
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
@@ -1640,13 +1691,24 @@ function OverviewContent({ patient }: { patient: Patient }) {
                   pending: "text-blue-600",
                   scheduled: "text-muted-foreground"
                 };
-                const statusLabels: Record<string, string> = {
-                  taken: "taken",
-                  late: "late",
-                  missed: "missed",
-                  pending: "upcoming",
-                  scheduled: "scheduled"
-                };
+                
+                // Format status with time for upcoming meds
+                let statusLabel = "";
+                if (status === "taken") {
+                  statusLabel = "taken";
+                } else if (status === "late") {
+                  statusLabel = "late";
+                } else if (status === "missed") {
+                  statusLabel = "missed";
+                } else if (status === "pending" && log?.scheduled_time) {
+                  const scheduledTime = new Date(log.scheduled_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+                  statusLabel = `upcoming at ${scheduledTime}`;
+                } else if (med.times_of_day && med.times_of_day.length > 0) {
+                  statusLabel = `scheduled ${med.times_of_day[0]}`;
+                } else {
+                  statusLabel = "scheduled";
+                }
+                
                 return (
                   <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start justify-between">
                     <div className="flex items-start gap-4 min-w-0">
@@ -1670,12 +1732,11 @@ function OverviewContent({ patient }: { patient: Patient }) {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {med.frequency?.replace(/_/g, " ")}
-                          {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
                         </p>
                       </div>
                     </div>
                     <span className={cn("text-xs", statusColors[status])}>
-                      {statusLabels[status]}
+                      {statusLabel}
                     </span>
                   </div>
                 );
@@ -1951,10 +2012,6 @@ function ExercisePlanForm({
 }) {
   const [catalog, setCatalog] = useState<ExerciseCatalogItem[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<string>("");
-  const [sets, setSets] = useState<number | "">("");
-  const [reps, setReps] = useState<number | "">("");
-  const [durationMinutes, setDurationMinutes] = useState<number | "">("");
-  const [frequency, setFrequency] = useState("daily");
   const [formNotes, setFormNotes] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [isSaving, setIsSaving] = useState(false);
@@ -1976,20 +2033,6 @@ function ExercisePlanForm({
     fetchCatalog();
   }, []);
 
-  // Update defaults when exercise is selected
-  useEffect(() => {
-    if (selectedExercise) {
-      const exercise = catalog.find(e => e.id === selectedExercise);
-      if (exercise) {
-        if (exercise.default_sets) setSets(exercise.default_sets);
-        if (exercise.default_reps) setReps(exercise.default_reps);
-        if (exercise.default_duration_seconds) {
-          setDurationMinutes(Math.round(exercise.default_duration_seconds / 60));
-        }
-      }
-    }
-  }, [selectedExercise, catalog]);
-
   const handleSubmit = async () => {
     if (!selectedExercise) {
       setError("Please select an exercise");
@@ -2001,10 +2044,6 @@ function ExercisePlanForm({
     try {
       await prescribeExercise(patientId, {
         exercise_id: selectedExercise,
-        sets: sets ? Number(sets) : undefined,
-        reps: reps ? Number(reps) : undefined,
-        duration_seconds: durationMinutes ? Number(durationMinutes) * 60 : undefined,
-        frequency,
         form_notes: formNotes.trim() || undefined,
       });
       onClose();
@@ -2071,60 +2110,6 @@ function ExercisePlanForm({
           </div>
           {selectedExerciseData?.description && (
             <p className="text-xs text-muted-foreground pl-[72px]">{selectedExerciseData.description}</p>
-          )}
-
-          {/* Parameters */}
-          {selectedExercise && (
-            <div className="grid grid-cols-4 gap-2">
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Sets</label>
-                <input
-                  type="number"
-                  value={sets}
-                  onChange={(e) => setSets(e.target.value ? Number(e.target.value) : "")}
-                  placeholder="3"
-                  min="1"
-                  className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Reps</label>
-                <input
-                  type="number"
-                  value={reps}
-                  onChange={(e) => setReps(e.target.value ? Number(e.target.value) : "")}
-                  placeholder="10"
-                  min="1"
-                  className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Duration</label>
-                <input
-                  type="number"
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(e.target.value ? Number(e.target.value) : "")}
-                  placeholder="5 min"
-                  min="1"
-                  className="w-full h-7 px-2 text-xs bg-muted/30 rounded border-0 focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Frequency</label>
-                <Select value={frequency} onValueChange={setFrequency}>
-                  <SelectTrigger className="w-full h-7 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="3x_week">3× / week</SelectItem>
-                    <SelectItem value="2x_week">2× / week</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="as_needed">As needed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
           )}
 
           {/* Form Notes */}

@@ -12,9 +12,7 @@ export default function PatientsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [careSettingFilter, setCareSettingFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"last_active" | "adherence" | "name" | "care_setting">("last_active");
+  const [sortBy, setSortBy] = useState<"last_active" | "adherence" | "name">("last_active");
 
   useEffect(() => {
     async function fetchPatients() {
@@ -56,32 +54,19 @@ export default function PatientsPage() {
   const filteredPatients = patients
     .filter(p => {
       const matchesSearch = p.full_name.toLowerCase().includes(searchQuery.toLowerCase());
-      const status = getStatusFromAdherence(p.adherence_rate);
-      const matchesStatus = statusFilter === "all" || status === statusFilter;
-      const matchesCareSetting = careSettingFilter === "all" || p.care_setting === careSettingFilter;
-      return matchesSearch && matchesStatus && matchesCareSetting;
+      return matchesSearch;
     })
     .sort((a, b) => {
       if (sortBy === "name") return a.full_name.localeCompare(b.full_name);
       if (sortBy === "adherence") return b.adherence_rate - a.adherence_rate;
-      if (sortBy === "care_setting") {
-        // in_clinic first, then at_home
-        if (a.care_setting !== b.care_setting) {
-          return a.care_setting === "in_clinic" ? -1 : 1;
-        }
-        // Then by last_active within each group
-        if (!a.last_active) return 1;
-        if (!b.last_active) return -1;
-        return new Date(b.last_active).getTime() - new Date(a.last_active).getTime();
-      }
       // last_active
       if (!a.last_active) return 1;
       if (!b.last_active) return -1;
       return new Date(b.last_active).getTime() - new Date(a.last_active).getTime();
     });
 
-  const criticalCount = patients.filter(p => getStatusFromAdherence(p.adherence_rate) === "critical").length;
-  const warningCount = patients.filter(p => getStatusFromAdherence(p.adherence_rate) === "warning").length;
+  const criticalCount = filteredPatients.filter(p => getStatusFromAdherence(p.adherence_rate) === "critical").length;
+  const warningCount = filteredPatients.filter(p => getStatusFromAdherence(p.adherence_rate) === "warning").length;
 
   const handleCareSettingToggle = async (patient: Patient, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -148,33 +133,13 @@ export default function PatientsPage() {
             />
           </div>
           <select
-            value={careSettingFilter}
-            onChange={(e) => setCareSettingFilter(e.target.value)}
-            className="h-8 px-3 text-sm bg-white border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            <option value="all">All settings</option>
-            <option value="in_clinic">In-Clinic</option>
-            <option value="at_home">At-Home</option>
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-8 px-3 text-sm bg-white border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            <option value="all">All statuses</option>
-            <option value="good">On Track</option>
-            <option value="warning">Attention Needed</option>
-            <option value="critical">At Risk</option>
-          </select>
-          <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
             className="h-8 px-3 text-sm bg-white border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
           >
-            <option value="last_active">Sort by: Last Active</option>
-            <option value="adherence">Sort by: Adherence</option>
-            <option value="name">Sort by: Name</option>
-            <option value="care_setting">Sort by: Care Setting</option>
+            <option value="last_active">Sort: Last Active</option>
+            <option value="adherence">Sort: Adherence</option>
+            <option value="name">Sort: Name</option>
           </select>
         </div>
       </div>
@@ -199,7 +164,7 @@ export default function PatientsPage() {
                 return (
                   <div
                     key={patient.id}
-                    className="flex items-center px-4 py-2.5 hover:bg-muted/30 transition-colors"
+                    className="group flex items-center px-4 py-2.5 hover:bg-muted/30 transition-colors"
                   >
                     <button
                       onClick={() => router.push(`/dashboard/patients/${patient.id}`)}
@@ -232,7 +197,7 @@ export default function PatientsPage() {
                       <button
                         onClick={(e) => handleCareSettingToggle(patient, e)}
                         title="Move to In-Clinic"
-                        className="p-1.5 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                        className="p-1.5 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                       >
                         <ChevronRight className="h-3.5 w-3.5" />
                       </button>
@@ -265,7 +230,7 @@ export default function PatientsPage() {
                 return (
                   <div
                     key={patient.id}
-                    className="flex items-center px-4 py-2.5 hover:bg-slate-50 transition-colors"
+                    className="group flex items-center px-4 py-2.5 hover:bg-slate-50 transition-colors"
                   >
                     <button
                       onClick={() => router.push(`/dashboard/patients/${patient.id}`)}
@@ -298,7 +263,7 @@ export default function PatientsPage() {
                       <button
                         onClick={(e) => handleCareSettingToggle(patient, e)}
                         title="Move to At-Home"
-                        className="p-1.5 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                        className="p-1.5 rounded text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                       >
                         <ChevronLeft className="h-3.5 w-3.5" />
                       </button>
