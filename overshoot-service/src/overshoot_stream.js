@@ -272,6 +272,10 @@ export class OvershootStreamSession {
     });
   }
 
+  isResultsReady() {
+    return this.resultsWsReady === true;
+  }
+
   pushJpegFrame(jpegBuffer) {
     if (!this.videoSource) return;
     if (!this.resultsWsReady) {
@@ -282,17 +286,17 @@ export class OvershootStreamSession {
           this.framesDroppedBeforeResults
         );
       }
-      return;
+      return false;
     }
 
     // Throttle to avoid flooding (server-side safety)
     const now = Date.now();
-    if (now - this.lastFrameAt < 150) return; // ~6-7 fps max
+    if (now - this.lastFrameAt < 150) return false; // ~6-7 fps max
     this.lastFrameAt = now;
 
     const decoded = jpeg.decode(jpegBuffer, { useTArray: true });
     const { width, height, data } = decoded;
-    if (!width || !height || !data) return;
+    if (!width || !height || !data) return false;
 
     // Convert RGBA -> I420 using libyuv bindings from @roamhq/wrtc
     const rgbaFrame = {
@@ -304,6 +308,7 @@ export class OvershootStreamSession {
     const i420Frame = { width, height, data: i420Data };
     rgbaToI420(rgbaFrame, i420Frame);
     this.videoSource.onFrame(i420Frame);
+    return true;
   }
 
   async stop() {

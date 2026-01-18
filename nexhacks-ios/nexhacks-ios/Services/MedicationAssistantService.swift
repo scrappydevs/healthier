@@ -413,11 +413,10 @@ class MedicationAssistantService: NSObject, ObservableObject {
                 visionDescription = description
                 visionStatus = "Receiving"
 
-                // Prime the agent with the first real vision description so it has context even
-                // if on-device speech recognition is not enabled/authorized.
-                if isVoiceConnected && lastVisionSent.isEmpty {
+                // Push every new vision description to the agent.
+                if isVoiceConnected {
                     Task { @MainActor in
-                        await self.sendVisionContextNow(trigger: "first_vision_result")
+                        await self.sendVisionContextNow(trigger: "vision_update")
                     }
                 }
             }

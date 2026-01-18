@@ -260,9 +260,16 @@ wssMedication.on('connection', (ws) => {
             frameCount++;
             if (overshootSession) {
               const jpegBuffer = Buffer.from(data.frame, "base64");
-              overshootSession.pushJpegFrame(jpegBuffer);
+              const pushed = overshootSession.pushJpegFrame(jpegBuffer);
               if (frameCount % 15 === 0) {
-                console.log(`Medication vision: pushed ${frameCount} frames`);
+                if (overshootSession.isResultsReady()) {
+                  console.log(`Medication vision: pushed ${frameCount} frames`);
+                } else {
+                  console.log(`Medication vision: waiting for results WS, dropped ${frameCount} frames`);
+                }
+              }
+              if (!pushed && overshootSession.isResultsReady() && frameCount % 45 === 0) {
+                console.log("Medication vision: throttling frames (server-side)");
               }
             } else {
               // Fallback: mock response when no Overshoot API
@@ -436,12 +443,19 @@ wss.on('connection', (ws) => {
           if (data.frame) {
             if (overshootSession) {
               const jpegBuffer = Buffer.from(data.frame, "base64");
-              overshootSession.pushJpegFrame(jpegBuffer);
+              const pushed = overshootSession.pushJpegFrame(jpegBuffer);
               // lightweight debug
               if (!frameBuffer) frameBuffer = [];
               frameBuffer.push(1);
               if (frameBuffer.length % 10 === 0) {
-                console.log(`Pushed ${frameBuffer.length} frames to Overshoot stream`);
+                if (overshootSession.isResultsReady()) {
+                  console.log(`Pushed ${frameBuffer.length} frames to Overshoot stream`);
+                } else {
+                  console.log(`Waiting for results WS, dropped ${frameBuffer.length} frames`);
+                }
+              }
+              if (!pushed && overshootSession.isResultsReady() && frameBuffer.length % 30 === 0) {
+                console.log("Exercise analysis: throttling frames (server-side)");
               }
             } else {
               const result = await analyzeExerciseFrame(data.frame, exerciseType);
