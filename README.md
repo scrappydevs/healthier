@@ -22,6 +22,12 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 
 ## Current Features (Planned / In Progress)
 
+<p align="center">
+  <img src="assets/demos/Medication Analysis.gif" width="30%" alt="Medication Analysis" />&nbsp;&nbsp;&nbsp;
+  <img src="assets/demos/Journaling w: Voice.gif" width="30%" alt="Journaling with Voice" />&nbsp;&nbsp;&nbsp;
+  <img src="assets/demos/Exercise Tracking.gif" width="30%" alt="Exercise Tracking" />
+</p>
+
 ### Pills
 - Scan medications to generate clear instructions (voice)
 - Validate:
