@@ -18,7 +18,7 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 
 
 ## Tech Stack
-<img width="912" height="670" alt="IMG_5057" src="https://github.com/user-attachments/assets/e3f9d45e-28ec-4a2f-bd85-2439fa539cf2" />
+<img width="912" height="670" alt="IMG_2300" src="https://github.com/user-attachments/assets/f817389d-2115-4ae5-b5aa-903360392a3e" />
 
 ## Current Features (Planned / In Progress)
 
