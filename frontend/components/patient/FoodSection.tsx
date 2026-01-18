@@ -148,23 +148,26 @@ export function FoodSection({ patientId }: FoodSectionProps) {
   const mealsByDate = groupMealsByDate(meals);
 
   return (
-    <div className="max-h-[600px] overflow-y-auto space-y-1 pr-1">
+    <div className="space-y-4">
       {Array.from(mealsByDate.entries()).map(([dateKey, dateMeals]) => {
         const isExpanded = expandedDays.has(dateKey);
         const dayTotals = dateMeals.reduce(
           (acc, meal) => ({
-            calories: acc.calories + (meal.total_calories || 0),
+            calories: acc.calories + Number(meal.total_calories || 0),
             count: acc.count + 1,
           }),
           { calories: 0, count: 0 }
         );
+        const dayProtein = dateMeals.reduce((sum, m) => sum + Number(m.total_protein || 0), 0);
+        const dayCarbs = dateMeals.reduce((sum, m) => sum + Number(m.total_carbs || 0), 0);
+        const dayFat = dateMeals.reduce((sum, m) => sum + Number(m.total_fat || 0), 0);
 
         return (
-          <div key={dateKey} className="border-b last:border-b-0">
+          <div key={dateKey} className="border rounded-md overflow-hidden bg-white">
             {/* Day Header - Collapsible */}
             <button
               onClick={() => toggleDay(dateKey)}
-              className="w-full px-3 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors"
+              className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors"
             >
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-foreground">
@@ -183,58 +186,52 @@ export function FoodSection({ patientId }: FoodSectionProps) {
 
             {/* Day Content */}
             {isExpanded && (
-              <div className="px-3 pb-3 space-y-3">
-                {/* Day Summary */}
-                <div className="grid grid-cols-4 gap-2">
-                  <div className="bg-muted/30 rounded-md p-2 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Calories</p>
-                    <p className="text-sm font-semibold">{dayTotals.calories}</p>
+              <div className="px-4 pb-4 border-t">
+                <div className="pt-3 space-y-3">
+                  {/* Day Summary (inline) */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>
+                      <span className="font-medium text-foreground">{dayTotals.calories}</span> cal
+                    </span>
+                    <span>
+                      <span className="font-medium text-foreground">{dayProtein}g</span> protein
+                    </span>
+                    <span>
+                      <span className="font-medium text-foreground">{dayCarbs}g</span> carbs
+                    </span>
+                    <span>
+                      <span className="font-medium text-foreground">{dayFat}g</span> fat
+                    </span>
                   </div>
-                  <div className="bg-muted/30 rounded-md p-2 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Protein</p>
-                    <p className="text-sm font-semibold">
-                      {dateMeals.reduce((sum, m) => sum + (m.total_protein || 0), 0)}g
-                    </p>
-                  </div>
-                  <div className="bg-muted/30 rounded-md p-2 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Carbs</p>
-                    <p className="text-sm font-semibold">
-                      {dateMeals.reduce((sum, m) => sum + (m.total_carbs || 0), 0)}g
-                    </p>
-                  </div>
-                  <div className="bg-muted/30 rounded-md p-2 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Fat</p>
-                    <p className="text-sm font-semibold">
-                      {dateMeals.reduce((sum, m) => sum + (m.total_fat || 0), 0)}g
-                    </p>
+
+                  {/* Meals by Type */}
+                  <div className="divide-y">
+                    {mealTypeOrder.map((type) => {
+                      const typeMeals = dateMeals.filter((m) => m.meal_type === type);
+                      if (typeMeals.length === 0) return null;
+
+                      return (
+                        <div key={type} className="py-3 first:pt-0">
+                          <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                            {mealTypeLabels[type]}
+                          </h4>
+                          <div className="space-y-2">
+                            {typeMeals.map((meal) => (
+                              <MealCard
+                                key={meal.id}
+                                meal={meal}
+                                isExpanded={expandedMealId === meal.id}
+                                onToggle={() =>
+                                  setExpandedMealId(expandedMealId === meal.id ? null : meal.id)
+                                }
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-
-                {/* Meals by Type */}
-                {mealTypeOrder.map((type) => {
-                  const typeMeals = dateMeals.filter((m) => m.meal_type === type);
-                  if (typeMeals.length === 0) return null;
-
-                  return (
-                    <div key={type} className="space-y-1.5">
-                      <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                        {mealTypeLabels[type]}
-                      </h4>
-                      <div className="space-y-1.5">
-                        {typeMeals.map((meal) => (
-                          <MealCard
-                            key={meal.id}
-                            meal={meal}
-                            isExpanded={expandedMealId === meal.id}
-                            onToggle={() =>
-                              setExpandedMealId(expandedMealId === meal.id ? null : meal.id)
-                            }
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             )}
           </div>
@@ -259,10 +256,10 @@ function MealCard({
   });
 
   return (
-    <div className="bg-white border rounded-md overflow-hidden">
+    <div>
       <button
         onClick={onToggle}
-        className="w-full p-2.5 flex items-center gap-2.5 hover:bg-muted/30 transition-colors text-left"
+        className="w-full py-2 flex items-center gap-2.5 hover:bg-muted/20 transition-colors text-left"
       >
         {/* Image thumbnail */}
         {meal.image_url ? (
@@ -286,7 +283,7 @@ function MealCard({
             <span className="text-xs text-muted-foreground">{meal.total_calories} cal</span>
           </div>
           {meal.ai_analysis && (
-            <p className="text-sm text-emerald-600 leading-relaxed mt-1">{meal.ai_analysis}</p>
+            <p className="text-xs text-foreground mt-1">{meal.ai_analysis}</p>
           )}
         </div>
 
@@ -314,42 +311,32 @@ function MealCard({
 
       {/* Expanded details */}
       {isExpanded && (
-        <div className="px-2.5 pb-2.5 pt-0 border-t">
-          <div className="pt-2.5 space-y-2.5">
-            {/* Nutritional breakdown */}
-            <div className="grid grid-cols-4 gap-1.5 text-center">
-              <div>
-                <p className="text-[10px] text-muted-foreground">Protein</p>
-                <p className="text-xs font-medium">{meal.total_protein}g</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground">Carbs</p>
-                <p className="text-xs font-medium">{meal.total_carbs}g</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground">Fat</p>
-                <p className="text-xs font-medium">{meal.total_fat}g</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground">Calories</p>
-                <p className="text-xs font-medium">{meal.total_calories}</p>
-              </div>
+        <div className="pl-12 pr-2 pb-2">
+          <div className="space-y-2">
+            {/* Nutritional breakdown inline */}
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+              <span className="text-muted-foreground">
+                <span className="font-medium text-foreground">{meal.total_protein}g</span> protein
+              </span>
+              <span className="text-muted-foreground">
+                <span className="font-medium text-foreground">{meal.total_carbs}g</span> carbs
+              </span>
+              <span className="text-muted-foreground">
+                <span className="font-medium text-foreground">{meal.total_fat}g</span> fat
+              </span>
             </div>
 
             {/* Food groups */}
             {meal.food_groups && meal.food_groups.length > 0 && (
-              <div>
-                <p className="text-[10px] text-muted-foreground mb-1">Food Groups</p>
-                <div className="flex flex-wrap gap-1">
-                  {meal.food_groups.map((group, i) => (
-                    <span
-                      key={i}
-                      className="px-1.5 py-0.5 text-[10px] bg-muted/50 text-foreground rounded-full"
-                    >
-                      {group}
-                    </span>
-                  ))}
-                </div>
+              <div className="flex flex-wrap gap-1">
+                {meal.food_groups.map((group, i) => (
+                  <span
+                    key={i}
+                    className="px-1.5 py-0.5 text-[10px] bg-muted/50 text-foreground rounded-full"
+                  >
+                    {group}
+                  </span>
+                ))}
               </div>
             )}
 

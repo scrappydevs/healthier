@@ -721,6 +721,7 @@ type AssignedMedication = {
   strength?: number;
   unit?: string;
   dosage_form?: string;
+  image_url?: string | null;
   frequency?: string;
   times_of_day?: string[];
 };
@@ -768,6 +769,7 @@ function PlansContent({ patient }: { patient: Patient }) {
         strength: (m.pills as Record<string, unknown>)?.strength as number,
         unit: (m.pills as Record<string, unknown>)?.unit as string,
         dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
+        image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
         frequency: m.frequency as string,
         times_of_day: m.times_of_day as string[],
       })));
@@ -822,17 +824,30 @@ function PlansContent({ patient }: { patient: Patient }) {
           {!showMedForm && medications.length > 0 && (
             <div className="divide-y">
               {medications.map((med) => (
-                <div key={med.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-foreground">
-                      <span className="font-medium">{med.name}</span>
-                      {med.strength && med.unit && (
-                        <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {med.frequency?.replace(/_/g, " ")}
-                    </p>
+                <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start justify-between">
+                  <div className="flex items-start gap-4 min-w-0">
+                    {med.image_url ? (
+                      <img
+                        src={med.image_url}
+                        alt={med.name}
+                        className="w-16 h-16 rounded object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded bg-muted/50 flex items-center justify-center shrink-0">
+                        <Pill className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm text-foreground mb-0.5">
+                        <span className="font-medium">{med.name}</span>
+                        {med.strength && med.unit && (
+                          <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {med.frequency?.replace(/_/g, " ")}
+                      </p>
+                    </div>
                   </div>
                   {med.times_of_day && med.times_of_day.length > 0 && (
                     <span className="text-xs text-muted-foreground">
@@ -1096,6 +1111,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
           strength: (m.pills as Record<string, unknown>)?.strength as number,
           unit: (m.pills as Record<string, unknown>)?.unit as string,
           dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
+          image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
           frequency: m.frequency as string,
           times_of_day: m.times_of_day as string[],
         })));
@@ -1426,7 +1442,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
           >
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-foreground">Meals</h3>
-              <span className="text-xs text-muted-foreground">{meals.length} logged · {meals.reduce((sum, m) => sum + (m.total_calories || 0), 0)} cal</span>
+              <span className="text-xs text-muted-foreground">{meals.length} logged · {meals.reduce((sum, m) => sum + Number(m.total_calories || 0), 0)} cal</span>
             </div>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", mealsExpanded && "rotate-180")} />
           </button>
@@ -1632,18 +1648,31 @@ function OverviewContent({ patient }: { patient: Patient }) {
                   scheduled: "scheduled"
                 };
                 return (
-                  <div key={med.id} className="py-2 first:pt-0 last:pb-0 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-foreground">
-                        <span className="font-medium">{med.name}</span>
-                        {med.strength && med.unit && (
-                          <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {med.frequency?.replace(/_/g, " ")}
-                        {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
-                      </p>
+                  <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start justify-between">
+                    <div className="flex items-start gap-4 min-w-0">
+                      {med.image_url ? (
+                        <img
+                          src={med.image_url}
+                          alt={med.name}
+                          className="w-16 h-16 rounded object-cover shrink-0"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded bg-muted/50 flex items-center justify-center shrink-0">
+                          <Pill className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm text-foreground mb-0.5">
+                          <span className="font-medium">{med.name}</span>
+                          {med.strength && med.unit && (
+                            <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {med.frequency?.replace(/_/g, " ")}
+                          {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
+                        </p>
+                      </div>
                     </div>
                     <span className={cn("text-xs", statusColors[status])}>
                       {statusLabels[status]}

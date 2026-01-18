@@ -14,6 +14,7 @@ type AssignedMed = {
   name: string;
   strength?: number;
   unit?: string;
+  image_url?: string | null;
   frequency?: string;
   times_of_day?: string[];
   is_active?: boolean;
@@ -110,6 +111,7 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
           name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
           strength: (m.pills as Record<string, unknown>)?.strength as number,
           unit: (m.pills as Record<string, unknown>)?.unit as string,
+          image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
           frequency: m.frequency as string,
           times_of_day: m.times_of_day as string[],
           is_active: m.is_active as boolean,
@@ -206,17 +208,30 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
           </h4>
           <div className="divide-y">
             {activeAssigned.map((med) => (
-              <div key={med.id} className="py-2 first:pt-0 last:pb-0">
-                <p className="text-sm text-foreground">
-                  <span className="font-medium">{med.name}</span>
-                  {med.strength && med.unit && (
-                    <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {med.frequency?.replace(/_/g, " ")}
-                  {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
-                </p>
+              <div key={med.id} className="py-3 first:pt-0 last:pb-0 flex items-start gap-4">
+                {med.image_url ? (
+                  <img
+                    src={med.image_url}
+                    alt={med.name}
+                    className="w-20 h-20 rounded object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded bg-muted/50 flex items-center justify-center shrink-0">
+                    <Pill className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-base text-foreground mb-1">
+                    <span className="font-medium">{med.name}</span>
+                    {med.strength && med.unit && (
+                      <span className="text-muted-foreground"> {med.strength}{med.unit}</span>
+                    )}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {med.frequency?.replace(/_/g, " ")}
+                    {med.times_of_day && med.times_of_day.length > 0 && ` · ${med.times_of_day.join(", ")}`}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
