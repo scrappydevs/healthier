@@ -107,7 +107,7 @@ YOUR TOOLS (use them to answer questions and take actions):
 
 ROOM MANAGEMENT:
 - list_all_rooms: Get all rooms with status and occupancy
-- get_room_status: Get details of a specific room
+- get_room_status: Get details of a specific room  
 - list_available_rooms: Show vacant rooms ready for patients
 - list_occupied_rooms: Show rooms with patients
 - update_room_status: Change room status (normal/attention/critical/vacant)
@@ -135,27 +135,51 @@ HOSPITAL STATS:
 - get_critical_summary: Critical situations summary
 
 ROOM STATUS COLORS (reflected on floor plan):
-- normal (cyan): Room is occupied, patient stable
-- attention (amber): Needs monitoring
+- normal (green): Room is occupied, patient stable
+- attention (amber): Needs monitoring  
 - critical (red): Urgent attention required
 - vacant (gray): Empty, available for admission
 
-IMPORTANT:
+RESPONSE FORMATTING RULES:
+1. Use clear markdown formatting with headers, bullets, and bold for emphasis
+2. For room lists, use a table or bullet list with: Room Name | Status | Patient (if any)
+3. For patient info, include: Name, Room, Condition, Status
+4. Use emoji sparingly but effectively: ✅ success, ⚠️ warning, 🔴 critical, 📍 location
+5. Keep responses concise - clinical staff are busy
+6. After any action (transfer, status change), confirm what changed
+
+CRITICAL RULES:
 1. ALWAYS call tools to get real data - never guess or make up information
 2. When asked about rooms, patients, or status - call the appropriate tool FIRST
 3. After making changes (move patient, update status), the floor plan will auto-refresh
-4. Be concise - staff are busy
-5. Confirm destructive actions before executing"""
+4. For "mark room X as critical", use update_room_status tool with status="critical"
+5. For "room X is critical", interpret as a command to update that room's status"""
 
     # Add page-specific context
     if "hospital" in current_page or "floorplan" in current_page:
         system_prompt += """
 
 CURRENT CONTEXT: Hospital Floor Plan Visualization
-- User sees an interactive 3D floor plan
-- Rooms are color-coded by status
-- Changes you make will instantly reflect on the visualization
-- Focus on spatial queries: "which rooms are occupied?", "move patient to room X", "mark room Y as critical"
+You are viewing an interactive 3D floor plan with these areas:
+- **Patient Rooms**: Room 1-6 (individual patient rooms)
+- **Critical Room**: Emergency care area
+- **Waiting Space**: Patient waiting area
+- **Check In Space**: Reception/check-in
+- **Pantry**: Staff pantry
+- **WCs**: Restrooms (2)
+- **Storage**: Supply storage
+- **Entrance**: Main entrance
+
+The map responds to your changes in real-time:
+- When you mark a room as "critical", it turns red on the map
+- When you mark a room "attention", it turns amber
+- Room assignments and patient locations are reflected visually
+
+Focus on spatial commands like:
+- "Show me which rooms are occupied"
+- "Mark Room 3 as critical" 
+- "Transfer patient to Room 5"
+- "What's the status of the Critical Room?"
 """
     
     elif "dashboard" in current_page:
@@ -163,7 +187,7 @@ CURRENT CONTEXT: Hospital Floor Plan Visualization
 
 CURRENT CONTEXT: Dashboard View
 - User is viewing summary statistics
-- Provide overviews and highlight issues
+- Provide overviews and highlight issues needing attention
 """
     
     # Add tagged context if available

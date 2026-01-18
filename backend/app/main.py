@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
+import anthropic
 
 from app.api.health import router as health_router
 from app.api.v1 import router as v1_router
@@ -25,8 +26,9 @@ from app.chat_context import (
 )
 
 
-# Cerebras client (OpenAI-compatible)
+# AI clients
 _cerebras_client: Optional[OpenAI] = None
+_claude_client: Optional[anthropic.Anthropic] = None
 
 
 def get_cerebras_client() -> Optional[OpenAI]:
@@ -54,6 +56,32 @@ def get_cerebras_client() -> Optional[OpenAI]:
         return None
 
 
+def get_claude_client() -> Optional[anthropic.Anthropic]:
+    """Get or create Claude client"""
+    global _claude_client
+    
+    if _claude_client is not None:
+        return _claude_client
+    
+    settings = get_settings()
+    
+    # Try multiple env var names for Claude API key
+    import os
+    claude_key = settings.claude_api_key or os.getenv("CLAUDE_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+    
+    if not claude_key:
+        print("⚠️ Claude not configured - CLAUDE_API_KEY missing")
+        return None
+    
+    try:
+        _claude_client = anthropic.Anthropic(api_key=claude_key)
+        print("✅ Claude client initialized")
+        return _claude_client
+    except Exception as e:
+        print(f"❌ Failed to initialize Claude: {e}")
+        return None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -65,7 +93,8 @@ async def lifespan(app: FastAPI):
     print(f"🚀 Starting {settings.app_name} v{settings.app_version}")
     print(f"📚 API docs available at http://{settings.host}:{settings.port}/docs")
     
-    # Initialize AI client
+    # Initialize AI clients (prefer Claude, fallback to Cerebras)
+    get_claude_client()
     get_cerebras_client()
 
     yield
@@ -127,18 +156,189 @@ class ChatResponse(BaseModel):
     error: Optional[str] = None
 
 
+def convert_tools_for_claude(openai_tools: list) -> list:
+    """Convert OpenAI tool format to Claude tool format"""
+    claude_tools = []
+    for tool in openai_tools:
+        if tool.get("type") == "function":
+            func = tool["function"]
+            claude_tools.append({
+                "name": func["name"],
+                "description": func["description"],
+                "input_schema": func["parameters"]
+            })
+    return claude_tools
+
+
+async def chat_with_claude(client: anthropic.Anthropic, messages: list, system_prompt: str, tools: list) -> tuple:
+    """Handle Claude chat with tool calling"""
+    all_tool_results = []
+    max_rounds = 5
+    round_num = 0
+    
+    # Convert messages to Claude format (no system in messages)
+    claude_messages = []
+    for msg in messages:
+        if msg["role"] == "system":
+            continue  # Skip, we pass system separately
+        claude_messages.append({"role": msg["role"], "content": msg["content"]})
+    
+    claude_tools = convert_tools_for_claude(tools)
+    
+    while round_num < max_rounds:
+        round_num += 1
+        print(f"\n{'='*60}")
+        print(f"🔄 CLAUDE ROUND {round_num}")
+        print(f"{'='*60}")
+        
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2048,
+            system=system_prompt,
+            tools=claude_tools,
+            messages=claude_messages
+        )
+        
+        # Check if we have tool use
+        tool_uses = [block for block in response.content if block.type == "tool_use"]
+        text_blocks = [block for block in response.content if block.type == "text"]
+        
+        if not tool_uses:
+            # No tools, return text response
+            final_text = "".join(block.text for block in text_blocks)
+            print(f"\n✅ Claude response (no tools): {final_text[:200]}...")
+            return final_text, all_tool_results, round_num
+        
+        # Process tool calls
+        print(f"   Found {len(tool_uses)} tool calls")
+        
+        # Add assistant message with tool use
+        claude_messages.append({
+            "role": "assistant",
+            "content": response.content
+        })
+        
+        # Execute tools and collect results
+        tool_results = []
+        for tool_use in tool_uses:
+            tool_name = tool_use.name
+            tool_input = tool_use.input
+            
+            print(f"\n🔧 Tool call: {tool_name}")
+            print(f"   Input: {tool_input}")
+            
+            tool_result = await execute_tool(tool_name, tool_input)
+            print(f"   Result: {json.dumps(tool_result, indent=2)[:500]}...")
+            
+            all_tool_results.append(tool_result)
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_use.id,
+                "content": json.dumps(tool_result)
+            })
+        
+        # Add tool results to messages
+        claude_messages.append({
+            "role": "user",
+            "content": tool_results
+        })
+        
+        # Check stop reason
+        if response.stop_reason == "end_turn":
+            final_text = "".join(block.text for block in text_blocks)
+            return final_text, all_tool_results, round_num
+    
+    # Max rounds reached
+    return "I've gathered the information. Let me know if you need anything else.", all_tool_results, round_num
+
+
+async def chat_with_cerebras(client: OpenAI, api_messages: list, tools: list) -> tuple:
+    """Handle Cerebras/OpenAI chat with tool calling"""
+    all_tool_results = []
+    max_rounds = 5
+    round_num = 0
+    
+    response = client.chat.completions.create(
+        model="llama-3.3-70b",
+        messages=api_messages,
+        tools=tools,
+        tool_choice="auto",
+        max_tokens=2048,
+        temperature=0.7,
+    )
+    
+    current_response = response
+    
+    while current_response.choices[0].message.tool_calls and round_num < max_rounds:
+        round_num += 1
+        print(f"\n{'='*60}")
+        print(f"🔄 CEREBRAS TOOL ROUND {round_num}")
+        print(f"{'='*60}")
+        
+        tool_calls = current_response.choices[0].message.tool_calls
+        
+        api_messages.append({
+            "role": "assistant",
+            "content": current_response.choices[0].message.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments
+                    }
+                }
+                for tc in tool_calls
+            ]
+        })
+        
+        for tool_call in tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
+            
+            print(f"\n🔧 Tool call: {tool_name}")
+            print(f"   Input: {tool_args}")
+            
+            tool_result = await execute_tool(tool_name, tool_args)
+            print(f"   Result: {json.dumps(tool_result, indent=2)[:500]}...")
+            
+            all_tool_results.append(tool_result)
+            
+            api_messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": json.dumps(tool_result)
+            })
+        
+        current_response = client.chat.completions.create(
+            model="llama-3.3-70b",
+            messages=api_messages,
+            tools=tools,
+            tool_choice="auto",
+            max_tokens=2048,
+            temperature=0.7,
+        )
+        
+        print(f"\n📊 Round {round_num} complete")
+    
+    assistant_response = current_response.choices[0].message.content or ""
+    return assistant_response, all_tool_results, round_num
+
+
 @app.post("/ai/chat", response_model=ChatResponse)
 async def ai_chat(request: ChatRequest):
     """
-    Context-aware AI chat endpoint using Cerebras API with tool calling.
+    Context-aware AI chat endpoint using Claude (preferred) or Cerebras with tool calling.
     """
+    claude_client = get_claude_client()
     cerebras_client = get_cerebras_client()
     
-    if not cerebras_client:
+    if not claude_client and not cerebras_client:
         return ChatResponse(
-            response="AI assistant is not available. Please configure CEREBRAS_KEY.",
+            response="AI assistant is not available. Please configure CLAUDE_API_KEY or CEREBRAS_KEY.",
             session_id=request.session_id or "error",
-            error="cerebras_not_configured"
+            error="ai_not_configured"
         )
     
     try:
@@ -171,95 +371,30 @@ async def ai_chat(request: ChatRequest):
             "content": request.message
         })
         
-        # Build messages for API
-        api_messages = [
-            {"role": "system", "content": build_system_prompt(context)}
-        ]
-        api_messages.extend([
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in context.messages
-        ])
-        
+        system_prompt = build_system_prompt(context)
         print(f"\n💬 User message: {request.message}")
         
-        # Call Cerebras API with tools
-        response = cerebras_client.chat.completions.create(
-            model="llama-3.3-70b",
-            messages=api_messages,
-            tools=PILLPAL_TOOLS,
-            tool_choice="auto",
-            max_tokens=2048,
-            temperature=0.7,
-        )
-        
-        # Handle tool calls with multi-round support
-        assistant_response = ""
-        all_tool_results = []
-        max_rounds = 5
-        round_num = 0
-        
-        current_response = response
-        
-        while current_response.choices[0].message.tool_calls and round_num < max_rounds:
-            round_num += 1
-            print(f"\n{'='*60}")
-            print(f"🔄 TOOL ROUND {round_num}")
-            print(f"{'='*60}")
-            
-            tool_calls = current_response.choices[0].message.tool_calls
-            tool_messages = []
-            
-            # Add assistant message with tool calls
-            api_messages.append({
-                "role": "assistant",
-                "content": current_response.choices[0].message.content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments
-                        }
-                    }
-                    for tc in tool_calls
-                ]
-            })
-            
-            # Execute each tool call
-            for tool_call in tool_calls:
-                tool_name = tool_call.function.name
-                tool_args = json.loads(tool_call.function.arguments)
-                
-                print(f"\n🔧 Tool call: {tool_name}")
-                print(f"   Input: {tool_args}")
-                
-                tool_result = await execute_tool(tool_name, tool_args)
-                print(f"   Result: {json.dumps(tool_result, indent=2)[:500]}...")
-                
-                all_tool_results.append(tool_result)
-                
-                # Add tool result to messages
-                api_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": json.dumps(tool_result)
-                })
-            
-            # Call API again with tool results
-            current_response = cerebras_client.chat.completions.create(
-                model="llama-3.3-70b",
-                messages=api_messages,
-                tools=PILLPAL_TOOLS,
-                tool_choice="auto",
-                max_tokens=2048,
-                temperature=0.7,
+        # Prefer Claude, fallback to Cerebras
+        if claude_client:
+            print("🤖 Using Claude API")
+            assistant_response, all_tool_results, round_num = await chat_with_claude(
+                claude_client, 
+                context.messages, 
+                system_prompt, 
+                PILLPAL_TOOLS
             )
-            
-            print(f"\n📊 Round {round_num} complete")
-        
-        # Extract final response
-        assistant_response = current_response.choices[0].message.content or ""
+        else:
+            print("🤖 Using Cerebras API")
+            api_messages = [{"role": "system", "content": system_prompt}]
+            api_messages.extend([
+                {"role": msg["role"], "content": msg["content"]}
+                for msg in context.messages
+            ])
+            assistant_response, all_tool_results, round_num = await chat_with_cerebras(
+                cerebras_client,
+                api_messages,
+                PILLPAL_TOOLS
+            )
         
         print(f"\n✅ Tool execution complete after {round_num} rounds")
         print(f"   Total tools called: {len(all_tool_results)}")

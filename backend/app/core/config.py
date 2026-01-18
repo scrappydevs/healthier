@@ -35,8 +35,9 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_key: str | None = None
 
-    # AI configuration (Cerebras)
+    # AI configuration
     cerebras_key: str | None = None
+    claude_api_key: str | None = None
 
     # Smplrspace configuration
     smplr_org_id: str | None = None

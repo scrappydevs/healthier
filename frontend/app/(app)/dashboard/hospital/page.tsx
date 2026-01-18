@@ -104,8 +104,8 @@ export default function HospitalViewPage() {
             </div>
           </div>
 
-          {/* 3D Viewer */}
-          <div className="flex-1 min-h-0">
+          {/* 3D Viewer - Extended to fill available space */}
+          <div className="flex-1 min-h-[600px]">
             <SpaceViewer
               viewMode={viewMode}
               showHeatmap={showHeatmap}
