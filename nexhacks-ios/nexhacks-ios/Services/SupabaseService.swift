@@ -216,6 +216,19 @@ class SupabaseService: ObservableObject {
         let response: [SupabaseMeal] = try await query.execute().value
         return response
     }
+
+    func fetchMeals(userId: UUID, from startDate: Date, to endDate: Date) async throws -> [SupabaseMeal] {
+        let formatter = ISO8601DateFormatter()
+        let response: [SupabaseMeal] = try await supabase
+            .from("meals")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .gte("consumed_at", value: formatter.string(from: startDate))
+            .lt("consumed_at", value: formatter.string(from: endDate))
+            .execute()
+            .value
+        return response
+    }
     
     func updateMeal(_ meal: SupabaseMeal) async throws {
         try await supabase
