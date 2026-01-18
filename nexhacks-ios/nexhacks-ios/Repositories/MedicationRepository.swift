@@ -121,6 +121,18 @@ class MedicationRepository: ObservableObject {
     func getActive() -> [Medication] {
         return storage.filter { $0.isActive }
     }
+    
+    /// Reload medications from Supabase
+    func reloadFromSupabase() {
+        guard let supabaseService = supabaseService,
+              let userId = supabaseService.getCurrentUserId() else {
+            return
+        }
+        
+        Task {
+            await loadFromSupabase(userId: userId)
+        }
+    }
 
     /// Log medication taken with verification status
     func logMedicationTaken(
@@ -165,6 +177,9 @@ class MedicationRepository: ObservableObject {
                     takenAt: log.takenAt,
                     wasOnTime: log.wasOnTime,
                     notes: log.notes,
+                    verificationStatus: log.verificationStatus.rawValue,
+                    verificationImageURL: log.verificationImageURL,
+                    detectedPillCount: log.detectedPillCount,
                     createdAt: Date()
                 )
                 
@@ -333,15 +348,24 @@ class MedicationRepository: ObservableObject {
     private func mapSupabaseLog(_ log: SupabaseMedicationLog) -> MedicationLog {
         let takenAt = log.takenAt ?? log.createdAt ?? Date()
         
+        // Map verification status from string
+        let verificationStatus: VerificationStatus
+        if let statusString = log.verificationStatus,
+           let status = VerificationStatus(rawValue: statusString) {
+            verificationStatus = status
+        } else {
+            verificationStatus = .notVerified
+        }
+        
         return MedicationLog(
             id: log.id,
             medicationId: log.medicationId,
             takenAt: takenAt,
             wasOnTime: log.wasOnTime,
             notes: log.notes,
-            verificationStatus: .notVerified,
-            verificationImageURL: nil,
-            detectedPillCount: nil
+            verificationStatus: verificationStatus,
+            verificationImageURL: log.verificationImageURL,
+            detectedPillCount: log.detectedPillCount
         )
     }
     

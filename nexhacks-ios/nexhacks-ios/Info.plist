@@ -36,5 +36,9 @@
 	</dict>
 	<key>NSCameraReactionEffectGesturesEnabledDefault</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>Healthier needs camera access to record your exercise sessions for AI-powered form analysis and feedback.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Healthier needs microphone access to record audio during exercise sessions and for voice journaling.</string>
 </dict>
 </plist>

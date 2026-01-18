@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AVFoundation
+import UIKit
 
 struct LiveExerciseView: View {
     @Environment(\.dismiss) private var dismiss
@@ -14,21 +15,60 @@ struct LiveExerciseView: View {
     @StateObject private var analysisService = ExerciseAnalysisService()
     @StateObject private var cameraManager = CameraManager()
     
+    // Optional initial values from plan item
+    var initialExerciseType: ExerciseType?
+    var planItemName: String?
+    
     @State private var selectedType: ExerciseType = .other
     @State private var isRecording = false
     @State private var recordingStartTime: Date?
-    @State private var elapsedSeconds: Int = 0
     @State private var showingSaveSheet = false
     @State private var recordedVideoURL: URL?
+    @State private var finalDuration: TimeInterval = 0
     
-    let recordingTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    // Frame capture timer
     let frameTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect() // Send frame every 0.5s
     
     var body: some View {
         ZStack {
-            // Camera Preview
-            CameraPreviewView(session: cameraManager.session)
-                .ignoresSafeArea()
+            // Camera Preview or Permission Denied
+            if cameraManager.permissionDenied {
+                // Permission denied view
+                Color.black.ignoresSafeArea()
+                VStack(spacing: 20) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.white.opacity(0.5))
+                    
+                    Text("Camera Access Required")
+                        .font(.title2.bold())
+                        .foregroundColor(.white)
+                    
+                    Text("Please enable camera access in Settings to record your exercise.")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                    
+                    Button {
+                        if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(settingsURL)
+                        }
+                    } label: {
+                        Text("Open Settings")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color.appPrimary)
+                            .cornerRadius(10)
+                    }
+                }
+            } else {
+                // Camera Preview
+                CameraPreviewView(session: cameraManager.session)
+                    .ignoresSafeArea()
+            }
             
             // Overlay
             VStack {
@@ -43,26 +83,30 @@ struct LiveExerciseView: View {
                 }
                 
                 // Bottom Controls
-                bottomControls
+                if !cameraManager.permissionDenied {
+                    bottomControls
+                }
             }
             .padding()
         }
         .onAppear {
             cameraManager.checkPermissions()
+            if let initialType = initialExerciseType {
+                selectedType = initialType
+            }
         }
         .onDisappear {
-            Task {
-                if isRecording {
-                    await stopRecording()
+            if isRecording {
+                isRecording = false
+                Task {
+                    await analysisService.stopSession()
                 }
+                _ = cameraManager.stopRecording()
+            }
+            Task {
                 await analysisService.disconnect()
             }
             cameraManager.stopSession()
-        }
-        .onReceive(recordingTimer) { _ in
-            if isRecording {
-                elapsedSeconds += 1
-            }
         }
         .onReceive(frameTimer) { _ in
             if isRecording && analysisService.isAnalyzing {
@@ -73,9 +117,10 @@ struct LiveExerciseView: View {
             SaveExerciseSheet(
                 viewModel: viewModel,
                 exerciseType: analysisService.currentExerciseType.flatMap { ExerciseType(rawValue: $0) } ?? selectedType,
-                duration: TimeInterval(elapsedSeconds),
+                duration: finalDuration,
                 repCount: analysisService.repCount,
                 videoURL: recordedVideoURL,
+                initialName: planItemName,
                 onSave: { dismiss() }
             )
         }
@@ -86,12 +131,14 @@ struct LiveExerciseView: View {
     private var topBar: some View {
         HStack {
             Button {
-                Task {
-                    if isRecording {
-                        await stopRecording()
+                if isRecording {
+                    isRecording = false
+                    Task {
+                        await analysisService.stopSession()
+                        _ = cameraManager.stopRecording()
                     }
-                    dismiss()
                 }
+                dismiss()
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title)
@@ -101,14 +148,21 @@ struct LiveExerciseView: View {
             
             Spacer()
             
-            // Timer
-            Text(formatTime(elapsedSeconds))
-                .font(.system(size: 24, weight: .bold, design: .monospaced))
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(isRecording ? Color.red : Color.black.opacity(0.5))
-                .cornerRadius(8)
+            // Timer with TimelineView for reliable updates
+            TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                let seconds: Int = {
+                    guard isRecording, let startTime = recordingStartTime else { return 0 }
+                    return Int(context.date.timeIntervalSince(startTime))
+                }()
+                
+                Text(formatTime(seconds))
+                    .font(.system(size: 24, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(isRecording ? Color.red : Color.black.opacity(0.5))
+                    .cornerRadius(8)
+            }
             
             Spacer()
             
@@ -211,8 +265,8 @@ struct LiveExerciseView: View {
     
     private var bottomControls: some View {
         VStack(spacing: 20) {
-            // Exercise Type Picker (only before recording)
-            if !isRecording {
+            // Exercise Type Picker (only before recording, and not when from plan)
+            if !isRecording && planItemName == nil {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(ExerciseType.allCases, id: \.self) { type in
@@ -225,16 +279,39 @@ struct LiveExerciseView: View {
                     }
                     .padding(.horizontal)
                 }
+            } else if !isRecording, let planName = planItemName {
+                // Show locked plan item name when from plan
+                Text(planName)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(Color.appPrimary)
+                    .cornerRadius(20)
             }
             
             // Record Button
             Button {
-                Task {
-                    if isRecording {
-                        await stopRecording()
+                if isRecording {
+                    // Stop recording - capture final duration first
+                    if let startTime = recordingStartTime {
+                        finalDuration = Date().timeIntervalSince(startTime)
+                    }
+                    isRecording = false
+                    Task {
+                        await analysisService.stopSession()
+                        recordedVideoURL = cameraManager.stopRecording()
                         showingSaveSheet = true
-                    } else {
-                        await startRecording()
+                    }
+                } else {
+                    // Start recording - update state first, then do async work
+                    isRecording = true
+                    recordingStartTime = Date()
+                    finalDuration = 0
+                    cameraManager.startRecording()
+                    Task {
+                        await analysisService.connect()
+                        await analysisService.startSession(exerciseType: selectedType.rawValue)
                     }
                 }
             } label: {
@@ -264,29 +341,6 @@ struct LiveExerciseView: View {
     }
     
     // MARK: - Recording Methods
-    
-    private func startRecording() async {
-        isRecording = true
-        elapsedSeconds = 0
-        recordingStartTime = Date()
-        
-        // Start camera recording
-        cameraManager.startRecording()
-        
-        // Connect and start analysis
-        await analysisService.connect()
-        await analysisService.startSession(exerciseType: selectedType.rawValue)
-    }
-    
-    private func stopRecording() async {
-        isRecording = false
-        
-        // Stop analysis
-        await analysisService.stopSession()
-        
-        // Stop camera and get video URL
-        recordedVideoURL = cameraManager.stopRecording()
-    }
     
     private func captureAndAnalyzeFrame() {
         guard let imageData = cameraManager.captureCurrentFrame() else { return }
@@ -333,6 +387,7 @@ struct SaveExerciseSheet: View {
     let duration: TimeInterval
     let repCount: Int
     let videoURL: URL?
+    var initialName: String?
     let onSave: () -> Void
     
     @State private var name: String = ""
@@ -402,6 +457,11 @@ struct SaveExerciseSheet: View {
                     .foregroundColor(.appPrimary)
                 }
             }
+            .onAppear {
+                if let initialName = initialName {
+                    name = initialName
+                }
+            }
         }
     }
     
@@ -461,22 +521,35 @@ struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
     
     func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
-        
-        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer.videoGravity = .resizeAspectFill
-        view.layer.addSublayer(previewLayer)
-        
-        DispatchQueue.main.async {
-            previewLayer.frame = view.bounds
-        }
-        
+        let view = CameraPreviewUIView()
+        view.session = session
         return view
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
-        if let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
-            previewLayer.frame = uiView.bounds
+        if let previewView = uiView as? CameraPreviewUIView {
+            previewView.session = session
+        }
+    }
+}
+
+class CameraPreviewUIView: UIView {
+    var session: AVCaptureSession? {
+        didSet {
+            if let layer = self.layer as? AVCaptureVideoPreviewLayer {
+                layer.session = session
+            }
+        }
+    }
+    
+    override class var layerClass: AnyClass {
+        AVCaptureVideoPreviewLayer.self
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if let layer = self.layer as? AVCaptureVideoPreviewLayer {
+            layer.videoGravity = .resizeAspectFill
         }
     }
 }
@@ -486,6 +559,8 @@ struct CameraPreviewView: UIViewRepresentable {
 class CameraManager: NSObject, ObservableObject {
     @Published var session = AVCaptureSession()
     @Published var isAuthorized = false
+    @Published var permissionDenied = false
+    @Published var isSessionRunning = false
     
     private var videoOutput: AVCaptureVideoDataOutput?
     private var movieOutput: AVCaptureMovieFileOutput?
@@ -493,64 +568,101 @@ class CameraManager: NSObject, ObservableObject {
     private var recordingURL: URL?
     
     func checkPermissions() {
+        // Check camera permission
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            isAuthorized = true
-            setupCamera()
+            checkMicrophoneAndSetup()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 DispatchQueue.main.async {
-                    self?.isAuthorized = granted
                     if granted {
-                        self?.setupCamera()
+                        self?.checkMicrophoneAndSetup()
+                    } else {
+                        self?.permissionDenied = true
+                        self?.isAuthorized = false
                     }
                 }
             }
-        default:
+        case .denied, .restricted:
+            DispatchQueue.main.async {
+                self.permissionDenied = true
+                self.isAuthorized = false
+            }
+        @unknown default:
+            permissionDenied = true
             isAuthorized = false
         }
     }
     
-    private func setupCamera() {
-        session.beginConfiguration()
-        session.sessionPreset = .high
-        
-        // Video input
-        guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-              let videoInput = try? AVCaptureDeviceInput(device: videoDevice) else {
-            return
+    private func checkMicrophoneAndSetup() {
+        // Check microphone permission (optional but good for recording)
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            setupCamera(withAudio: true)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                DispatchQueue.main.async {
+                    self?.setupCamera(withAudio: granted)
+                }
+            }
+        default:
+            // Proceed without audio if denied
+            setupCamera(withAudio: false)
         }
-        
-        if session.canAddInput(videoInput) {
-            session.addInput(videoInput)
-        }
-        
-        // Audio input
-        if let audioDevice = AVCaptureDevice.default(for: .audio),
-           let audioInput = try? AVCaptureDeviceInput(device: audioDevice),
-           session.canAddInput(audioInput) {
-            session.addInput(audioInput)
-        }
-        
-        // Video data output (for frame capture)
-        let videoOutput = AVCaptureVideoDataOutput()
-        videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
-        if session.canAddOutput(videoOutput) {
-            session.addOutput(videoOutput)
-            self.videoOutput = videoOutput
-        }
-        
-        // Movie file output (for recording)
-        let movieOutput = AVCaptureMovieFileOutput()
-        if session.canAddOutput(movieOutput) {
-            session.addOutput(movieOutput)
-            self.movieOutput = movieOutput
-        }
-        
-        session.commitConfiguration()
-        
+    }
+    
+    private func setupCamera(withAudio: Bool) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.session.startRunning()
+            guard let self = self else { return }
+            
+            self.session.beginConfiguration()
+            self.session.sessionPreset = .high
+            
+            // Video input
+            guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+                  let videoInput = try? AVCaptureDeviceInput(device: videoDevice) else {
+                DispatchQueue.main.async {
+                    self.isAuthorized = false
+                }
+                return
+            }
+            
+            if self.session.canAddInput(videoInput) {
+                self.session.addInput(videoInput)
+            }
+            
+            // Audio input (if authorized)
+            if withAudio,
+               let audioDevice = AVCaptureDevice.default(for: .audio),
+               let audioInput = try? AVCaptureDeviceInput(device: audioDevice),
+               self.session.canAddInput(audioInput) {
+                self.session.addInput(audioInput)
+            }
+            
+            // Video data output (for frame capture)
+            let videoOutput = AVCaptureVideoDataOutput()
+            videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
+            if self.session.canAddOutput(videoOutput) {
+                self.session.addOutput(videoOutput)
+                self.videoOutput = videoOutput
+            }
+            
+            // Movie file output (for recording)
+            let movieOutput = AVCaptureMovieFileOutput()
+            if self.session.canAddOutput(movieOutput) {
+                self.session.addOutput(movieOutput)
+                self.movieOutput = movieOutput
+            }
+            
+            self.session.commitConfiguration()
+            
+            // Start session
+            self.session.startRunning()
+            
+            DispatchQueue.main.async {
+                self.isAuthorized = true
+                self.isSessionRunning = self.session.isRunning
+            }
         }
     }
     

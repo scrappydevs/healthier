@@ -155,6 +155,7 @@ export async function getPatientMeals(
 export type Exercise = {
   id: string;
   user_id: string;
+  name?: string | null;
   exercise_type: string;
   category: "cardio" | "strength" | "flexibility" | "balance" | "other" | null;
   duration_minutes: number | null;
@@ -179,6 +180,9 @@ export type Exercise = {
     video_info?: { duration_seconds: number; analyzed_frames: number };
     symmetry_analysis?: Record<string, { left: number; right: number; difference: number; symmetric: boolean }>;
     angle_statistics?: Record<string, { min: number; max: number; avg: number; range: number }>;
+    form_tips?: string[];
+    key_metrics?: string;
+    ideal_ranges?: Record<string, { min: number; max: number; note: string }>;
   } | null;
 };
 
@@ -729,6 +733,10 @@ export type PoseAnalysis = {
   exercise_type?: string;
   processed_video_url?: string;
   error?: string;
+  // Exercise-specific guidance
+  form_tips?: string[];
+  key_metrics?: string;
+  ideal_ranges?: Record<string, { min: number; max: number; note: string }>;
 };
 
 export type ExercisePoseAnalysisResponse = {
@@ -750,10 +758,22 @@ export type AnalyzePoseResponse = {
 };
 
 export async function analyzeExercisePose(
-  exerciseId: string
+  exerciseId: string,
+  force: boolean = false
 ): Promise<AnalyzePoseResponse> {
-  return request<AnalyzePoseResponse>(`/api/v1/exercises/${exerciseId}/analyze-pose`, {
+  const query = force ? "?force=true" : "";
+  return request<AnalyzePoseResponse>(`/api/v1/exercises/${exerciseId}/analyze-pose${query}`, {
     method: "POST",
+  });
+}
+
+export async function updateExercise(
+  exerciseId: string,
+  updates: { exercise_type?: string; name?: string; category?: string; notes?: string; intensity?: string }
+): Promise<{ exercise: Exercise }> {
+  return request<{ exercise: Exercise }>(`/api/v1/exercises/${exerciseId}`, {
+    method: "PATCH",
+    body: updates,
   });
 }
 

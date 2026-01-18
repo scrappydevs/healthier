@@ -56,6 +56,9 @@ struct HomeView: View {
         .sheet(isPresented: $showingRoomScanner) {
             RoomPlanScannerView(viewModel: appState.roomViewModel)
         }
+        .onAppear {
+            viewModel.refreshData()
+        }
     }
 
     // MARK: - Welcome Section

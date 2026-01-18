@@ -80,6 +80,8 @@ class HomeViewModel: ObservableObject {
     // MARK: - Public Methods
 
     func refreshData() {
+        // Reload from Supabase to ensure latest data
+        medicationRepository.reloadFromSupabase()
         loadData()
     }
 

@@ -1179,7 +1179,7 @@ async def generate_daily_summary(
             "patient_id", str(patient_id)
         ).eq("date", target_date).maybe_single().execute()
         
-        if cached_res.data:
+        if cached_res and cached_res.data:
             cached = cached_res.data
             cached_counts = cached.get("entry_counts") or {}
             
@@ -1379,10 +1379,14 @@ Date: {target_date}
     off_plan_exercises = []
     
     for ex in exercises:
-        ex_type = (ex.get('exercise_type') or ex.get('name') or 'Exercise').lower()
+        # Prioritize 'name' over 'exercise_type' for matching since name contains 
+        # the actual exercise name (e.g., "Squat") while exercise_type may be generic (e.g., "other")
+        ex_name = (ex.get('name') or ex.get('exercise_type') or 'Exercise').lower()
+        display_name = ex.get('name') or ex.get('exercise_type') or 'Exercise'
         matched = False
+        
         for name, px in prescribed_names.items():
-            if name in ex_type or ex_type in name:
+            if name in ex_name or ex_name in name:
                 completed_prescribed.add(name)
                 matched = True
                 form_score = ex.get('form_score', 'N/A')
@@ -1390,19 +1394,27 @@ Date: {target_date}
                 form_info = ""
                 if pose_analysis and isinstance(pose_analysis, dict) and pose_analysis.get('summary'):
                     form_info = f" | Form: {pose_analysis['summary'][:100]}"
-                context += f"- [ON-PLAN] {ex.get('exercise_type', ex.get('name', 'Exercise'))}: {ex.get('duration_minutes', 0)} min, {ex.get('calories_burned', 0)} cal{form_info}\n"
+                context += f"- [ON-PLAN] {display_name}: {ex.get('duration_minutes', 0)} min, {ex.get('calories_burned', 0)} cal{form_info}\n"
                 break
         
         if not matched:
             off_plan_exercises.append(ex)
-            context += f"- [OFF-PLAN] {ex.get('exercise_type', ex.get('name', 'Exercise'))}: {ex.get('duration_minutes', 0)} min, {ex.get('calories_burned', 0)} cal (not in prescribed plan)\n"
+            context += f"- [OFF-PLAN] {display_name}: {ex.get('duration_minutes', 0)} min, {ex.get('calories_burned', 0)} cal (not in prescribed plan)\n"
     
     # Report missed prescribed exercises
     missed_prescribed = [name for name in prescribed_names.keys() if name not in completed_prescribed]
+    
+    # Add explicit adherence summary for AI clarity
+    context += f"\n=== EXERCISE ADHERENCE SUMMARY ===\n"
+    if completed_prescribed:
+        context += f"COMPLETED prescribed exercises: {', '.join(name.title() for name in completed_prescribed)}\n"
+    else:
+        context += "COMPLETED prescribed exercises: None\n"
     if missed_prescribed:
-        context += f"\n=== MISSED PRESCRIBED EXERCISES ({len(missed_prescribed)}) ===\n"
-        for name in missed_prescribed:
-            context += f"- {name.title()}: Not completed today\n"
+        context += f"MISSED prescribed exercises: {', '.join(name.title() for name in missed_prescribed)}\n"
+    else:
+        context += "MISSED prescribed exercises: None\n"
+    context += f"Off-plan exercises logged: {len(off_plan_exercises)}\n"
     
     context += f"\n=== MEDICATIONS ===\n"
     taken = sum(1 for p in pill_logs if p.get('status') == 'taken')
@@ -1469,8 +1481,9 @@ Respond in this exact JSON format:
 Be clinical, specific, and comparison-focused. Explicitly state whether the patient followed their care plans or not."""
 
     try:
+        # Use faster 8B model for quicker responses (cached results make this fine for repeat views)
         response = cerebras.chat.completions.create(
-            model="llama-3.3-70b",
+            model="llama-3.1-8b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=500
@@ -2230,16 +2243,44 @@ def _run_pose_analysis_background(
         logging.error(f"Background pose analysis failed for {exercise_id}: {e}")
 
 
+@router.patch("/exercises/{exercise_id}")
+async def update_exercise(
+    exercise_id: UUID,
+    updates: dict,
+    db: Client = Depends(get_db)
+):
+    """Update an exercise entry (e.g., rename exercise_type)."""
+    # Only allow updating safe fields
+    allowed_fields = {"exercise_type", "name", "category", "notes", "intensity"}
+    filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+    
+    if not filtered_updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    
+    filtered_updates["updated_at"] = "now()"
+    
+    response = db.table("exercises").update(filtered_updates).eq(
+        "id", str(exercise_id)
+    ).execute()
+    
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    
+    return {"exercise": response.data[0]}
+
+
 @router.post("/exercises/{exercise_id}/analyze-pose")
 async def analyze_exercise_pose(
     exercise_id: UUID,
     background_tasks: BackgroundTasks,
+    force: bool = Query(False, description="Force re-analysis even if already analyzed"),
     db: Client = Depends(get_db)
 ):
     """
     Analyze exercise video using YOLO pose estimation.
     Returns immediately with status, runs analysis in background.
     Poll GET /exercises/{id}/pose-analysis to check completion.
+    Use force=true to re-analyze after a failed attempt.
     """
     exercise_res = db.table("exercises").select(
         "id, pose_analysis, video_url, processed_video_url, exercise_type, name"
@@ -2249,23 +2290,40 @@ async def analyze_exercise_pose(
         raise HTTPException(status_code=404, detail="Exercise not found")
     
     exercise = exercise_res.data
+    existing_analysis = exercise.get("pose_analysis")
     
-    # If already analyzed, return cached result
-    if exercise.get("pose_analysis"):
+    # Check if this is a failed analysis (contains error indicator)
+    is_failed_analysis = (
+        existing_analysis and 
+        existing_analysis.get("summary") and 
+        ("Unable to analyze" in existing_analysis.get("summary", "") or 
+         "not available" in existing_analysis.get("summary", ""))
+    )
+    
+    # If already analyzed successfully and not forcing re-analysis, return cached result
+    if existing_analysis and not force and not is_failed_analysis:
         # Check both the column and pose_analysis for processed_video_url
-        processed_url = exercise.get("processed_video_url") or exercise["pose_analysis"].get("processed_video_url")
+        processed_url = exercise.get("processed_video_url") or existing_analysis.get("processed_video_url")
         return {
             "status": "completed",
             "exercise_id": str(exercise_id),
-            "pose_analysis": exercise["pose_analysis"],
+            "pose_analysis": existing_analysis,
             "processed_video_url": processed_url,
         }
+    
+    # Clear failed analysis before re-processing
+    if (force or is_failed_analysis) and existing_analysis:
+        db.table("exercises").update({
+            "pose_analysis": None,
+            "processed_video_url": None
+        }).eq("id", str(exercise_id)).execute()
     
     video_url = exercise.get("video_url")
     if not video_url:
         raise HTTPException(status_code=400, detail="No video URL for this exercise")
     
-    exercise_type = exercise.get("exercise_type") or exercise.get("name") or "exercise"
+    # Prioritize 'name' field over 'exercise_type' for AI analysis
+    exercise_type = exercise.get("name") or exercise.get("exercise_type") or "exercise"
     
     # Queue background task and return immediately
     background_tasks.add_task(

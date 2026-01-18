@@ -18,7 +18,7 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 
 
 ## Tech Stack
-<img width="912" height="671" alt="Healthier Tech Stack" src="https://github.com/user-attachments/assets/b07729c8-af32-4dd9-92cb-306c9d067a54" />
+<img width="912" height="670" alt="IMG_5057" src="https://github.com/user-attachments/assets/e3f9d45e-28ec-4a2f-bd85-2439fa539cf2" />
 
 ## Current Features (Planned / In Progress)
 
@@ -37,10 +37,16 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 - Analyze approximate nutrition signals (e.g. protein, vitamins, general healthiness)
 - Summarize on dashboard
 
+<img width="1728" height="991" alt="dash" src="https://github.com/user-attachments/assets/edb3602f-6057-4ab3-9909-8cdef1eaa485" />
+
+
 ### Exercise
 - Live video analysis
 - Check form + provide feedback
 - Summarize health/exercise insights on dashboard
+
+![squat](https://github.com/user-attachments/assets/824bdd4b-e6ad-4966-b34b-ef3ff98f430c)
+
 
 ### Apple Watch
 - Voice agent on watch

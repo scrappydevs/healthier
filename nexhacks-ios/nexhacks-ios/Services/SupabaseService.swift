@@ -129,11 +129,15 @@ class SupabaseService: ObservableObject {
     }
     
     func fetchMedications(userId: UUID? = nil) async throws -> [SupabaseMedication] {
-        let currentUserId = userId ?? getCurrentUserId() ?? UUID()
+        guard let currentUserId = userId ?? getCurrentUserId() else {
+            return []
+        }
+        
         let response: [SupabaseMedication] = try await supabase
             .from("medications")
             .select()
             .eq("user_id", value: currentUserId.uuidString)
+            .order("created_at", ascending: false)
             .execute()
             .value
         return response
@@ -858,6 +862,9 @@ struct SupabaseMedicationLog: Codable {
     var takenAt: Date?
     var wasOnTime: Bool
     var notes: String?
+    var verificationStatus: String?
+    var verificationImageURL: String?
+    var detectedPillCount: Int?
     var createdAt: Date?
     
     enum CodingKeys: String, CodingKey {
@@ -867,6 +874,9 @@ struct SupabaseMedicationLog: Codable {
         case takenAt = "taken_at"
         case wasOnTime = "was_on_time"
         case notes
+        case verificationStatus = "verification_status"
+        case verificationImageURL = "verification_image_url"
+        case detectedPillCount = "detected_pill_count"
         case createdAt = "created_at"
     }
 }
