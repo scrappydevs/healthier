@@ -6,6 +6,8 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 
 - David — Valuemate, iOS
 - Aarush — Entries (logging + input flows)
+- Created a gemini nano banana pro pipeline to label pills dataset for model
+- Cost cutting
 - Julian — Dashboard
 - Dheeraj — 3D / Floor plan
 

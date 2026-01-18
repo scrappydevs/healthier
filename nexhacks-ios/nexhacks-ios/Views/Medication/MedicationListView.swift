@@ -67,6 +67,9 @@ struct MedicationListView: View {
                     }
                 }
             }
+            .sheet(item: $viewModel.selectedMedication) { medication in
+                MedicationDetailView(viewModel: viewModel, medication: medication)
+            }
         }
     }
 
@@ -212,13 +215,15 @@ struct MedicationCard: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             // Header
             HStack {
+                pillIcon
+                
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                     Text(medication.name)
-                        .font(AppTheme.Typography.headline)
+                        .font(AppTheme.Typography.subheadline)
                         .foregroundColor(.textPrimary)
 
                     Text(medication.dosage)
-                        .font(AppTheme.Typography.subheadline)
+                        .font(AppTheme.Typography.caption)
                         .foregroundColor(.textSecondary)
                 }
 
@@ -245,7 +250,7 @@ struct MedicationCard: View {
             }
 
             // Details
-            HStack(spacing: AppTheme.Spacing.lg) {
+            HStack(spacing: AppTheme.Spacing.md) {
                 DetailItem(icon: "calendar", text: medication.frequency.rawValue)
                 DetailItem(icon: "pill", text: medication.form.rawValue)
 
@@ -284,10 +289,10 @@ struct MedicationCard: View {
                         Image(systemName: "camera.viewfinder")
                         Text("Verify")
                     }
-                    .font(AppTheme.Typography.callout)
+                    .font(AppTheme.Typography.caption)
                     .foregroundColor(.appPrimary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppTheme.Spacing.sm)
+                    .padding(.vertical, AppTheme.Spacing.xs)
                     .background(Color.appPrimary.opacity(0.1))
                     .cornerRadius(AppTheme.CornerRadius.sm)
                 }
@@ -299,10 +304,10 @@ struct MedicationCard: View {
                         Image(systemName: "checkmark.circle.fill")
                         Text("Log Taken")
                     }
-                    .font(AppTheme.Typography.callout)
+                    .font(AppTheme.Typography.caption)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppTheme.Spacing.sm)
+                    .padding(.vertical, AppTheme.Spacing.xs)
                     .background(Color.appPrimary)
                     .cornerRadius(AppTheme.CornerRadius.sm)
                 }
@@ -313,19 +318,62 @@ struct MedicationCard: View {
                     Image(systemName: medication.isActive ? "pause.circle" : "play.circle")
                         .font(.title3)
                         .foregroundColor(.textSecondary)
-                        .padding(AppTheme.Spacing.sm)
+                        .padding(AppTheme.Spacing.xs)
                         .background(Color.cardBackground)
                         .cornerRadius(AppTheme.CornerRadius.sm)
                 }
             }
         }
-        .padding(AppTheme.Spacing.md)
+        .padding(AppTheme.Spacing.sm)
         .background(Color.cardBackground)
         .cornerRadius(AppTheme.CornerRadius.md)
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         .onTapGesture {
             onTap()
         }
+    }
+
+    private var pillIcon: some View {
+        Group {
+            if let urlString = medication.bottleImageURL ?? medication.planImageURL,
+               let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        Image(systemName: "pill.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .padding(8)
+                            .foregroundColor(.appPrimary)
+                    case .empty:
+                        ProgressView()
+                    @unknown default:
+                        Image(systemName: "pill.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .padding(8)
+                            .foregroundColor(.appPrimary)
+                    }
+                }
+            } else {
+                Image(systemName: "pill.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(8)
+                    .foregroundColor(.appPrimary)
+            }
+        }
+        .frame(width: 36, height: 36)
+        .background(Color.cardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.CornerRadius.sm)
+                .stroke(Color.divider, lineWidth: 1)
+        )
+        .cornerRadius(AppTheme.CornerRadius.sm)
+        .clipped()
     }
 }
 

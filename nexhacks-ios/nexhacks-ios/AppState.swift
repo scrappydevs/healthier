@@ -131,6 +131,7 @@ class AppState: ObservableObject {
             
             // Request necessary permissions
             await requestPermissions()
+            refreshDailyMedicationDosesIfNeeded()
         }
 
         // Mark as initialized
@@ -149,6 +150,11 @@ class AppState: ObservableObject {
 
         // Request location permissions
         locationService.requestPermissions()
+    }
+    
+    func refreshDailyMedicationDosesIfNeeded() {
+        guard authViewModel.authState == .ready else { return }
+        medicationViewModel.generateDailyDosesIfNeeded()
     }
 
     // MARK: - Convenience Methods

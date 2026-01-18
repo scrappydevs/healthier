@@ -17,33 +17,30 @@ struct MedicationScheduleView: View {
 
     // Group medications by their scheduled times for the selected date
     private var scheduledSlots: [ScheduleTimeSlot] {
-        let medications = viewModel.activeMedications
-        let now = Date()
+        let doses = viewModel.getDailyDoses(for: selectedDate)
 
         var timeSlotMap: [Int: [ScheduledMedicationItem]] = [:]
 
-        for medication in medications {
-            for reminderTime in medication.reminderTimes {
-                let hour = calendar.component(.hour, from: reminderTime)
-                let minute = calendar.component(.minute, from: reminderTime)
+        for dose in doses {
+            let hour = calendar.component(.hour, from: dose.scheduledTime)
+            let minute = calendar.component(.minute, from: dose.scheduledTime)
 
-                let status = getMedicationStatus(medication: medication, hour: hour, minute: minute)
-                
-                // Only include upcoming or due now medications
-                guard status == .upcoming || status == .dueNow else { continue }
+            let status = getMedicationStatus(medication: dose.medication, scheduledTime: dose.scheduledTime)
+            
+            // Only include upcoming or due now medications
+            guard status == .upcoming || status == .dueNow else { continue }
 
-                let item = ScheduledMedicationItem(
-                    medication: medication,
-                    scheduledTime: reminderTime,
-                    status: status
-                )
+            let item = ScheduledMedicationItem(
+                medication: dose.medication,
+                scheduledTime: dose.scheduledTime,
+                status: status
+            )
 
-                let key = hour * 100 + minute // Unique key for hour:minute
-                if timeSlotMap[key] == nil {
-                    timeSlotMap[key] = []
-                }
-                timeSlotMap[key]?.append(item)
+            let key = hour * 100 + minute // Unique key for hour:minute
+            if timeSlotMap[key] == nil {
+                timeSlotMap[key] = []
             }
+            timeSlotMap[key]?.append(item)
         }
 
         return timeSlotMap.keys.sorted().compactMap { key in
@@ -208,7 +205,7 @@ struct MedicationScheduleView: View {
 
     // MARK: - Helper Methods
 
-    private func getMedicationStatus(medication: Medication, hour: Int, minute: Int) -> MedicationScheduleStatus {
+    private func getMedicationStatus(medication: Medication, scheduledTime: Date) -> MedicationScheduleStatus {
         let now = Date()
 
         // Check if the selected date is in the past
@@ -229,10 +226,6 @@ struct MedicationScheduleView: View {
         }
 
         // Today's logic
-        guard let scheduledTime = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: now) else {
-            return .upcoming
-        }
-
         let todayStart = calendar.startOfDay(for: now)
         let todayEnd = calendar.date(byAdding: .day, value: 1, to: todayStart) ?? todayStart
 
@@ -338,50 +331,43 @@ struct LiquidGlassMedicationCard: View {
         Button {
             onCardTap()
         } label: {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                HStack(spacing: AppTheme.Spacing.md) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                HStack(spacing: AppTheme.Spacing.sm) {
                     // Circular medication icon
                     ZStack {
                         Circle()
                             .fill(Color.appPrimary.opacity(0.2))
-                            .frame(width: 60, height: 60)
+                            .frame(width: 48, height: 48)
 
-                        Image(systemName: iconForForm(item.medication.form))
-                            .font(.title2)
-                            .foregroundColor(.appPrimary)
+                        medicationImage
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(item.medication.name)
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: 19, weight: .semibold))
                             .foregroundColor(.textPrimary)
-
-                        // Wavy line decoration
-                        Wave()
-                            .stroke(Color.appPrimary, lineWidth: 2)
-                            .frame(width: 60, height: 8)
                     }
 
                     Spacer()
                 }
 
                 // Next pill intake section
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Next pill intake")
-                                .font(.system(size: 14))
+                                .font(.system(size: 12))
                                 .foregroundColor(.textSecondary)
 
                             HStack(spacing: 0) {
                                 Text(item.scheduledTime, format: .dateTime.month(.abbreviated).day())
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(.textPrimary)
                                 Text(", ")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(.textPrimary)
                                 Text(item.scheduledTime, format: .dateTime.hour().minute())
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(.textPrimary)
                             }
                         }
@@ -392,18 +378,18 @@ struct LiquidGlassMedicationCard: View {
                         if let nextDose = getNextDose() {
                             VStack(alignment: .trailing, spacing: 4) {
                                 Text("Next pill intake")
-                                    .font(.system(size: 12))
+                                    .font(.system(size: 11))
                                     .foregroundColor(.textSecondary)
 
                                 HStack(spacing: 0) {
                                     Text(nextDose, format: .dateTime.month(.abbreviated).day())
-                                        .font(.system(size: 14, weight: .medium))
+                                        .font(.system(size: 12, weight: .medium))
                                         .foregroundColor(.textSecondary)
                                     Text(", ")
-                                        .font(.system(size: 14, weight: .medium))
+                                        .font(.system(size: 12, weight: .medium))
                                         .foregroundColor(.textSecondary)
                                     Text(nextDose, format: .dateTime.hour().minute())
-                                        .font(.system(size: 14, weight: .medium))
+                                        .font(.system(size: 12, weight: .medium))
                                         .foregroundColor(.textSecondary)
                                 }
                             }
@@ -412,10 +398,9 @@ struct LiquidGlassMedicationCard: View {
 
                 }
             }
-            .padding(AppTheme.Spacing.lg)
+            .padding(AppTheme.Spacing.md)
             .background(Color.cardBackground)
             .cornerRadius(AppTheme.CornerRadius.lg)
-            .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -431,6 +416,38 @@ struct LiquidGlassMedicationCard: View {
         case .drops: return "drop.fill"
         case .patch: return "bandage.fill"
         }
+    }
+    
+    private var medicationImage: some View {
+        Group {
+            if let urlString = item.medication.bottleImageURL ?? item.medication.planImageURL,
+               let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        Image(systemName: iconForForm(item.medication.form))
+                            .font(.title3)
+                            .foregroundColor(.appPrimary)
+                    case .empty:
+                        ProgressView()
+                    @unknown default:
+                        Image(systemName: iconForForm(item.medication.form))
+                            .font(.title3)
+                            .foregroundColor(.appPrimary)
+                    }
+                }
+            } else {
+                Image(systemName: iconForForm(item.medication.form))
+                    .font(.title3)
+                    .foregroundColor(.appPrimary)
+            }
+        }
+        .frame(width: 40, height: 40)
+        .clipShape(Circle())
     }
     
     private func getNextDose() -> Date? {

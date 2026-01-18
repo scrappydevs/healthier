@@ -11,7 +11,7 @@ struct MedicationHistoryView: View {
     @ObservedObject var viewModel: MedicationViewModel
     @Environment(\.dismiss) private var dismiss
     
-    @State private var selectedMedicationFilter: UUID? = nil
+    @State private var selectedMedicationFilter: String? = nil
     
     // Aggregated and sorted logs
     private var historyLogs: [HistoryLogItem] {
@@ -19,7 +19,7 @@ struct MedicationHistoryView: View {
         
         for medication in viewModel.medications {
             // optimized: if filtering, skip medications that don't match
-            if let filterId = selectedMedicationFilter, medication.id != filterId {
+            if let filterName = selectedMedicationFilter, medication.name != filterName {
                 continue
             }
             
@@ -60,25 +60,30 @@ struct MedicationHistoryView: View {
     // MARK: - Components
     
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: AppTheme.Spacing.sm) {
-                FilterChip(
-                    title: "All",
-                    isSelected: selectedMedicationFilter == nil,
-                    action: { selectedMedicationFilter = nil }
-                )
-                
-                ForEach(viewModel.medications) { medication in
+        Group {
+            let uniqueMedicationNames = Array(Set(viewModel.medications.map { $0.name }))
+                .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: AppTheme.Spacing.sm) {
                     FilterChip(
-                        title: medication.name,
-                        isSelected: selectedMedicationFilter == medication.id,
-                        action: { selectedMedicationFilter = medication.id }
+                        title: "All",
+                        isSelected: selectedMedicationFilter == nil,
+                        action: { selectedMedicationFilter = nil }
                     )
+                    
+                    ForEach(uniqueMedicationNames, id: \.self) { name in
+                        FilterChip(
+                            title: name,
+                            isSelected: selectedMedicationFilter == name,
+                            action: { selectedMedicationFilter = name }
+                        )
+                    }
                 }
+                .padding(AppTheme.Spacing.md)
             }
-            .padding(AppTheme.Spacing.md)
+            .background(Color.appBackground)
         }
-        .background(Color.cardBackground)
     }
     
     private var logsList: some View {
@@ -130,13 +135,10 @@ struct FilterChip: View {
                 .foregroundColor(isSelected ? .white : .textPrimary)
                 .padding(.horizontal, AppTheme.Spacing.md)
                 .padding(.vertical, AppTheme.Spacing.sm)
-                .background(isSelected ? Color.appPrimary : Color.appBackground)
+                .background(isSelected ? Color.appPrimary : Color.neutral200)
                 .cornerRadius(AppTheme.CornerRadius.full) // Pill shape
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.CornerRadius.full)
-                        .stroke(Color.divider, lineWidth: isSelected ? 0 : 1)
-                )
         }
+        .buttonStyle(.plain)
     }
 }
 

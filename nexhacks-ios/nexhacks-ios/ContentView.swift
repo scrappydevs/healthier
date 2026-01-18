@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView {
@@ -44,6 +45,11 @@ struct ContentView: View {
                 }
         }
         .accentColor(.appPrimary)
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .active {
+                appState.refreshDailyMedicationDosesIfNeeded()
+            }
+        }
     }
 }
 

@@ -17,12 +17,16 @@ struct MedicationDetailView: View {
     @State private var showingEditSheet = false
     @State private var showingTimingWarning = false
     @State private var timingWarningMessage = ""
+    
+    private var currentMedication: Medication {
+        viewModel.medications.first { $0.id == medication.id } ?? medication
+    }
 
     private var nextDoseTime: Date? {
         let calendar = Calendar.current
         let now = Date()
 
-        for time in medication.reminderTimes.sorted() {
+        for time in currentMedication.reminderTimes.sorted() {
             let components = calendar.dateComponents([.hour, .minute], from: time)
             if let todayTime = calendar.date(bySettingHour: components.hour ?? 0,
                                              minute: components.minute ?? 0,
@@ -34,7 +38,7 @@ struct MedicationDetailView: View {
         }
 
         // If no more doses today, return first dose tomorrow
-        if let firstTime = medication.reminderTimes.sorted().first {
+        if let firstTime = currentMedication.reminderTimes.sorted().first {
             let components = calendar.dateComponents([.hour, .minute], from: firstTime)
             if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
                let tomorrowTime = calendar.date(bySettingHour: components.hour ?? 0,
@@ -48,14 +52,14 @@ struct MedicationDetailView: View {
     }
 
     private var recentLogs: [MedicationLog] {
-        medication.takenLog
+        currentMedication.takenLog
             .sorted { $0.takenAt > $1.takenAt }
             .prefix(5)
             .map { $0 }
     }
 
     private var adherenceRate: Double {
-        viewModel.getAdherenceRate(for: medication)
+        viewModel.getAdherenceRate(for: currentMedication)
     }
 
     var body: some View {
@@ -70,7 +74,7 @@ struct MedicationDetailView: View {
                             bottleImageSection
 
                             // Instructions Section
-                            if let instructions = medication.instructions, !instructions.isEmpty {
+                            if let instructions = currentMedication.instructions, !instructions.isEmpty {
                                 instructionsSection(instructions)
                             }
 
@@ -88,7 +92,7 @@ struct MedicationDetailView: View {
                     .padding(.top, AppTheme.Spacing.md)
                 }
             }
-            .navigationTitle(medication.name)
+            .navigationTitle(currentMedication.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -107,20 +111,22 @@ struct MedicationDetailView: View {
                 }
             }
             .sheet(isPresented: $showingVerification) {
-                PillVerificationView(medication: medication) { verified in
+                PillVerificationView(medication: currentMedication) { verified in
                     if verified {
-                        viewModel.logMedicationTaken(medication, wasOnTime: true, verificationStatus: .verified)
+                        viewModel.logMedicationTaken(currentMedication, wasOnTime: true, verificationStatus: .verified)
                     }
                 }
             }
             .sheet(isPresented: $showingEditSheet) {
                 MedicationImageEditSheet(
                     viewModel: viewModel,
-                    medication: medication
+                    medication: currentMedication
                 )
             }
-            .alert("Do Not Take This Pill Now", isPresented: $showingTimingWarning) {
-                Button("OK", role: .cancel) { }
+            .alert("Cannot Take This Pill Now", isPresented: $showingTimingWarning) {
+                Button("OK", role: .cancel) {
+                    dismiss()
+                }
             } message: {
                 Text(timingWarningMessage)
             }
@@ -131,7 +137,7 @@ struct MedicationDetailView: View {
 
     private var bottleImageSection: some View {
         VStack(spacing: AppTheme.Spacing.md) {
-            if let bottleURL = medication.bottleImageURL ?? medication.planImageURL,
+            if let bottleURL = currentMedication.bottleImageURL ?? currentMedication.planImageURL,
                let url = URL(string: bottleURL) {
                 AsyncImage(url: url) { phase in
                     switch phase {
@@ -162,11 +168,11 @@ struct MedicationDetailView: View {
 
     private var placeholderBottleImage: some View {
         VStack(spacing: AppTheme.Spacing.md) {
-            Image(systemName: iconForForm(medication.form))
+            Image(systemName: iconForForm(currentMedication.form))
                 .font(.system(size: 80))
                 .foregroundColor(.appPrimary)
 
-            Text(medication.form.rawValue)
+            Text(currentMedication.form.rawValue)
                 .font(AppTheme.Typography.caption)
                 .foregroundColor(.textSecondary)
         }
@@ -200,7 +206,7 @@ struct MedicationDetailView: View {
                 Spacer()
                 
                 // Status badge
-                if medication.isActive {
+                if currentMedication.isActive {
                     Text("Active")
                         .font(AppTheme.Typography.caption)
                         .fontWeight(.semibold)
@@ -223,12 +229,12 @@ struct MedicationDetailView: View {
             
             // Medication info grid
             VStack(spacing: AppTheme.Spacing.sm) {
-                infoRow(label: "Dosage", value: medication.dosage)
-                infoRow(label: "Form", value: medication.form.rawValue)
-                infoRow(label: "Frequency", value: medication.frequency.rawValue)
-                infoRow(label: "Pills per dose", value: "\(medication.expectedPillCount)")
+                infoRow(label: "Dosage", value: currentMedication.dosage)
+                infoRow(label: "Form", value: currentMedication.form.rawValue)
+                infoRow(label: "Frequency", value: currentMedication.frequency.rawValue)
+                infoRow(label: "Pills per dose", value: "\(currentMedication.expectedPillCount)")
 
-                if let prescribedBy = medication.prescribedBy {
+                if let prescribedBy = currentMedication.prescribedBy {
                     infoRow(label: "Prescribed by", value: prescribedBy)
                 }
             }
@@ -294,7 +300,7 @@ struct MedicationDetailView: View {
             }
             
             // Reminder times
-            if !medication.reminderTimes.isEmpty {
+            if !currentMedication.reminderTimes.isEmpty {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
                     Text("DAILY SCHEDULE")
                         .font(AppTheme.Typography.caption)
@@ -302,7 +308,7 @@ struct MedicationDetailView: View {
                         .tracking(1)
                     
                     HStack(spacing: AppTheme.Spacing.sm) {
-                        ForEach(medication.reminderTimes.sorted(), id: \.self) { time in
+                        ForEach(currentMedication.reminderTimes.sorted(), id: \.self) { time in
                             Text(time, style: .time)
                                 .font(AppTheme.Typography.body)
                                 .fontWeight(.medium)
@@ -338,7 +344,7 @@ struct MedicationDetailView: View {
 
     private var takeNowButton: some View {
         Button {
-            if let warning = timingWarningMessage(for: medication) {
+            if let warning = timingWarningMessage(for: currentMedication) {
                 timingWarningMessage = warning
                 showingTimingWarning = true
             } else {
@@ -402,7 +408,7 @@ struct MedicationDetailView: View {
                 Spacer()
                 
                 if !recentLogs.isEmpty {
-                    Text("\(medication.takenLog.count) total doses")
+                    Text("\(currentMedication.takenLog.count) total doses")
                         .font(AppTheme.Typography.caption)
                         .foregroundColor(.textSecondary)
                 }
@@ -516,7 +522,7 @@ struct MedicationDetailView: View {
 
         let now = Date()
         let diff = scheduled.timeIntervalSince(now)
-        let threshold: TimeInterval = 2 * 60 * 60
+        let threshold: TimeInterval = 3 * 60 * 60
 
         if abs(diff) <= threshold {
             return nil
@@ -534,7 +540,7 @@ struct MedicationDetailView: View {
             ? "\(hoursPart)h \(minutesPart)m"
             : "\(minutesPart)m"
 
-        return "You are \(offset) \(direction). This dose is scheduled for \(timeFormatter.string(from: scheduled)). Taking medications at the right time is important for safety and effectiveness."
+        return "You are \(offset) \(direction) compared to the scheduled time (\(timeFormatter.string(from: scheduled))). For safety, this dose cannot be taken right now."
     }
 
     private func nearestScheduledDoseTime(for medication: Medication) -> Date? {
@@ -695,61 +701,63 @@ struct MedicationImageEditSheet: View {
     }
 
     private var actionButtons: some View {
-        VStack(spacing: AppTheme.Spacing.md) {
+        HStack(spacing: AppTheme.Spacing.sm) {
             Button {
                 showCamera = true
             } label: {
-                HStack {
+                VStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "camera.fill")
-                    Text("Take Photo")
+                        .font(.title2)
+                    Text("Camera")
+                        .font(AppTheme.Typography.caption)
                 }
-                .font(AppTheme.Typography.callout)
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AppTheme.Spacing.sm)
                 .background(Color.appPrimary)
-                .cornerRadius(AppTheme.CornerRadius.sm)
+                .clipShape(Capsule())
             }
 
             Button {
                 showPhotoPicker = true
             } label: {
-                HStack {
+                VStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "photo")
-                    Text("Choose from Library")
+                        .font(.title2)
+                    Text("Library")
+                        .font(AppTheme.Typography.caption)
                 }
-                .font(AppTheme.Typography.callout)
                 .foregroundColor(.appPrimary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AppTheme.Spacing.sm)
                 .background(Color.cardBackground)
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.CornerRadius.sm)
+                    Capsule()
                         .stroke(Color.appPrimary, lineWidth: 1)
                 )
-                .cornerRadius(AppTheme.CornerRadius.sm)
             }
 
             Button {
                 selectedImage = nil
                 removeImage = true
             } label: {
-                HStack {
+                VStack(spacing: AppTheme.Spacing.xs) {
                     Image(systemName: "trash")
-                    Text("Remove Image")
+                        .font(.title2)
+                    Text("Remove")
+                        .font(AppTheme.Typography.caption)
                 }
-                .font(AppTheme.Typography.callout)
                 .foregroundColor(.error)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AppTheme.Spacing.sm)
                 .background(Color.cardBackground)
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.CornerRadius.sm)
+                    Capsule()
                         .stroke(Color.error, lineWidth: 1)
                 )
-                .cornerRadius(AppTheme.CornerRadius.sm)
             }
         }
+        .buttonStyle(.plain)
     }
 
     private func saveImage() async {
