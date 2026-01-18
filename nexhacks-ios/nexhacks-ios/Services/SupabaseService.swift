@@ -862,6 +862,9 @@ struct SupabaseMedicationLog: Codable {
     var takenAt: Date?
     var wasOnTime: Bool
     var notes: String?
+    var verificationStatus: String?
+    var verificationImageURL: String?
+    var detectedPillCount: Int?
     var createdAt: Date?
     
     enum CodingKeys: String, CodingKey {
@@ -871,6 +874,9 @@ struct SupabaseMedicationLog: Codable {
         case takenAt = "taken_at"
         case wasOnTime = "was_on_time"
         case notes
+        case verificationStatus = "verification_status"
+        case verificationImageURL = "verification_image_url"
+        case detectedPillCount = "detected_pill_count"
         case createdAt = "created_at"
     }
 }

@@ -389,28 +389,6 @@ struct LiquidGlassMedicationCard: View {
                         }
 
                         Spacer()
-
-                        // Show future doses if any (only if different from current scheduled time)
-                        if let nextDose = getNextDose(),
-                           !Calendar.current.isDate(nextDose, equalTo: item.scheduledTime, toGranularity: .minute) {
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text("Next pill intake")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.textSecondary)
-
-                                HStack(spacing: 0) {
-                                    Text(nextDose, format: .dateTime.month(.abbreviated).day())
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(.textSecondary)
-                                    Text(", ")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(.textSecondary)
-                                    Text(nextDose, format: .dateTime.hour().minute())
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(.textSecondary)
-                                }
-                            }
-                        }
                     }
 
                 }
