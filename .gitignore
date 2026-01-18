@@ -23,6 +23,8 @@ ENV/
 *.swp
 *.swo
 *~
+**/xcuserdata/
+*.xcuserstate
 
 # Build outputs
 .next/
