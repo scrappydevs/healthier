@@ -61,7 +61,7 @@ function groupLogsByDate(medications: Medication[]): Map<string, LogWithMed[]> {
   for (const med of medications) {
     if (med.recent_logs) {
       for (const log of med.recent_logs) {
-        const timestamp = log.taken_at || log.scheduled_time || "";
+        const timestamp = log.taken_at || log.created_at || "";
         if (timestamp) {
           allLogs.push({ ...log, medication: med });
         }
@@ -71,14 +71,14 @@ function groupLogsByDate(medications: Medication[]): Map<string, LogWithMed[]> {
   
   // Sort by date descending
   allLogs.sort((a, b) => {
-    const dateA = a.taken_at || a.scheduled_time || "";
-    const dateB = b.taken_at || b.scheduled_time || "";
+    const dateA = a.taken_at || a.created_at || "";
+    const dateB = b.taken_at || b.created_at || "";
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
   
   // Group by local date
   for (const log of allLogs) {
-    const timestamp = log.taken_at || log.scheduled_time || "";
+    const timestamp = log.taken_at || log.created_at || "";
     const dateKey = getLocalDateFromTimestamp(timestamp);
     if (!grouped.has(dateKey)) {
       grouped.set(dateKey, []);
@@ -450,8 +450,8 @@ function LogEntry({ log }: { log: LogWithMed }) {
         hour: "2-digit",
         minute: "2-digit",
       })
-    : log.scheduled_time
-    ? new Date(log.scheduled_time).toLocaleTimeString([], {
+    : log.created_at
+    ? new Date(log.created_at).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       }) + " (missed)"

@@ -21,29 +21,33 @@ export const activityData: ActivityDataPoint[] = rooms.map((room) => {
   let baseActivity: number;
   
   switch (room.type) {
-    case 'icu':
-      // ICU has high activity due to constant monitoring
+    case 'critical':
+      // Critical rooms have high activity due to constant monitoring
       baseActivity = 70 + Math.random() * 25;
       break;
-    case 'ward':
-      // Wards have moderate to high activity
-      baseActivity = 50 + Math.random() * 30;
-      break;
-    case 'nurses_station':
-      // Nurses station always busy
-      baseActivity = 75 + Math.random() * 20;
-      break;
-    case 'pharmacy':
-      // Pharmacy moderate activity
-      baseActivity = 45 + Math.random() * 25;
-      break;
-    case 'lab':
-      // Lab moderate to high activity
+    case 'waiting':
+      // Waiting areas have moderate activity
       baseActivity = 50 + Math.random() * 30;
       break;
     case 'reception':
-      // Reception varies
+      // Reception varies throughout the day
       baseActivity = 35 + Math.random() * 35;
+      break;
+    case 'hallway':
+      // Hallways have moderate traffic
+      baseActivity = 40 + Math.random() * 30;
+      break;
+    case 'pantry':
+      // Pantry has periodic activity
+      baseActivity = 25 + Math.random() * 25;
+      break;
+    case 'restroom':
+      // Restrooms have low-moderate activity
+      baseActivity = 20 + Math.random() * 30;
+      break;
+    case 'storage':
+      // Storage has low activity
+      baseActivity = 10 + Math.random() * 20;
       break;
     case 'patient':
     default:
@@ -90,8 +94,8 @@ export const generateTimeSeries = (roomId: string, hours: number = 24): { timest
     if (hour >= 22 || hour <= 5) multiplier = 0.5; // Night time low
 
     let baseValue = 50;
-    if (room.type === 'icu') baseValue = 75;
-    if (room.type === 'nurses_station') baseValue = 70;
+    if (room.type === 'critical') baseValue = 75;
+    if (room.type === 'reception') baseValue = 70;
     if (room.status === 'vacant') baseValue = 10;
 
     data.push({

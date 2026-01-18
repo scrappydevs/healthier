@@ -223,7 +223,7 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
             const status = await getExercisePoseAnalysis(exercise.id);
             if (status.has_analysis) {
               setAnalysis(status.pose_analysis);
-              setProcessedUrl(status.processed_video_url);
+              setProcessedUrl(status.processed_video_url ?? undefined);
               setIsAnalyzing(false);
               clearInterval(pollInterval);
             }
@@ -237,7 +237,7 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
         }, 120000);
       } else if (result.status === "completed") {
         setAnalysis(result.pose_analysis);
-        setProcessedUrl(result.processed_video_url);
+        setProcessedUrl(result.processed_video_url ?? undefined);
         setIsAnalyzing(false);
       }
     } catch {
