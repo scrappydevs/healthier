@@ -37,11 +37,34 @@ app.post('/api/analyze-frame', async (req, res) => {
 // Create HTTP server
 const server = createServer(app);
 
-// WebSocket server for real-time exercise streaming
-const wss = new WebSocketServer({ server, path: '/ws/exercise' });
+// WebSocket servers (explicit upgrade routing for reliability)
+const wss = new WebSocketServer({ noServer: true });
+const wssMedication = new WebSocketServer({ noServer: true });
 
-// WebSocket server for medication vision analysis
-const wssMedication = new WebSocketServer({ server, path: '/ws/medication' });
+server.on('upgrade', (req, socket, head) => {
+  const url = req?.url || '';
+  const ua = req?.headers?.['user-agent'] || '';
+  console.log('[WS UPGRADE]', url, '| UA:', ua);
+
+  const pathname = url.split('?')[0];
+
+  if (pathname === '/ws/exercise') {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+    return;
+  }
+
+  if (pathname === '/ws/medication') {
+    wssMedication.handleUpgrade(req, socket, head, (ws) => {
+      wssMedication.emit('connection', ws, req);
+    });
+    return;
+  }
+
+  socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+  socket.destroy();
+});
 
 // Medication vision WebSocket handler
 wssMedication.on('connection', (ws) => {
@@ -66,6 +89,14 @@ wssMedication.on('connection', (ws) => {
           console.log('Medication context length:', medicationContext.length);
 
           if (process.env.OVERSHOOT_API_KEY) {
+            const outputSchema = {
+              type: "object",
+              properties: {
+                description: { type: "string" }
+              },
+              required: ["description"]
+            };
+
             const prompt = `You are a medication assistant with vision capabilities helping elderly patients.
 
 Describe what you see in the camera. Focus on:
@@ -76,12 +107,18 @@ Describe what you see in the camera. Focus on:
 
 ${medicationContext ? `\nUser's Medications:\n${medicationContext}\n\nIf you can match what you see to the user's medications, identify which one it is.` : ''}
 
-Respond with a brief, clear description suitable for an elderly person. Be specific about colors and shapes.`;
+Respond ONLY with valid JSON matching this schema:
+{
+  "description": "brief description"
+}
+
+Make it brief, clear, and specific about colors and shapes.`;
 
             overshootSession = new OvershootStreamSession({
               apiUrl: process.env.OVERSHOOT_API_URL || "https://cluster1.overshoot.ai/api/v0.2",
               apiKey: process.env.OVERSHOOT_API_KEY,
               prompt,
+              outputSchemaJson: outputSchema,
               processing: {
                 sampling_ratio: 0.2,
                 fps: 15,
@@ -92,16 +129,14 @@ Respond with a brief, clear description suitable for an elderly person. Be speci
                 const payload = result?.result ?? result;
                 if (!payload) return;
 
-                let description = '';
+                let parsed = payload;
                 if (typeof payload === "string") {
-                  description = payload;
+                  try { parsed = JSON.parse(payload); } catch { parsed = { description: payload }; }
                 } else if (typeof payload?.result === "string") {
-                  description = payload.result;
-                } else if (payload?.description) {
-                  description = payload.description;
-                } else {
-                  description = JSON.stringify(payload);
+                  try { parsed = JSON.parse(payload.result); } catch { parsed = payload; }
                 }
+
+                const description = (parsed?.description || "").toString().trim();
 
                 // Only send if description changed meaningfully
                 if (description && description !== lastDescription) {
@@ -134,6 +169,17 @@ Respond with a brief, clear description suitable for an elderly person. Be speci
           ws.send(JSON.stringify({
             type: 'started',
             message: 'Medication vision started'
+          }));
+
+          // Send an immediate hint so the client UI updates even before the first model result
+          ws.send(JSON.stringify({
+            type: 'vision',
+            description: overshootSession
+              ? 'Analyzing what the camera sees...'
+              : (process.env.OVERSHOOT_API_KEY
+                ? 'Vision stream failed to start. Check server logs.'
+                : 'Overshoot API not configured. Showing basic prompts only.'),
+            timestamp: Date.now()
           }));
           break;
           
@@ -381,7 +427,7 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Overshoot Analysis Service running on port ${PORT}`);
   console.log(`Exercise WebSocket: ws://localhost:${PORT}/ws/exercise`);
   console.log(`Medication WebSocket: ws://localhost:${PORT}/ws/medication`);

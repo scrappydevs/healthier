@@ -16,6 +16,8 @@ struct VoiceMedicationAssistantView: View {
     @Environment(\.dismiss) private var dismiss
     
     @State private var isStarted = false
+    @State private var isStarting = false
+    @State private var startTask: Task<Void, Never>?
     @State private var showingError = false
     @State private var waveformAmplitude: CGFloat = 0.3
     
@@ -39,9 +41,6 @@ struct VoiceMedicationAssistantView: View {
                 // Controls
                 controlButtons
             }
-        }
-        .onAppear {
-            startAssistant()
         }
         .onDisappear {
             stopAssistant()
@@ -151,6 +150,9 @@ struct VoiceMedicationAssistantView: View {
                     .font(AppTheme.Typography.headline)
                     .foregroundColor(.white)
                 Spacer()
+                Text(assistantService.visionStatus)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundColor(.white.opacity(0.7))
             }
             
             Text(assistantService.visionDescription.isEmpty 
@@ -160,6 +162,12 @@ struct VoiceMedicationAssistantView: View {
                 .foregroundColor(.white.opacity(0.9))
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            
+            Text("Vision endpoint: \(assistantService.visionEndpointDescription)")
+                .font(AppTheme.Typography.caption)
+                .foregroundColor(.white.opacity(0.5))
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
         .padding(AppTheme.Spacing.md)
         .background(Color.white.opacity(0.1))
@@ -246,15 +254,15 @@ struct VoiceMedicationAssistantView: View {
             
             // Main action button
             Button {
-                if isStarted {
+                if isStarted || isStarting || assistantService.isConnecting {
                     stopAssistant()
                 } else {
                     startAssistant()
                 }
             } label: {
                 HStack(spacing: AppTheme.Spacing.sm) {
-                    Image(systemName: isStarted ? "stop.fill" : "mic.fill")
-                    Text(isStarted ? "Stop Assistant" : "Start Assistant")
+                    Image(systemName: mainButtonIcon)
+                    Text(mainButtonTitle)
                 }
                 .font(AppTheme.Typography.headline)
                 .foregroundColor(.white)
@@ -262,7 +270,7 @@ struct VoiceMedicationAssistantView: View {
                 .padding(AppTheme.Spacing.md)
                 .background(
                     Group {
-                        if isStarted {
+                        if isStarted || isStarting || assistantService.isConnecting {
                             Color.error
                         } else {
                             LinearGradient(
@@ -286,10 +294,27 @@ struct VoiceMedicationAssistantView: View {
         .padding(.bottom, AppTheme.Spacing.lg)
     }
     
+    private var mainButtonTitle: String {
+        if isStarted {
+            return "Stop Assistant"
+        }
+        if isStarting || assistantService.isConnecting {
+            return "Cancel"
+        }
+        return "Start Assistant"
+    }
+
+    private var mainButtonIcon: String {
+        if isStarted || isStarting || assistantService.isConnecting {
+            return "stop.fill"
+        }
+        return "mic.fill"
+    }
+
     private var statusText: String {
         switch assistantService.connectionState {
         case .disconnected:
-            return "Ready to start"
+            return isStarting ? "Starting..." : "Ready to start"
         case .connecting:
             return "Connecting..."
         case .connected:
@@ -302,32 +327,92 @@ struct VoiceMedicationAssistantView: View {
     // MARK: - Actions
     
     private func startAssistant() {
-        Task {
+        if isStarted || isStarting || startTask != nil {
+            return
+        }
+        isStarting = true
+
+        startTask = Task { @MainActor in
+            defer {
+                startTask = nil
+            }
+
             do {
                 // Get medication context from viewModel
                 let context = viewModel.getMedicationContextString()
-                
-                // Start camera
-                cameraManager.startCapture { imageData in
-                    Task {
-                        await assistantService.sendFrame(imageData)
-                    }
+
+                var cameraAllowed = false
+                #if targetEnvironment(simulator)
+                assistantService.visionDescription = "Camera is not available on the iOS Simulator. Run on a physical device for vision."
+                #else
+                // Camera permission (needed to provide vision context)
+                cameraAllowed = await requestCameraPermissionIfNeeded()
+                if Task.isCancelled {
+                    await assistantService.stop()
+                    cameraManager.stopCapture()
+                    isStarting = false
+                    return
                 }
-                
+                #endif
+
                 // Start assistant service
                 try await assistantService.start(medicationContext: context)
+                if Task.isCancelled {
+                    await assistantService.stop()
+                    cameraManager.stopCapture()
+                    isStarting = false
+                    return
+                }
+
+                #if !targetEnvironment(simulator)
+                if cameraAllowed {
+                    // Start camera after vision websocket is ready
+                    cameraManager.startCapture { imageData in
+                        Task {
+                            await assistantService.sendFrame(imageData)
+                        }
+                    }
+                } else {
+                    assistantService.visionDescription = "Camera access denied. Voice assistant can still answer based on your medication plan."
+                }
+                #endif
+
                 isStarted = true
             } catch {
-                print("Failed to start assistant: \(error)")
+                assistantService.errorMessage = error.localizedDescription
             }
+
+            isStarting = false
         }
     }
     
     private func stopAssistant() {
-        Task {
+        startTask?.cancel()
+        startTask = nil
+        isStarting = false
+
+        Task { @MainActor in
             cameraManager.stopCapture()
             await assistantService.stop()
             isStarted = false
+        }
+    }
+
+    private func requestCameraPermissionIfNeeded() async -> Bool {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await withCheckedContinuation { continuation in
+                AVCaptureDevice.requestAccess(for: .video) { granted in
+                    continuation.resume(returning: granted)
+                }
+            }
+        case .denied, .restricted:
+            return false
+        @unknown default:
+            return false
         }
     }
 }

@@ -60,10 +60,12 @@ export class OvershootStreamSession {
       this.pc = new wrtc.RTCPeerConnection({ iceServers: DEFAULT_ICE_SERVERS });
       this.pc.onicegatheringstatechange = () => {
         // eslint-disable-next-line no-console
+        if (!this.pc) return;
         console.log("OvershootStreamSession ICE gathering:", this.pc.iceGatheringState);
       };
       this.pc.oniceconnectionstatechange = () => {
         // eslint-disable-next-line no-console
+        if (!this.pc) return;
         console.log("OvershootStreamSession ICE connection:", this.pc.iceConnectionState);
       };
       this.pc.addTrack(this.videoTrack);
@@ -281,6 +283,12 @@ export class OvershootStreamSession {
       }
 
       if (this.pc) {
+        // Prevent late ICE events after teardown from touching a nulled pc
+        try {
+          this.pc.onicegatheringstatechange = null;
+          this.pc.oniceconnectionstatechange = null;
+          this.pc.onicecandidate = null;
+        } catch {}
         try {
           this.pc.close();
         } catch {}

@@ -19,6 +19,7 @@ class MedicationAssistantService: NSObject, ObservableObject {
     @Published var visionDescription: String = ""
     @Published var isVisionConnected: Bool = false
     @Published var isAnalyzing: Bool = false
+    @Published var visionStatus: String = "Idle"
     
     // MARK: - Voice State (LiveKit)
     @Published var connectionState: ConnectionState = .disconnected
@@ -33,12 +34,18 @@ class MedicationAssistantService: NSObject, ObservableObject {
         case connected
         case error(String)
     }
+
+    var isConnecting: Bool {
+        if case .connecting = connectionState { return true }
+        return false
+    }
     
     // MARK: - LiveKit Configuration
     private let liveKitUrl: String = "wss://nexhacks-voice-agent-cijvwvbe.livekit.cloud"
     private let liveKitApiKey: String = "APIXngdedEtCPKf"
     private let liveKitApiSecret: String = "mgJhaxW6LkifWzvjdp9WLrOx1QSg7SdDYdD87aNXcZH"
-    private let agentName: String = "medication-assistant-agent"
+    // Deployed agent for medication assistant
+    private let agentName: String = "medication-assistant"
     
     // MARK: - Vision WebSocket Configuration
     private var visionWebSocket: URLSessionWebSocketTask?
@@ -48,14 +55,24 @@ class MedicationAssistantService: NSObject, ObservableObject {
         return URL(string: "ws://localhost:3001/ws/medication")!
         #else
         // Update to your computer's local IP for physical device
-        return URL(string: "ws://172.26.114.222:3001/ws/medication")!
+        return URL(string: "ws://10.0.0.70:3001/ws/medication")!
         #endif
+    }
+    
+    var visionEndpointDescription: String {
+        visionWSURL.absoluteString
     }
     
     // MARK: - Private Properties
     private var liveKitRoom: LiveKit.Room?
     private var currentRoomName: String?
     private var medicationContext: String = ""
+    private var isStarting: Bool = false
+    private var agentParticipant: RemoteParticipant?
+    private var hasRequestedIntro: Bool = false
+    private var lastVisionSent: String = ""
+    private var lastVisionSentAt: Date = .distantPast
+    private let visionUpdateCooldown: TimeInterval = 2.0
     
     // Speech recognition for user transcription
     private let speechRecognizer: SFSpeechRecognizer? = SFSpeechRecognizer()
@@ -63,25 +80,41 @@ class MedicationAssistantService: NSObject, ObservableObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var committedTranscript: String = ""
+    private var isTranscribing: Bool = false
+    private var isStoppingTranscription: Bool = false
+    private var isRestartingTranscription: Bool = false
     
     // MARK: - Initialization
     override init() {
         super.init()
-        visionURLSession = URLSession(configuration: .default, delegate: nil, delegateQueue: .main)
+        visionURLSession = URLSession(configuration: .default, delegate: self, delegateQueue: .main)
     }
     
     // MARK: - Public Methods
     
     /// Start the medication assistant with given medication context
     func start(medicationContext: String) async throws {
+        if isStarting || isVoiceConnected || isVisionConnected {
+            return
+        }
+        isStarting = true
+        defer { isStarting = false }
+
         self.medicationContext = medicationContext
         errorMessage = nil
+        agentResponse = ""
+        userTranscript = ""
+        hasRequestedIntro = false
+        agentParticipant = nil
+        lastVisionSent = ""
+        lastVisionSentAt = .distantPast
         
         // Request permissions
-        guard await requestSpeechAuthorizationIfNeeded() else {
-            throw MedicationAssistantError.speechRecognitionNotAuthorized
+        let speechAuthorized = await requestSpeechAuthorizationIfNeeded()
+        if !speechAuthorized {
+            errorMessage = "Speech recognition not authorized. Voice transcript will be unavailable."
         }
-        
+
         guard await requestMicrophonePermissionIfNeeded() else {
             throw MedicationAssistantError.microphonePermissionDenied
         }
@@ -102,6 +135,10 @@ class MedicationAssistantService: NSObject, ObservableObject {
         userTranscript = ""
         agentResponse = ""
         medicationContext = ""
+        hasRequestedIntro = false
+        agentParticipant = nil
+        lastVisionSent = ""
+        lastVisionSentAt = .distantPast
     }
     
     /// Send a camera frame for vision analysis
@@ -119,23 +156,46 @@ class MedicationAssistantService: NSObject, ObservableObject {
     
     /// Update vision context with current description for voice agent
     func updateAgentContext() async {
-        guard isVoiceConnected, let room = liveKitRoom else { return }
-        
-        // Send vision context to agent via data message
-        let contextMessage = """
-        [VISION UPDATE]
-        I can see: \(visionDescription)
-        
-        [USER'S MEDICATIONS]
-        \(medicationContext)
-        """
-        
-        let data = contextMessage.data(using: .utf8) ?? Data()
-        do {
-            try await room.localParticipant.publish(data: data, options: DataPublishOptions(reliable: true))
-        } catch {
-            print("MedicationAssistant: Failed to send context update - \(error)")
+        await sendVisionUpdateToAgentIfNeeded()
+    }
+
+    func sendMessage(_ message: String) async throws {
+        guard let room = liveKitRoom else {
+            throw MedicationAssistantError.roomNotInitialized
         }
+
+        // Use LiveKit text stream convention so Agents + SDK tooling can route messages.
+        try await room.localParticipant.sendText(message, for: "lk.chat")
+    }
+
+    private func sendVisionUpdateToAgentIfNeeded() async {
+        guard isVoiceConnected else { return }
+        guard !visionDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        let now = Date()
+        if visionDescription == lastVisionSent { return }
+        if now.timeIntervalSince(lastVisionSentAt) < visionUpdateCooldown { return }
+
+        lastVisionSent = visionDescription
+        lastVisionSentAt = now
+
+        do {
+            try await sendMessage("""
+            [VISION UPDATE]
+            \(visionDescription)
+            """)
+        } catch {
+            // Non-fatal; keep UI updated and try again later
+            print("MedicationAssistant: Failed to send vision update - \(error)")
+        }
+    }
+
+    private func sendVisionStartMessage() async {
+        let startMessage: [String: Any] = [
+            "type": "start",
+            "medicationContext": medicationContext
+        ]
+        await sendVisionJSON(startMessage)
     }
     
     // MARK: - Vision WebSocket Methods
@@ -143,25 +203,17 @@ class MedicationAssistantService: NSObject, ObservableObject {
     private func connectVision() async {
         guard visionWebSocket == nil else { return }
         
+        visionDescription = "Connecting to vision..."
+        visionStatus = "Connecting..."
         visionWebSocket = visionURLSession.webSocketTask(with: visionWSURL)
         visionWebSocket?.resume()
-        
-        isVisionConnected = true
-        receiveVisionMessages()
-        
-        // Start session with medication context
-        let startMessage: [String: Any] = [
-            "type": "start",
-            "medicationContext": medicationContext
-        ]
-        await sendVisionJSON(startMessage)
-        isAnalyzing = true
-        
-        print("MedicationAssistant: Vision connected")
+        isAnalyzing = false
+        print("MedicationAssistant: Vision connecting...")
     }
     
     private func disconnectVision() async {
         isAnalyzing = false
+        visionStatus = "Stopped"
         
         // Send stop message
         let stopMessage: [String: Any] = ["type": "stop"]
@@ -175,6 +227,7 @@ class MedicationAssistantService: NSObject, ObservableObject {
     }
     
     private func sendVisionJSON(_ dict: [String: Any]) async {
+        guard visionWebSocket != nil else { return }
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
               let string = String(data: data, encoding: .utf8) else {
             return
@@ -184,6 +237,8 @@ class MedicationAssistantService: NSObject, ObservableObject {
             try await visionWebSocket?.send(.string(string))
         } catch {
             print("MedicationAssistant: Vision send error - \(error)")
+            errorMessage = "Vision send error: \(error.localizedDescription)"
+            visionStatus = "Send error"
         }
     }
     
@@ -202,6 +257,10 @@ class MedicationAssistantService: NSObject, ObservableObject {
                 print("MedicationAssistant: Vision receive error - \(error)")
                 Task { @MainActor in
                     self.isVisionConnected = false
+                    self.isAnalyzing = false
+                    self.visionDescription = "Vision connection error. Is the overshoot-service running?"
+                    self.errorMessage = "Vision error: \(error.localizedDescription)"
+                    self.visionStatus = "Connection error"
                 }
             }
         }
@@ -234,6 +293,7 @@ class MedicationAssistantService: NSObject, ObservableObject {
         case "vision":
             if let description = json["description"] as? String {
                 visionDescription = description
+                visionStatus = "Receiving"
                 // Update agent with new vision context
                 Task {
                     await updateAgentContext()
@@ -242,6 +302,10 @@ class MedicationAssistantService: NSObject, ObservableObject {
             
         case "started":
             print("MedicationAssistant: Vision session started")
+            visionStatus = "Started"
+            if visionDescription.isEmpty || visionDescription == "Connecting to vision..." {
+                visionDescription = "Analyzing camera..."
+            }
             
         case "stopped":
             print("MedicationAssistant: Vision session stopped")
@@ -249,6 +313,10 @@ class MedicationAssistantService: NSObject, ObservableObject {
         case "error":
             if let errorMsg = json["message"] as? String {
                 print("MedicationAssistant: Vision error - \(errorMsg)")
+                errorMessage = "Vision error: \(errorMsg)"
+                if visionDescription.isEmpty || visionDescription == "Analyzing camera..." {
+                    visionDescription = "Vision error. Check overshoot-service logs."
+                }
             }
             
         default:
@@ -259,9 +327,16 @@ class MedicationAssistantService: NSObject, ObservableObject {
     // MARK: - Voice (LiveKit) Methods
     
     private func connectVoice() async throws {
+        if isVoiceConnected || liveKitRoom != nil {
+            return
+        }
+        if case .connecting = connectionState {
+            return
+        }
+
         connectionState = .connecting
         
-        try configureAudioSession()
+        try configureAudioSessionForLiveKit()
         
         do {
             let token = try generateAccessToken()
@@ -275,12 +350,18 @@ class MedicationAssistantService: NSObject, ObservableObject {
             
             print("MedicationAssistant: Connecting to LiveKit room")
             try await room.connect(url: liveKitUrl, token: token, connectOptions: connectOptions)
-            
-            // Start speech recognition for user transcript display
-            try startTranscription()
-            
+
             connectionState = .connected
             isVoiceConnected = true
+
+            // Start speech recognition for user transcript display (optional)
+            if SFSpeechRecognizer.authorizationStatus() == .authorized {
+                do {
+                    try startTranscriptionSession(resetTranscript: true)
+                } catch {
+                    errorMessage = "Transcription unavailable: \(error.localizedDescription)"
+                }
+            }
             
             // Wait for agent
             for i in 1...10 {
@@ -302,7 +383,7 @@ class MedicationAssistantService: NSObject, ObservableObject {
     }
     
     private func disconnectVoice() async {
-        stopTranscription()
+        stopTranscriptionSession()
         
         await liveKitRoom?.disconnect()
         liveKitRoom = nil
@@ -314,58 +395,139 @@ class MedicationAssistantService: NSObject, ObservableObject {
         print("MedicationAssistant: Voice disconnected")
     }
     
-    private func configureAudioSession() throws {
+    private func configureAudioSessionForLiveKit() throws {
+        // Keep playAndRecord while connected so agent audio isn't muted.
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+        try audioSession.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth])
         try audioSession.setActive(true)
     }
-    
-    // MARK: - Speech Recognition
-    
-    private func startTranscription() throws {
-        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+
+    private func configureAudioSessionForRecording() throws {
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.record, mode: .measurement, options: [.duckOthers])
+        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+    }
+
+    private func deactivateAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            // ignore
+        }
+    }
+
+    // MARK: - Speech Recognition (User Transcript)
+
+    private func startTranscriptionSession(resetTranscript: Bool) throws {
+        guard let speechRecognizer, speechRecognizer.isAvailable else {
             throw MedicationAssistantError.speechRecognitionNotAvailable
         }
-        
-        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        guard let recognitionRequest = recognitionRequest else { return }
-        
-        recognitionRequest.shouldReportPartialResults = true
-        
+
+        isTranscribing = true
+        isStoppingTranscription = false
+
+        if resetTranscript {
+            userTranscript = ""
+            committedTranscript = ""
+        }
+
+        stopRecognitionPipeline()
+
+        // When connected to LiveKit we must keep playAndRecord so agent audio isn't muted.
+        if liveKitRoom != nil {
+            try configureAudioSessionForLiveKit()
+        } else {
+            try configureAudioSessionForRecording()
+        }
+
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        recognitionRequest = request
+
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
-        
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            self?.recognitionRequest?.append(buffer)
+        inputNode.removeTap(onBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
+            request.append(buffer)
         }
-        
-        recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
-            guard let self = self else { return }
-            
-            if let result = result {
-                Task { @MainActor in
-                    self.userTranscript = result.bestTranscription.formattedString
-                }
-            }
-            
-            if error != nil {
-                Task { @MainActor in
-                    self.stopTranscription()
-                }
-            }
-        }
-        
+
         audioEngine.prepare()
         try audioEngine.start()
+
+        recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+            guard let self else { return }
+            Task { @MainActor in
+                if let error {
+                    if self.isStoppingTranscription { return }
+                    self.errorMessage = "Transcription error: \(error.localizedDescription)"
+                    self.stopTranscriptionSession()
+                    return
+                }
+
+                guard let result else { return }
+                let segment = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                if result.isFinal {
+                    self.committedTranscript = self.combineTranscript(self.committedTranscript, segment)
+                    self.userTranscript = self.committedTranscript
+                    self.restartAfterFinalIfNeeded()
+                } else {
+                    self.userTranscript = self.combineTranscript(self.committedTranscript, segment)
+                }
+            }
+        }
     }
-    
-    private func stopTranscription() {
-        audioEngine.stop()
+
+    private func stopTranscriptionSession() {
+        isTranscribing = false
+        isStoppingTranscription = true
+        stopRecognitionPipeline()
+
+        // Do not deactivate the audio session while connected to LiveKit (agent audio can cut out).
+        if liveKitRoom == nil {
+            deactivateAudioSession()
+        }
+
+        isStoppingTranscription = false
+    }
+
+    private func restartAfterFinalIfNeeded() {
+        guard isVoiceConnected, isTranscribing, !isRestartingTranscription else { return }
+        isRestartingTranscription = true
+
+        Task {
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard self.isVoiceConnected, self.isTranscribing else {
+                self.isRestartingTranscription = false
+                return
+            }
+            do {
+                try self.startTranscriptionSession(resetTranscript: false)
+            } catch {
+                self.errorMessage = "Transcription error: \(error.localizedDescription)"
+                self.stopTranscriptionSession()
+            }
+            self.isRestartingTranscription = false
+        }
+    }
+
+    private func combineTranscript(_ committed: String, _ current: String) -> String {
+        let committedTrimmed = committed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentTrimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        if committedTrimmed.isEmpty { return currentTrimmed }
+        if currentTrimmed.isEmpty { return committedTrimmed }
+        return committedTrimmed + " " + currentTrimmed
+    }
+
+    private func stopRecognitionPipeline() {
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
         audioEngine.inputNode.removeTap(onBus: 0)
-        
+
         recognitionTask?.cancel()
         recognitionTask = nil
-        
+
         recognitionRequest?.endAudio()
         recognitionRequest = nil
     }
@@ -373,43 +535,53 @@ class MedicationAssistantService: NSObject, ObservableObject {
     // MARK: - Token Generation
     
     private func generateAccessToken() throws -> String {
-        currentRoomName = "medication-assistant-\(UUID().uuidString.prefix(8))"
-        guard let roomName = currentRoomName else {
-            throw MedicationAssistantError.tokenGenerationFailed
-        }
-        
-        let identity = "user-\(UUID().uuidString.prefix(8))"
-        
-        // JWT Header
-        let header: [String: Any] = ["alg": "HS256", "typ": "JWT"]
-        
-        // JWT Claims with medication context in metadata
-        let now = Date()
-        let exp = now.addingTimeInterval(3600)
-        
+        let identity = "ios-user-\(UUID().uuidString)"
+        let roomNameSuffix = String(UUID().uuidString.prefix(8))
+        let roomName = "medication-assistant-\(roomNameSuffix)"
+        currentRoomName = roomName
+
+        let now = Int(Date().timeIntervalSince1970)
+        let exp = now + 3600
+
+        let header: [String: Any] = [
+            "alg": "HS256",
+            "typ": "JWT"
+        ]
+
+        // Agent dispatch config (same pattern as LiveKitService to ensure dispatch works)
+        let greetingMetadata = "{\"greeting\": \"Hi! I can help with your medications. What do you need help with?\"}"
+
+        let roomConfigSnakeCase: [String: Any] = [
+            "agents": [
+                [
+                    "agent_name": agentName,
+                    "metadata": greetingMetadata
+                ]
+            ]
+        ]
+
+        let roomConfigCamelCase: [String: Any] = [
+            "agents": [
+                [
+                    "agentName": agentName,
+                    "metadata": greetingMetadata
+                ]
+            ]
+        ]
+
         let claims: [String: Any] = [
             "iss": liveKitApiKey,
             "sub": identity,
-            "iat": Int(now.timeIntervalSince1970),
-            "exp": Int(exp.timeIntervalSince1970),
-            "nbf": Int(now.timeIntervalSince1970),
-            "jti": UUID().uuidString,
+            "iat": now,
+            "exp": exp,
             "video": [
-                "roomJoin": true,
                 "room": roomName,
+                "roomJoin": true,
                 "canPublish": true,
-                "canSubscribe": true,
-                "canPublishData": true
+                "canSubscribe": true
             ],
-            "name": "Medication User",
-            "metadata": """
-            {"type":"medication_assistant","context":"\(medicationContext.prefix(500))"}
-            """,
-            "roomConfig": [
-                "agents": [
-                    ["agentName": agentName]
-                ]
-            ]
+            "room_config": roomConfigSnakeCase,
+            "roomConfig": roomConfigCamelCase
         ]
         
         let headerData = try JSONSerialization.data(withJSONObject: header)
@@ -454,29 +626,49 @@ class MedicationAssistantService: NSObject, ObservableObject {
     // MARK: - Permission Helpers
     
     private func requestSpeechAuthorizationIfNeeded() async -> Bool {
-        let status = SFSpeechRecognizer.authorizationStatus()
-        
-        if status == .authorized {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized:
             return true
-        }
-        
-        return await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status == .authorized)
+        case .denied, .restricted:
+            return false
+        case .notDetermined:
+            return await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { status in
+                    continuation.resume(returning: status == .authorized)
+                }
             }
+        @unknown default:
+            return false
         }
     }
     
     private func requestMicrophonePermissionIfNeeded() async -> Bool {
-        let status = AVAudioSession.sharedInstance().recordPermission
-        
-        if status == .granted {
-            return true
-        }
-        
-        return await withCheckedContinuation { continuation in
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                continuation.resume(returning: granted)
+        let session = AVAudioSession.sharedInstance()
+        if #available(iOS 17.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted:
+                return true
+            case .denied:
+                return false
+            case .undetermined:
+                return await AVAudioApplication.requestRecordPermission()
+            @unknown default:
+                return false
+            }
+        } else {
+            switch session.recordPermission {
+            case .granted:
+                return true
+            case .denied:
+                return false
+            case .undetermined:
+                return await withCheckedContinuation { continuation in
+                    session.requestRecordPermission { granted in
+                        continuation.resume(returning: granted)
+                    }
+                }
+            @unknown default:
+                return false
             }
         }
     }
@@ -485,28 +677,133 @@ class MedicationAssistantService: NSObject, ObservableObject {
 // MARK: - LiveKit Room Delegate
 
 extension MedicationAssistantService: RoomDelegate {
-    nonisolated func room(_ room: Room, participant: RemoteParticipant?, didReceiveData data: Data, forTopic topic: String) {
-        guard let message = String(data: data, encoding: .utf8) else { return }
-        
+    nonisolated func roomDidConnect(_ room: LiveKit.Room) {
         Task { @MainActor in
-            // Agent responses come through data channel
-            if participant?.kind == .agent {
-                self.agentResponse = message
+            self.connectionState = .connected
+            self.isVoiceConnected = true
+        }
+    }
+
+    nonisolated func room(_ room: LiveKit.Room, participantDidConnect participant: RemoteParticipant) {
+        Task { @MainActor in
+            let identityStr = participant.identity?.stringValue ?? "unknown"
+            let nameStr = participant.name ?? "nil"
+            print("MedicationAssistant: Participant connected - identity: \(identityStr), name: \(nameStr), isAgent: \(participant.isAgent)")
+
+            if participant.isAgent {
+                self.agentParticipant = participant
+                print("MedicationAssistant: Agent participant connected")
+
+                if !self.hasRequestedIntro {
+                    self.hasRequestedIntro = true
+
+                    // Give agent a moment to initialize, then send context + greeting
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+                    let meds = self.medicationContext.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let vision = self.visionDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    var intro = "You are a medication assistant. Use the user's medication plan below to answer questions. "
+                    intro += "You will receive camera descriptions tagged [VISION UPDATE] when available. "
+                    intro += "Greet the user and ask what medication they need help with.\n\n"
+                    intro += "[USER'S MEDICATION PLAN]\n"
+                    intro += meds.isEmpty ? "No active medications on file.\n" : "\(meds)\n"
+
+                    if !vision.isEmpty {
+                        intro += "\n[CURRENT CAMERA VIEW]\n\(vision)\n"
+                    }
+
+                    do {
+                        try await self.sendMessage(intro)
+                    } catch {
+                        print("MedicationAssistant: Failed to send intro - \(error)")
+                    }
+                }
             }
         }
     }
-    
-    nonisolated func room(_ room: Room, participant: Participant, trackPublication: TrackPublication, didUpdateIsMuted isMuted: Bool) {
-        // Handle mute state changes
+
+    nonisolated func room(_ room: LiveKit.Room, participant: RemoteParticipant, didPublishTrack publication: RemoteTrackPublication) {
+        Task { @MainActor in
+            // Auto-subscribe to agent audio tracks (reliability)
+            if participant.isAgent && publication.kind == .audio {
+                do {
+                    try await publication.set(subscribed: true)
+                } catch {
+                    print("MedicationAssistant: Failed to subscribe to agent audio: \(error)")
+                }
+            }
+        }
     }
-    
-    nonisolated func room(_ room: Room, didDisconnectWithError error: (any Error)?) {
+
+    nonisolated func room(_ room: LiveKit.Room, participant: RemoteParticipant?, didReceiveData data: Data, forTopic topic: String, encryptionType: EncryptionType) {
+        Task { @MainActor in
+            if topic == "lk.chat" || topic.isEmpty {
+                if let message = String(data: data, encoding: .utf8) {
+                    self.agentResponse = message
+                }
+            }
+        }
+    }
+
+    nonisolated func room(_ room: LiveKit.Room, didDisconnectWithError error: (any Error)?) {
         Task { @MainActor in
             self.connectionState = .disconnected
             self.isVoiceConnected = false
+            self.agentParticipant = nil
+            self.stopTranscriptionSession()
             if let error = error {
                 self.errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    nonisolated func room(_ room: LiveKit.Room, participant: Participant, trackPublication: TrackPublication, didReceiveTranscriptionSegments segments: [TranscriptionSegment]) {
+        Task { @MainActor in
+            for segment in segments {
+                if segment.isFinal && !segment.text.isEmpty, participant.isAgent {
+                    self.agentResponse = segment.text
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Vision WebSocket Delegate
+
+extension MedicationAssistantService: URLSessionWebSocketDelegate {
+    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let error else { return }
+        Task { @MainActor in
+            self.isVisionConnected = false
+            self.isAnalyzing = false
+            self.visionStatus = "Handshake failed"
+            self.errorMessage = "Vision task error: \(error.localizedDescription)"
+            self.visionDescription = "Vision handshake failed. Check overshoot-service is reachable at \(self.visionEndpointDescription)."
+            print("MedicationAssistant: Vision task error - \(error)")
+        }
+    }
+
+    nonisolated func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        Task { @MainActor in
+            self.isVisionConnected = true
+            self.isAnalyzing = true
+            self.visionStatus = "Connected"
+            self.receiveVisionMessages()
+            await self.sendVisionStartMessage()
+            print("MedicationAssistant: Vision websocket opened")
+        }
+    }
+
+    nonisolated func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        Task { @MainActor in
+            self.isVisionConnected = false
+            self.isAnalyzing = false
+            self.visionStatus = "Closed"
+            self.visionWebSocket = nil
+            let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "unknown"
+            self.errorMessage = "Vision socket closed: \(closeCode.rawValue) (\(reasonText))"
+            print("MedicationAssistant: Vision websocket closed - \(closeCode.rawValue) \(reasonText)")
         }
     }
 }
@@ -514,6 +811,7 @@ extension MedicationAssistantService: RoomDelegate {
 // MARK: - Errors
 
 enum MedicationAssistantError: LocalizedError {
+    case roomNotInitialized
     case speechRecognitionNotAuthorized
     case speechRecognitionNotAvailable
     case microphonePermissionDenied
@@ -522,6 +820,8 @@ enum MedicationAssistantError: LocalizedError {
     
     var errorDescription: String? {
         switch self {
+        case .roomNotInitialized:
+            return "Voice room not initialized"
         case .speechRecognitionNotAuthorized:
             return "Speech recognition not authorized"
         case .speechRecognitionNotAvailable:
