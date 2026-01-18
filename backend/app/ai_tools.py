@@ -286,7 +286,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     }
                 },
                 "required": ["patient_id"]
@@ -303,7 +303,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     }
                 },
                 "required": ["patient_id"]
@@ -320,7 +320,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     }
                 },
                 "required": ["patient_id"]
@@ -337,7 +337,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     },
                     "status": {
                         "type": "string",
@@ -363,7 +363,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001') to transfer"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith') to transfer"
                     },
                     "from_room": {
                         "type": "string",
@@ -392,7 +392,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     },
                     "note_type": {
                         "type": "string",
@@ -418,7 +418,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     },
                     "instructions": {
                         "type": "string",
@@ -629,7 +629,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001') - optional, if not provided returns all"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith') - optional, if not provided returns all"
                     }
                 },
                 "required": []
@@ -646,7 +646,7 @@ PILLPAL_TOOLS = [
                 "properties": {
                     "patient_id": {
                         "type": "string",
-                        "description": "Patient ID or full name (e.g., 'John Smith' or 'P-001')"
+                        "description": "Patient ID or full name (e.g., 'John Doe' or 'Sarah Smith')"
                     },
                     "medication_id": {
                         "type": "string",
@@ -787,6 +787,157 @@ PILLPAL_TOOLS = [
             }
         }
     },
+    
+    # -------------------------------------------------------------------------
+    # DASHBOARD / PATIENT DAILY DATA (6 tools)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "get_patient_daily_summary",
+            "description": "Get the AI-generated daily summary for a patient including alerts, meals, exercises, medications, and journal entries.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "Patient ID or full name"
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Date in YYYY-MM-DD format (defaults to today)"
+                    }
+                },
+                "required": ["patient_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "refresh_patient_summary",
+            "description": "Force regenerate the daily summary for a patient. Use when data has changed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "Patient ID or full name"
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Date in YYYY-MM-DD format (defaults to today)"
+                    }
+                },
+                "required": ["patient_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "mark_pill_taken",
+            "description": "Mark a scheduled medication/pill as taken for a patient.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "Patient ID or full name"
+                    },
+                    "medication_name": {
+                        "type": "string",
+                        "description": "Name of the medication (e.g., 'Atorvastatin', 'Aspirin')"
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Date in YYYY-MM-DD format (defaults to today)"
+                    }
+                },
+                "required": ["patient_id", "medication_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_patient_care_plans",
+            "description": "Get the diet and exercise care plans for a patient.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "Patient ID or full name"
+                    }
+                },
+                "required": ["patient_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_patient_pill_logs",
+            "description": "Get the medication/pill log for a patient showing what was taken, missed, or pending.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "Patient ID or full name"
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Date in YYYY-MM-DD format (defaults to today)"
+                    }
+                },
+                "required": ["patient_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_patient_meals",
+            "description": "Get meals logged by a patient. Defaults to today if date is not provided.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "Patient ID or full name"
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Date in YYYY-MM-DD format (defaults to today)"
+                    }
+                },
+                "required": ["patient_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_patient_exercises",
+            "description": "Get logged exercises for a patient.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patient_id": {
+                        "type": "string",
+                        "description": "Patient ID or full name"
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Date in YYYY-MM-DD format (optional, if not provided returns all)"
+                    }
+                },
+                "required": ["patient_id"]
+            }
+        }
+    },
 ]
 
 
@@ -864,6 +1015,7 @@ def fuzzy_match_patient_db(query: str, supabase) -> Optional[Dict]:
             if query_lower == patient_id or query_lower == patient_name:
                 return {
                     "id": patient["id"],
+                    "user_id": patient.get("user_id"),
                     "name": user.get("full_name", "Unknown"),
                     "age": patient.get("age"),
                     "condition": ", ".join(patient.get("medical_conditions") or []),
@@ -874,6 +1026,7 @@ def fuzzy_match_patient_db(query: str, supabase) -> Optional[Dict]:
             if query_lower in patient_name:
                 return {
                     "id": patient["id"],
+                    "user_id": patient.get("user_id"),
                     "name": user.get("full_name", "Unknown"),
                     "age": patient.get("age"),
                     "condition": ", ".join(patient.get("medical_conditions") or []),
@@ -1020,6 +1173,22 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
             return await acknowledge_alert(tool_input.get("alert_id", ""), tool_input.get("acknowledged_by"), supabase)
         elif tool_name == "resolve_alert":
             return await resolve_alert(tool_input.get("alert_id", ""), tool_input.get("resolution_notes"), supabase)
+        
+        # Dashboard / Patient Daily Data
+        elif tool_name == "get_patient_daily_summary":
+            return await get_patient_daily_summary(tool_input.get("patient_id", ""), tool_input.get("date"), supabase)
+        elif tool_name == "refresh_patient_summary":
+            return await refresh_patient_summary(tool_input.get("patient_id", ""), tool_input.get("date"), supabase)
+        elif tool_name == "mark_pill_taken":
+            return await mark_pill_taken(tool_input.get("patient_id", ""), tool_input.get("medication_name", ""), tool_input.get("date"), supabase)
+        elif tool_name == "get_patient_care_plans":
+            return await get_patient_care_plans_tool(tool_input.get("patient_id", ""), supabase)
+        elif tool_name == "get_patient_pill_logs":
+            return await get_patient_pill_logs_tool(tool_input.get("patient_id", ""), tool_input.get("date"), supabase)
+        elif tool_name == "get_patient_meals":
+            return await get_patient_meals_tool(tool_input.get("patient_id", ""), tool_input.get("date"), supabase)
+        elif tool_name == "get_patient_exercises":
+            return await get_patient_exercises_tool(tool_input.get("patient_id", ""), tool_input.get("date"), supabase)
         
         else:
             return {"error": f"Unknown tool: {tool_name}"}
@@ -1331,6 +1500,11 @@ async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dic
             "notes": "Assigned via AI assistant"
         }).execute()
         
+        # Update patient care_setting to in_clinic
+        supabase.table("patients").update({
+            "care_setting": "in_clinic"
+        }).eq("id", patient["id"]).execute()
+        
         # Update room status if vacant
         if room["status"] == "vacant":
             supabase.table("hospital_rooms").update({
@@ -1396,7 +1570,8 @@ async def admit_new_patient(
         # Create patient record
         patient_data = {
             "user_id": user_id,
-            "status": status or "stable"
+            "status": status or "stable",
+            "care_setting": "in_clinic"  # New patients admitted to rooms are in-clinic
         }
         if age:
             patient_data["age"] = age
@@ -1458,6 +1633,11 @@ async def remove_patient_from_room(room_id: str, reason: Optional[str], supabase
         }).eq("room_id", room["id"]).eq("patient_id", patient["id"]).is_(
             "discharged_at", "null"
         ).execute()
+        
+        # Update patient care_setting to at_home (discharged)
+        supabase.table("patients").update({
+            "care_setting": "at_home"
+        }).eq("id", patient["id"]).execute()
         
         # Set room status to vacant (for patient-type rooms)
         if room["room_type"] in ["patient"]:
@@ -1663,7 +1843,7 @@ async def get_patient_details(patient_id: str, supabase) -> Dict[str, Any]:
                 
                 # Fetch medications for this patient (through patient_pills)
                 meds_response = supabase.table("patient_pills").select(
-                    "id, pill_id, pills(name, dosage)"
+                    "id, pill_id, pills(name, strength, unit)"
                 ).eq("patient_id", p["id"]).execute()
                 medications = []
                 for m in (meds_response.data or []):
@@ -1677,7 +1857,7 @@ async def get_patient_details(patient_id: str, supabase) -> Dict[str, Any]:
                 # Fetch alerts for this patient
                 alerts_response = supabase.table("alerts").select(
                     "id, title, message, severity, type, created_at"
-                ).eq("patient_id", p["id"]).eq("is_resolved", False).execute()
+                ).eq("patient_id", p["id"]).eq("resolved", False).execute()
                 alerts = alerts_response.data if alerts_response.data else []
                 
                 return {
@@ -1731,7 +1911,7 @@ async def get_patient_medications(patient_id: str, supabase) -> Dict[str, Any]:
                 
                 # Get medications through patient_pills
                 meds_res = supabase.table("patient_pills").select(
-                    "id, pill_id, frequency, dosage_notes, pills(name, dosage, description)"
+                    "id, pill_id, frequency, special_instructions, pills(name, strength, unit, instructions)"
                 ).eq("patient_id", actual_patient_id).execute()
                 
                 medications = []
@@ -1744,7 +1924,7 @@ async def get_patient_medications(patient_id: str, supabase) -> Dict[str, Any]:
                         "dosage": pill.get("dosage"),
                         "description": pill.get("description"),
                         "frequency": m.get("frequency"),
-                        "dosage_notes": m.get("dosage_notes")
+                        "special_instructions": m.get("special_instructions")
                     })
                 
                 return {
@@ -1794,6 +1974,441 @@ async def get_patient_vitals(patient_id: str, supabase) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+async def get_patient_meals_tool(patient_id: str, date: Optional[str], supabase) -> Dict[str, Any]:
+    """Get meals logged for a patient (defaults to today)."""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    
+    try:
+        user_id = patient.get("user_id")
+        
+        query = supabase.table("meals").select(
+            "id, name, meal_type, total_calories, total_protein, total_carbs, total_fat, health_rating, consumed_at, image_url, ai_analysis"
+        ).order("consumed_at", desc=True)
+        
+        if user_id:
+            query = query.eq("user_id", str(user_id))
+        else:
+            # Fallback for older rows that may not have user_id set
+            query = query.eq("patient_id", patient["id"])
+        
+        # Timezone-agnostic string filtering (matches API style)
+        date_start = f"{target_date}T00:00:00"
+        date_end = f"{target_date}T23:59:59"
+        query = query.gte("consumed_at", date_start).lte("consumed_at", date_end)
+        
+        response = query.execute()
+        meals = response.data or []
+        
+        def safe_float(v: Any) -> float:
+            try:
+                return float(v) if v is not None else 0.0
+            except Exception:
+                return 0.0
+        
+        totals = {
+            "total_calories": round(sum(safe_float(m.get("total_calories")) for m in meals), 2),
+            "total_protein": round(sum(safe_float(m.get("total_protein")) for m in meals), 2),
+            "total_carbs": round(sum(safe_float(m.get("total_carbs")) for m in meals), 2),
+            "total_fat": round(sum(safe_float(m.get("total_fat")) for m in meals), 2),
+        }
+        
+        return {
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "date": target_date,
+            "meals": meals,
+            "total": len(meals),
+            "totals": totals,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def get_patient_pill_logs_tool(patient_id: str, date: Optional[str], supabase) -> Dict[str, Any]:
+    """Get pill logs for a patient for a given day (defaults to today)."""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    
+    try:
+        date_start = f"{target_date}T00:00:00"
+        date_end = f"{target_date}T23:59:59"
+        
+        res = supabase.table("pill_logs").select(
+            "id, scheduled_time, taken_time, status, notes, patient_pills(pill_id, pills(name, strength, unit))"
+        ).eq("patient_id", patient["id"]).gte(
+            "scheduled_time", date_start
+        ).lte(
+            "scheduled_time", date_end
+        ).order("scheduled_time", desc=True).execute()
+        
+        logs_raw = res.data or []
+        logs: list = []
+        status_counts: Dict[str, int] = {}
+        
+        for row in logs_raw:
+            patient_pills = row.get("patient_pills", {}) or {}
+            pill = patient_pills.get("pills", {}) or {}
+            status = row.get("status") or "unknown"
+            status_counts[status] = status_counts.get(status, 0) + 1
+            
+            logs.append({
+                "id": row.get("id"),
+                "medication_name": pill.get("name", "Unknown"),
+                "strength": pill.get("strength"),
+                "unit": pill.get("unit"),
+                "scheduled_time": row.get("scheduled_time"),
+                "taken_time": row.get("taken_time"),
+                "status": status,
+                "notes": row.get("notes"),
+            })
+        
+        taken = status_counts.get("taken", 0)
+        missed = status_counts.get("missed", 0)
+        late = status_counts.get("late", 0)
+        scheduled = len(logs)
+        adherence_percent = round((taken / (taken + missed + late)) * 100, 1) if (taken + missed + late) > 0 else 100.0
+        
+        return {
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "date": target_date,
+            "pill_logs": logs,
+            "total": len(logs),
+            "status_counts": status_counts,
+            "adherence_percent": adherence_percent,
+            "scheduled": scheduled,
+            "taken": taken,
+            "missed": missed,
+            "late": late,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def get_patient_exercises_tool(patient_id: str, date: Optional[str], supabase) -> Dict[str, Any]:
+    """Get exercise logs for a patient (date optional)."""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    try:
+        # Primary: patient_id
+        query = supabase.table("exercises").select("*").eq("patient_id", str(patient["id"]))
+        
+        # Filter by date if provided
+        if date:
+            date_start = f"{date}T00:00:00"
+            date_end = f"{date}T23:59:59"
+            query = query.gte("logged_at", date_start).lte("logged_at", date_end)
+        
+        exercises_res = query.order("logged_at", desc=True).execute()
+        exercises = exercises_res.data or []
+        
+        # Fallback: user_id (some iOS records may not set patient_id)
+        if not exercises and patient.get("user_id"):
+            query = supabase.table("exercises").select("*").eq("user_id", str(patient["user_id"]))
+            if date:
+                date_start = f"{date}T00:00:00"
+                date_end = f"{date}T23:59:59"
+                query = query.gte("logged_at", date_start).lte("logged_at", date_end)
+            exercises_res = query.order("logged_at", desc=True).execute()
+            exercises = exercises_res.data or []
+        
+        def safe_int(v: Any) -> int:
+            try:
+                return int(v) if v is not None else 0
+            except Exception:
+                return 0
+        
+        def safe_float(v: Any) -> float:
+            try:
+                return float(v) if v is not None else 0.0
+            except Exception:
+                return 0.0
+        
+        total_minutes = 0
+        total_calories = 0.0
+        for e in exercises:
+            total_minutes += safe_int(e.get("duration_minutes")) or safe_int(e.get("duration"))
+            total_calories += safe_float(e.get("calories_burned"))
+        
+        return {
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "date": date,
+            "exercises": exercises,
+            "total": len(exercises),
+            "summary": {
+                "total_minutes": total_minutes,
+                "total_calories_burned": round(total_calories, 2),
+            },
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def get_patient_care_plans_tool(patient_id: str, supabase) -> Dict[str, Any]:
+    """Get active diet/exercise plans for a patient."""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    # Preferred: patient_plans table (Healthier dashboard)
+    try:
+        plans_res = supabase.table("patient_plans").select("*").eq(
+            "patient_id", str(patient["id"])
+        ).eq("is_active", True).order("created_at", desc=True).execute()
+        
+        plans = plans_res.data or []
+        diet_plan = next((p for p in plans if p.get("plan_type") == "diet"), None)
+        exercise_plan = next((p for p in plans if p.get("plan_type") == "exercise"), None)
+        
+        return {
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "plans": plans,
+            "diet_plan": diet_plan,
+            "exercise_plan": exercise_plan,
+            "count": len(plans),
+        }
+    except Exception:
+        # Fallback: active tasks as proxies (PillPal / floor plan workflow)
+        try:
+            tasks_res = supabase.table("room_tasks").select("*").eq(
+                "patient_id", str(patient["id"])
+            ).in_("task_type", ["food", "exercise"]).in_(
+                "status", ["pending", "in_progress"]
+            ).order("created_at", desc=True).execute()
+            
+            tasks = tasks_res.data or []
+            return {
+                "patient_id": str(patient["id"]),
+                "patient_name": patient["name"],
+                "plans": [],
+                "tasks": tasks,
+                "count": len(tasks),
+                "note": "patient_plans unavailable; returning active tasks as care plan proxies",
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+
+async def mark_pill_taken(patient_id: str, medication_name: str, date: Optional[str], supabase) -> Dict[str, Any]:
+    """Mark a scheduled pill dose as taken for a patient."""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    match_lower = (medication_name or "").lower().strip()
+    
+    if not match_lower:
+        return {"error": "medication_name is required"}
+    
+    try:
+        date_start = f"{target_date}T00:00:00"
+        date_end = f"{target_date}T23:59:59"
+        
+        logs_res = supabase.table("pill_logs").select(
+            "id, scheduled_time, status, patient_pills(pills(name, strength, unit))"
+        ).eq("patient_id", patient["id"]).gte(
+            "scheduled_time", date_start
+        ).lte(
+            "scheduled_time", date_end
+        ).order("scheduled_time", desc=True).execute()
+        
+        logs = logs_res.data or []
+        target_log = None
+        matched_name = None
+        
+        for log in logs:
+            patient_pills = log.get("patient_pills", {}) or {}
+            pill = patient_pills.get("pills", {}) or {}
+            pill_name = (pill.get("name") or "").lower()
+            
+            if not pill_name:
+                continue
+            
+            if match_lower in pill_name or pill_name in match_lower:
+                if log.get("status") != "taken":
+                    target_log = log
+                    matched_name = pill.get("name") or medication_name
+                    break
+        
+        if not target_log:
+            return {"error": f"No untaken dose found for '{medication_name}' on {target_date} for {patient['name']}"}
+        
+        taken_time = datetime.now().isoformat()
+        supabase.table("pill_logs").update({
+            "status": "taken",
+            "taken_time": taken_time,
+            "confirmed_by": "ai_chat",
+            "notes": "Marked taken via AI chat"
+        }).eq("id", target_log["id"]).execute()
+        
+        return {
+            "success": True,
+            "patient_id": str(patient["id"]),
+            "patient_name": patient["name"],
+            "pill_log_id": target_log["id"],
+            "medication_name": matched_name,
+            "date": target_date,
+            "taken_time": taken_time,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def get_patient_daily_summary(patient_id: str, date: Optional[str], supabase, force_refresh: bool = False) -> Dict[str, Any]:
+    """Get daily summary (cached if available; otherwise returns a data-backed rollup)."""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    
+    # Try cached daily summary first (unless force_refresh)
+    if not force_refresh:
+        try:
+            cached_res = supabase.table("daily_summaries").select("*").eq(
+                "patient_id", str(patient["id"])
+            ).eq("date", target_date).limit(1).execute()
+            
+            if cached_res.data:
+                cached = cached_res.data[0]
+                cached["cached"] = True
+                return cached
+        except Exception:
+            # If the table/schema isn't available, fall back to rollup
+            pass
+    
+    # Rollup from raw data
+    meals_res = await get_patient_meals_tool(str(patient["id"]), target_date, supabase)
+    pill_logs_res = await get_patient_pill_logs_tool(str(patient["id"]), target_date, supabase)
+    exercises_res = await get_patient_exercises_tool(str(patient["id"]), target_date, supabase)
+    
+    journal_entries = []
+    try:
+        date_start = f"{target_date}T00:00:00"
+        date_end = f"{target_date}T23:59:59"
+        jr_res = supabase.table("journal_logs").select(
+            "id, mood, logged_at"
+        ).eq("patient_id", str(patient["id"])).gte(
+            "logged_at", date_start
+        ).lte("logged_at", date_end).order("logged_at", desc=True).execute()
+        journal_entries = jr_res.data or []
+    except Exception:
+        journal_entries = []
+    
+    meals_count = meals_res.get("total", 0) if isinstance(meals_res, dict) else 0
+    exercises_count = exercises_res.get("total", 0) if isinstance(exercises_res, dict) else 0
+    meds_taken = pill_logs_res.get("taken", 0) if isinstance(pill_logs_res, dict) else 0
+    meds_total = pill_logs_res.get("total", 0) if isinstance(pill_logs_res, dict) else 0
+    journal_count = len(journal_entries)
+    
+    summary_text = (
+        f"{patient['name']} on {target_date}: "
+        f"{meals_count} meal(s), {exercises_count} exercise session(s), "
+        f"{meds_taken}/{meds_total} medication dose(s) taken, "
+        f"{journal_count} journal entry(ies)."
+    )
+    
+    return {
+        "patient_id": str(patient["id"]),
+        "patient_name": patient["name"],
+        "date": target_date,
+        "summary": summary_text,
+        "cached": False,
+        "meals": meals_res,
+        "pill_logs": pill_logs_res,
+        "exercises": exercises_res,
+        "journal_entries": {
+            "count": journal_count,
+            "entries": journal_entries,
+        },
+    }
+
+
+async def refresh_patient_summary(patient_id: str, date: Optional[str], supabase) -> Dict[str, Any]:
+    """Recompute daily rollup and attempt to upsert into daily_summaries."""
+    if not supabase:
+        return {"error": "Database not configured"}
+    
+    patient = fuzzy_match_patient_db(patient_id, supabase)
+    if not patient:
+        return {"error": f"Patient '{patient_id}' not found"}
+    
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    
+    rollup = await get_patient_daily_summary(str(patient["id"]), target_date, supabase, force_refresh=True)
+    
+    # Best-effort cache write (schema may vary across environments)
+    try:
+        entry_counts = {
+            "meals": rollup.get("meals", {}).get("total", 0) if isinstance(rollup.get("meals"), dict) else 0,
+            "exercises": rollup.get("exercises", {}).get("total", 0) if isinstance(rollup.get("exercises"), dict) else 0,
+            "pill_logs": rollup.get("pill_logs", {}).get("total", 0) if isinstance(rollup.get("pill_logs"), dict) else 0,
+            "journal": rollup.get("journal_entries", {}).get("count", 0) if isinstance(rollup.get("journal_entries"), dict) else 0,
+        }
+        
+        meds_taken = rollup.get("pill_logs", {}).get("taken", 0) if isinstance(rollup.get("pill_logs"), dict) else 0
+        meds_total = rollup.get("pill_logs", {}).get("total", 0) if isinstance(rollup.get("pill_logs"), dict) else 0
+        adherence_score = (meds_taken / meds_total) * 100 if meds_total > 0 else 100
+        
+        totals = rollup.get("meals", {}).get("totals", {}) if isinstance(rollup.get("meals"), dict) else {}
+        exercise_minutes = rollup.get("exercises", {}).get("summary", {}).get("total_minutes", 0) if isinstance(rollup.get("exercises"), dict) else 0
+        
+        supabase.table("daily_summaries").upsert(
+            {
+                "patient_id": str(patient["id"]),
+                "user_id": patient.get("user_id"),
+                "date": target_date,
+                "ai_summary": rollup.get("summary"),
+                "entry_counts": entry_counts,
+                "generated_at": datetime.utcnow().isoformat(),
+                "total_calories_consumed": totals.get("total_calories"),
+                "total_exercise_minutes": exercise_minutes,
+                "medications_taken": meds_taken,
+                "medications_scheduled": meds_total,
+                "medication_adherence_score": adherence_score,
+            },
+            on_conflict="patient_id,date"
+        ).execute()
+    except Exception:
+        # Ignore cache-write failures, still return computed rollup
+        pass
+    
+    if isinstance(rollup, dict):
+        rollup["refreshed"] = True
+        rollup["cached"] = False
+    return rollup
 
 
 async def update_patient_status(patient_id: str, status: str, notes: Optional[str], supabase) -> Dict[str, Any]:
@@ -1883,6 +2498,11 @@ async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], 
             "patient_id": patient["id"],
             "notes": f"Transferred from {old_room_name or 'unknown'}: {reason or 'No reason provided'}"
         }).execute()
+        
+        # Update patient care_setting to in_clinic
+        supabase.table("patients").update({
+            "care_setting": "in_clinic"
+        }).eq("id", patient["id"]).execute()
         
         # Update destination room status
         if dest_room["status"] == "vacant":
@@ -1995,6 +2615,7 @@ async def add_food_instructions(patient_id: str, instructions: str, duration_day
 
 
 # --- Hazard Management ---
+# Note: Hazards table may not exist in current schema
 
 async def list_active_hazards(supabase) -> Dict[str, Any]:
     """List active hazards from database"""
@@ -2517,7 +3138,7 @@ async def get_missed_medications(supabase) -> Dict[str, Any]:
             # Get all pill logs for today that are missed or late
             # Join through patient_pills to get pill info
             response = supabase.table("pill_logs").select(
-                "id, patient_id, scheduled_time, status, patient_pills(pill_id, pills(name, dosage))"
+                "id, patient_id, scheduled_time, status, patient_pills(pill_id, pills(name, strength, unit))"
             ).in_("status", ["missed", "late"]).gte("scheduled_time", today).execute()
             
             missed = response.data if response.data else []
@@ -2572,7 +3193,7 @@ async def get_medication_alerts(supabase) -> Dict[str, Any]:
             # Get medication-related alerts (missed_dose, low_adherence)
             response = supabase.table("alerts").select(
                 "id, title, message, severity, type, patient_id, created_at"
-            ).in_("type", ["missed_dose", "low_adherence", "pattern_detected"]).eq("is_resolved", False).execute()
+            ).in_("type", ["missed_dose", "low_adherence", "pattern_detected"]).eq("resolved", False).execute()
             
             alerts = response.data if response.data else []
             
@@ -2626,7 +3247,7 @@ async def get_active_alerts(severity: Optional[str], supabase) -> Dict[str, Any]
         if supabase:
             query = supabase.table("alerts").select(
                 "id, title, message, severity, type, patient_id, created_at"
-            ).eq("is_resolved", False)
+            ).eq("resolved", False)
             
             if severity:
                 query = query.eq("severity", severity)

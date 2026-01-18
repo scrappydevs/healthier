@@ -3,7 +3,7 @@ Chat context and session management for PillPal AI.
 Handles conversation history, context building, and session persistence.
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 import uuid
@@ -23,14 +23,40 @@ class ChatContext:
 # In-memory session storage (for demo without database)
 _sessions: Dict[str, ChatContext] = {}
 
+# Title generator function (set by main.py)
+_title_generator: Optional[Callable[[str], str]] = None
+
+
+def set_title_generator(generator: Callable[[str], str]) -> None:
+    """Set the title generator function (uses Cerebras)"""
+    global _title_generator
+    _title_generator = generator
+
+
+async def generate_smart_title(message: str) -> str:
+    """Generate a smart, concise title for the chat session using AI"""
+    global _title_generator
+    
+    if _title_generator is None:
+        # Fallback to simple truncation
+        return message[:40] + "..." if len(message) > 40 else message
+    
+    try:
+        title = _title_generator(message)
+        return title
+    except Exception as e:
+        print(f"⚠️ Title generation failed: {e}")
+        return message[:40] + "..." if len(message) > 40 else message
+
 
 async def create_session(user_id: str, initial_message: str = "") -> Dict[str, Any]:
     """Create a new chat session"""
     session_id = str(uuid.uuid4())
     
-    # Generate title from initial message
-    title = initial_message[:50] + "..." if len(initial_message) > 50 else initial_message
-    if not title:
+    # Generate smart title from initial message using AI
+    if initial_message:
+        title = await generate_smart_title(initial_message)
+    else:
         title = "New Chat"
     
     context = ChatContext(
@@ -131,6 +157,7 @@ PATIENT ASSIGNMENT:
 PATIENTS:
 - list_all_patients / search_patients / get_patient_details
 - get_patient_medications / update_patient_status
+- get_patient_meals: Meals logged by a patient (defaults to today, optional date)
 - add_food_instructions: Assign dietary instructions to patient
 
 HAZARDS & ALERTS:

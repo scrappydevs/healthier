@@ -15,6 +15,7 @@ import anthropic
 from app.api.health import router as health_router
 from app.api.v1 import router as v1_router
 from app.api.medications import router as medications_router
+from app.api.pills import router as pills_router
 from app.core.config import get_settings
 from app.ai_tools import PILLPAL_TOOLS, execute_tool
 from app.core.database import get_supabase
@@ -24,6 +25,8 @@ from app.chat_context import (
     write_context,
     get_user_sessions,
     build_system_prompt,
+    set_title_generator,
+    generate_smart_title,
 )
 
 
@@ -45,9 +48,12 @@ def get_cerebras_client() -> Optional[OpenAI]:
         print("⚠️ Cerebras not configured - CEREBRAS_KEY missing")
         return None
     
+    # Strip any whitespace/newlines from API key (common issue with env vars)
+    cerebras_key = settings.cerebras_key.strip().split('\n')[0].strip()
+    
     try:
         _cerebras_client = OpenAI(
-            api_key=settings.cerebras_key,
+            api_key=cerebras_key,
             base_url="https://api.cerebras.ai/v1"
         )
         print("✅ Cerebras client initialized")
@@ -74,6 +80,9 @@ def get_claude_client() -> Optional[anthropic.Anthropic]:
         print("⚠️ Claude not configured - CLAUDE_API_KEY missing")
         return None
     
+    # Strip any whitespace/newlines from API key (common issue with env vars)
+    claude_key = claude_key.strip().split('\n')[0].strip()
+    
     try:
         _claude_client = anthropic.Anthropic(api_key=claude_key)
         print("✅ Claude client initialized")
@@ -81,6 +90,39 @@ def get_claude_client() -> Optional[anthropic.Anthropic]:
     except Exception as e:
         print(f"❌ Failed to initialize Claude: {e}")
         return None
+
+
+def create_title_generator(client: OpenAI):
+    """Create a title generator function using Cerebras"""
+    def generate_title(message: str) -> str:
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.3-70b",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Generate a very short, concise title (3-6 words max) for a chat conversation based on the user's first message. Return ONLY the title, no quotes, no punctuation at the end, no explanation. Examples: 'Missed Medications Today', 'Room Status Check', 'Patient Transfer Request', 'Critical Room Alert'."
+                    },
+                    {
+                        "role": "user", 
+                        "content": f"Generate a title for this message: {message}"
+                    }
+                ],
+                max_tokens=20,
+                temperature=0.3
+            )
+            title = response.choices[0].message.content.strip()
+            # Clean up the title - remove quotes if present
+            title = title.strip('"\'')
+            # Ensure it's not too long
+            if len(title) > 50:
+                title = title[:47] + "..."
+            return title
+        except Exception as e:
+            print(f"⚠️ Cerebras title generation error: {e}")
+            return message[:40] + "..." if len(message) > 40 else message
+    
+    return generate_title
 
 
 @asynccontextmanager
@@ -96,7 +138,12 @@ async def lifespan(app: FastAPI):
     
     # Initialize AI clients (prefer Claude, fallback to Cerebras)
     get_claude_client()
-    get_cerebras_client()
+    cerebras_client = get_cerebras_client()
+    
+    # Set up title generator using Cerebras (it's fast!)
+    if cerebras_client:
+        set_title_generator(create_title_generator(cerebras_client))
+        print("✅ Chat title generator configured (Cerebras)")
 
     yield
 
@@ -128,6 +175,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(v1_router)
     app.include_router(medications_router)
+    app.include_router(pills_router)
 
     return app
 
@@ -418,6 +466,47 @@ async def fetch_hospital_state() -> dict:
     return hospital_state
 
 
+@app.post("/ai/generate-title")
+async def generate_chat_title(request: dict):
+    """Generate a chat title from a message using Cerebras"""
+    message = request.get("message", "")
+    
+    if not message:
+        return {"title": "New Chat"}
+    
+    cerebras_client = get_cerebras_client()
+    if not cerebras_client:
+        # Fallback to truncation
+        return {"title": message[:40] + "..." if len(message) > 40 else message}
+    
+    try:
+        print(f"🎯 Generating title for: {message[:50]}...")
+        response = cerebras_client.chat.completions.create(
+            model="llama-3.3-70b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Generate a very short, concise title (3-6 words max) for a chat conversation based on the user's first message. Return ONLY the title, no quotes, no punctuation at the end, no explanation. Examples: 'Missed Medications Today', 'Room Status Check', 'Patient Transfer Request', 'Critical Room Alert'."
+                },
+                {
+                    "role": "user", 
+                    "content": f"Generate a title for this message: {message}"
+                }
+            ],
+            max_tokens=20,
+            temperature=0.3
+        )
+        title = response.choices[0].message.content.strip()
+        title = title.strip('"\'')
+        if len(title) > 50:
+            title = title[:47] + "..."
+        print(f"✅ Title generated: {title}")
+        return {"title": title}
+    except Exception as e:
+        print(f"⚠️ Title generation failed: {e}")
+        return {"title": message[:40] + "..." if len(message) > 40 else message}
+
+
 @app.post("/ai/chat", response_model=ChatResponse)
 async def ai_chat(request: ChatRequest):
     """
@@ -435,27 +524,34 @@ async def ai_chat(request: ChatRequest):
     
     try:
         # Get or create session
-        session_title = None
         if request.session_id:
             try:
                 context = await read_context(request.session_id)
                 session_id = request.session_id
-                session_title = context.state.get("title")
             except Exception as e:
                 print(f"⚠️ Failed to load session {request.session_id}: {e}")
                 session = await create_session(request.user_id, request.message[:100])
                 session_id = session["id"]
-                session_title = session["title"]
                 context = await read_context(session_id)
         else:
             session = await create_session(request.user_id, request.message[:100])
             session_id = session["id"]
-            session_title = session["title"]
             context = await read_context(session_id)
         
         # Update context state
         if request.chat_state:
             context.state.update(request.chat_state)
+
+        # Ensure title is always present (frontend may send chat_state["title"]).
+        # This prevents a blank title when the frontend restores a stale sessionId
+        # but the backend has no in-memory session state after restart.
+        session_title = context.state.get("title")
+        if not session_title:
+            if request.message:
+                session_title = await generate_smart_title(request.message[:100])
+            else:
+                session_title = "New Chat"
+            context.state["title"] = session_title
         
         # Add user message to context
         context.messages.append({
