@@ -12,7 +12,7 @@ struct PillVerificationView: View {
     @Environment(\.dismiss) private var dismiss
     let medication: Medication
     let onVerified: (VerificationStatus) -> Void
-    private let useYoloForVerification = true
+    private let useYoloForVerification = false
 
     @State private var selectedImage: UIImage?
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -23,9 +23,13 @@ struct PillVerificationView: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var showContinueAlert = false
+    @State private var boundedImageUrl: String?
+    @State private var detectionResponse: PillDetectionResponse?
+    @State private var boundedImage: UIImage?
 
     private let claudeService = ClaudeAPIService()
     private let pillDetectionService = PillDetectionService()
+    private let backendService = BackendAPIService()
     
     private var isClaudeVerification: Bool {
         !useYoloForVerification
@@ -216,7 +220,21 @@ struct PillVerificationView: View {
 
     private var imagePreviewSection: some View {
         VStack(spacing: AppTheme.Spacing.md) {
-            if let image = selectedImage {
+            // Show bounded image if available, otherwise show original
+            if let bounded = boundedImage {
+                VStack(spacing: AppTheme.Spacing.sm) {
+                    Text("Detected Pills")
+                        .font(AppTheme.Typography.caption)
+                        .foregroundColor(.textSecondary)
+                        .tracking(1)
+                    
+                    Image(uiImage: bounded)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 200)
+                        .cornerRadius(AppTheme.CornerRadius.md)
+                }
+            } else if let image = selectedImage {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
@@ -227,6 +245,9 @@ struct PillVerificationView: View {
             if verificationResult == nil && !isVerifying {
                 Button {
                     selectedImage = nil
+                    boundedImage = nil
+                    boundedImageUrl = nil
+                    detectionResponse = nil
                     verificationResult = nil
                 } label: {
                     Text("Retake Photo")
@@ -538,6 +559,9 @@ struct PillVerificationView: View {
             // Always show retake button
             Button {
                 selectedImage = nil
+                boundedImage = nil
+                boundedImageUrl = nil
+                detectionResponse = nil
                 verificationResult = nil
             } label: {
                 HStack {
@@ -573,6 +597,9 @@ struct PillVerificationView: View {
             }
             Button("Retake Photo") {
                 selectedImage = nil
+                boundedImage = nil
+                boundedImageUrl = nil
+                detectionResponse = nil
                 verificationResult = nil
             }
             Button("Cancel", role: .cancel) {}
@@ -591,14 +618,69 @@ struct PillVerificationView: View {
 
         isVerifying = true
         verificationResult = nil
+        boundedImageUrl = nil
+        detectionResponse = nil
+        boundedImage = nil
 
         do {
+            // Step 1: Call backend to detect pills and get bounded image
+            print("📸 Sending image to backend for pill detection...")
+            let response = try await backendService.detectPills(imageData: imageData)
+            detectionResponse = response
+            
+            print("✅ Backend detection complete: \(response.pillCount) pills detected")
+            
+            // Step 2: Download bounded image if URL is available
+            if !response.boundedImageUrl.isEmpty {
+                boundedImageUrl = response.boundedImageUrl
+                print("📥 Downloading bounded image from: \(response.boundedImageUrl)")
+                
+                do {
+                    let downloadedImage = try await backendService.downloadImage(from: response.boundedImageUrl)
+                    boundedImage = downloadedImage
+                    print("✅ Bounded image downloaded successfully")
+                } catch {
+                    print("⚠️ Failed to download bounded image: \(error.localizedDescription)")
+                    // Continue without bounded image
+                }
+            }
+            
+            // Step 3: Run verification based on mode
             if useYoloForVerification {
+                // Use YOLO detection results from backend
+                verificationResult = buildBackendResult(
+                    response: response,
+                    expectedCount: medication.expectedPillCount
+                )
+            } else {
+                // Use Claude verification with bounded image if available
+                let verificationImageData: Data
+                if let bounded = boundedImage,
+                   let boundedData = bounded.jpegData(compressionQuality: 0.8) {
+                    verificationImageData = boundedData
+                    print("🤖 Sending bounded image to Claude for verification")
+                } else {
+                    verificationImageData = imageData
+                    print("🤖 Sending original image to Claude for verification")
+                }
+                
+                let result = try await claudeService.verifyPill(
+                    imageData: verificationImageData,
+                    expectedMedication: medication
+                )
+                verificationResult = result
+            }
+            
+        } catch let error as BackendAPIError {
+            print("❌ Backend API error: \(error.localizedDescription)")
+            // Fallback to local detection if backend fails
+            do {
+                print("⚙️ Falling back to local YOLO detection")
                 let output = try await pillDetectionService.detectPills(in: image)
                 verificationResult = buildYoloResult(output: output, expectedCount: medication.expectedPillCount)
-            } else {
-                let result = try await claudeService.verifyPill(imageData: imageData, expectedMedication: medication)
-                verificationResult = result
+            } catch {
+                errorMessage = "Detection failed: \(error.localizedDescription)"
+                showError = true
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -606,6 +688,32 @@ struct PillVerificationView: View {
         }
 
         isVerifying = false
+    }
+    
+    private func buildBackendResult(response: PillDetectionResponse, expectedCount: Int) -> PillVerificationResult {
+        let detected = response.pillCount
+        let isCorrectDose = detected == expectedCount
+        let dosageWarning = dosageWarningText(detected: detected, expected: expectedCount)
+        let recommendation = isCorrectDose
+            ? "Dose verified. You can proceed to log this medication."
+            : "Please adjust the number of pills to match your prescribed dose."
+        
+        // Calculate average confidence
+        let avgConfidence = response.detections.isEmpty ? 0.0 : 
+            response.detections.map(\.confidence).reduce(0, +) / Double(response.detections.count)
+        
+        return PillVerificationResult(
+            isMatch: true,
+            confidence: avgConfidence,
+            matchedMedicationName: medication.name,
+            detectedDescription: "Detected \(detected) pill(s) in the image.",
+            warnings: response.warnings,
+            recommendation: recommendation,
+            detectedPillCount: detected,
+            expectedPillCount: expectedCount,
+            isCorrectDose: isCorrectDose,
+            dosageWarning: dosageWarning
+        )
     }
 
     private func buildYoloResult(output: PillDetectionOutput, expectedCount: Int) -> PillVerificationResult {

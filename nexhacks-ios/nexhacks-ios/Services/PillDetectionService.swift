@@ -88,11 +88,11 @@ final class PillDetectionService {
         detections.reserveCapacity(min(boxCount, maxDetections))
 
         for i in 0..<boxCount {
-            let x = output[0, 0, i]
-            let y = output[0, 1, i]
-            let w = output[0, 2, i]
-            let h = output[0, 3, i]
-            let objectness = output[0, 4, i]
+            let x = output[0, 0, i].scalar ?? 0
+            let y = output[0, 1, i].scalar ?? 0
+            let w = output[0, 2, i].scalar ?? 0
+            let h = output[0, 3, i].scalar ?? 0
+            let objectness = output[0, 4, i].scalar ?? 0
 
             var classScore: Float = 1
             var classIndex = 0
@@ -100,7 +100,7 @@ final class PillDetectionService {
                 var bestScore: Float = 0
                 var bestIndex = 0
                 for c in 5..<channels {
-                    let score = output[0, c, i]
+                    let score = output[0, c, i].scalar ?? 0
                     if score > bestScore {
                         bestScore = score
                         bestIndex = c - 5
