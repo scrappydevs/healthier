@@ -23,19 +23,7 @@ struct JournalListView: View {
 
             VStack(spacing: 0) {
                     // Header
-                    HStack(spacing: AppTheme.Spacing.sm) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.title3)
-                                .foregroundColor(.textPrimary)
-                                .frame(width: 36, height: 36)
-                                .background(Color.cardBackground)
-                                .clipShape(Circle())
-                                .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
-                        }
-
+                    HStack {
                         Text("Journal")
                             .font(AppTheme.Typography.title)
                             .foregroundColor(.textPrimary)
@@ -118,7 +106,8 @@ struct JournalListView: View {
             .sheet(isPresented: $showingVoiceJournal) {
                 VoiceJournalView(viewModel: viewModel)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarHidden(true)
+            .navigationBarBackButtonHidden(true)
     }
 
     private var emptyStateView: some View {

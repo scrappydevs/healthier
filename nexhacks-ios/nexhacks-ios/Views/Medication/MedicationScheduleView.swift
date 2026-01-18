@@ -98,6 +98,12 @@ struct MedicationScheduleView: View {
                 }
             }
         }
+        .sheet(isPresented: $viewModel.showingAddMedication) {
+            AddMedicationView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showingScanMedication) {
+            MedicationScanView(viewModel: viewModel)
+        }
         .sheet(item: $medicationForDetail) { medication in
             MedicationDetailView(viewModel: viewModel, medication: medication)
         }
@@ -115,17 +121,27 @@ struct MedicationScheduleView: View {
 
                 Spacer()
 
-                // Notification bell
-                Button {
-                    // Show notifications
+                Menu {
+                    Button {
+                        viewModel.showingScanMedication = true
+                    } label: {
+                        Label("Add New Medication", systemImage: "camera.viewfinder")
+                    }
+                    
+                    Button {
+                        viewModel.showingAddMedication = true
+                    } label: {
+                        Label("Add Manually", systemImage: "square.and.pencil")
+                    }
                 } label: {
-                    Image(systemName: "bell.fill")
+                    Image(systemName: "ellipsis")
                         .font(.title2)
                         .foregroundColor(.textPrimary)
                         .frame(width: 50, height: 50)
                         .background(Color.cardBackground)
                         .clipShape(Circle())
                         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+                        .accessibilityLabel("Medication actions")
                 }
             }
             .padding(.horizontal, AppTheme.Spacing.lg)
