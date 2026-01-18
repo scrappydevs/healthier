@@ -122,21 +122,13 @@ wssMedication.on('connection', (ws) => {
           console.log('Medication context length:', medicationContext.length);
 
           if (process.env.OVERSHOOT_API_KEY) {
-            const outputSchema = {
-              type: "object",
-              properties: {
-                description: { type: "string" }
-              },
-              required: ["description"]
-            };
-
             const prompt = "Describe what you see.";
 
             overshootSession = new OvershootStreamSession({
               apiUrl: process.env.OVERSHOOT_API_URL || "https://cluster1.overshoot.ai/api/v0.2",
               apiKey: process.env.OVERSHOOT_API_KEY,
               prompt,
-              outputSchemaJson: outputSchema,
+              outputSchemaJson: null,
               processing: {
                 sampling_ratio: 0.8,
                 fps: 30,

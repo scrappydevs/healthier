@@ -103,6 +103,15 @@ export class OvershootStreamSession {
         throw new Error("Failed to create local description SDP");
       }
 
+      const inference = {
+        prompt: this.prompt,
+        backend: "overshoot",
+        model: this.processing?.model ?? "Qwen/Qwen3-VL-30B-A3B-Instruct",
+      };
+      if (this.outputSchemaJson) {
+        inference.output_schema_json = this.outputSchemaJson;
+      }
+
       const body = {
         webrtc: { type: "offer", sdp: this.pc.localDescription.sdp },
         processing: {
@@ -111,12 +120,7 @@ export class OvershootStreamSession {
           clip_length_seconds: this.processing?.clip_length_seconds ?? 1,
           delay_seconds: this.processing?.delay_seconds ?? 1,
         },
-        inference: {
-          prompt: this.prompt,
-          backend: "overshoot",
-          model: this.processing?.model ?? "Qwen/Qwen3-VL-30B-A3B-Instruct",
-          output_schema_json: this.outputSchemaJson,
-        },
+        inference,
       };
 
       console.log("OvershootStreamSession creating stream with:", {
