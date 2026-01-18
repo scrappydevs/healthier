@@ -14,6 +14,10 @@ struct LiveExerciseView: View {
     @StateObject private var analysisService = ExerciseAnalysisService()
     @StateObject private var cameraManager = CameraManager()
     
+    // Optional initial values from plan item
+    var initialExerciseType: ExerciseType?
+    var planItemName: String?
+    
     @State private var selectedType: ExerciseType = .other
     @State private var isRecording = false
     @State private var recordingStartTime: Date?
@@ -49,6 +53,9 @@ struct LiveExerciseView: View {
         }
         .onAppear {
             cameraManager.checkPermissions()
+            if let initialType = initialExerciseType {
+                selectedType = initialType
+            }
         }
         .onDisappear {
             Task {
@@ -76,6 +83,7 @@ struct LiveExerciseView: View {
                 duration: TimeInterval(elapsedSeconds),
                 repCount: analysisService.repCount,
                 videoURL: recordedVideoURL,
+                initialName: planItemName,
                 onSave: { dismiss() }
             )
         }
@@ -211,8 +219,8 @@ struct LiveExerciseView: View {
     
     private var bottomControls: some View {
         VStack(spacing: 20) {
-            // Exercise Type Picker (only before recording)
-            if !isRecording {
+            // Exercise Type Picker (only before recording, and not when from plan)
+            if !isRecording && planItemName == nil {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(ExerciseType.allCases, id: \.self) { type in
@@ -225,6 +233,15 @@ struct LiveExerciseView: View {
                     }
                     .padding(.horizontal)
                 }
+            } else if !isRecording, let planName = planItemName {
+                // Show locked plan item name when from plan
+                Text(planName)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(Color.appPrimary)
+                    .cornerRadius(20)
             }
             
             // Record Button
@@ -333,6 +350,7 @@ struct SaveExerciseSheet: View {
     let duration: TimeInterval
     let repCount: Int
     let videoURL: URL?
+    var initialName: String?
     let onSave: () -> Void
     
     @State private var name: String = ""
@@ -400,6 +418,11 @@ struct SaveExerciseSheet: View {
                         dismiss()
                     }
                     .foregroundColor(.appPrimary)
+                }
+            }
+            .onAppear {
+                if let initialName = initialName {
+                    name = initialName
                 }
             }
         }

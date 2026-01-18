@@ -74,40 +74,63 @@ class ExerciseViewModel: ObservableObject {
     // MARK: - Public Methods
     
     func loadExercises() {
-        exercises = exerciseRepository.getAll()
-        todaysExercises = exerciseRepository.getExercises(for: Date())
-        updateExerciseSummary()
-    }
-    
-    func addExercise(_ exercise: Exercise) {
-        do {
-            try exerciseRepository.create(exercise)
-            loadExercises()
-            
-            // Sync to Supabase in background
-            Task {
-                await syncExerciseToSupabase(exercise)
+        Task {
+            do {
+                try await exerciseRepository.loadExercises()
+                exercises = exerciseRepository.getAll()
+                todaysExercises = exerciseRepository.getExercises(for: Date())
+                updateExerciseSummary()
+            } catch {
+                errorMessage = error.localizedDescription
             }
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
-    
+
+    func addExercise(_ exercise: Exercise) {
+        Task {
+            do {
+                isLoading = true
+                defer { isLoading = false }
+
+                try await exerciseRepository.create(exercise)
+                exercises = exerciseRepository.getAll()
+                todaysExercises = exerciseRepository.getExercises(for: Date())
+                updateExerciseSummary()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     func updateExercise(_ exercise: Exercise) {
-        do {
-            try exerciseRepository.update(exercise)
-            loadExercises()
-        } catch {
-            errorMessage = error.localizedDescription
+        Task {
+            do {
+                isLoading = true
+                defer { isLoading = false }
+
+                try await exerciseRepository.update(exercise)
+                exercises = exerciseRepository.getAll()
+                todaysExercises = exerciseRepository.getExercises(for: Date())
+                updateExerciseSummary()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
-    
+
     func deleteExercise(_ exercise: Exercise) {
-        do {
-            try exerciseRepository.delete(exercise)
-            loadExercises()
-        } catch {
-            errorMessage = error.localizedDescription
+        Task {
+            do {
+                isLoading = true
+                defer { isLoading = false }
+
+                try await exerciseRepository.delete(exercise)
+                exercises = exerciseRepository.getAll()
+                todaysExercises = exerciseRepository.getExercises(for: Date())
+                updateExerciseSummary()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
     
@@ -175,6 +198,52 @@ class ExerciseViewModel: ObservableObject {
             }
         }
         return grouped
+    }
+    
+    /// Check if a plan item has been completed today
+    func isPlanItemCompletedToday(_ planItem: ExercisePlanItem) -> Bool {
+        // Check if there's an exercise logged today that matches the plan item
+        let matchingExercise = todaysExercises.first { exercise in
+            // Match by name (case-insensitive)
+            let nameMatch = exercise.name.lowercased().contains(planItem.name.lowercased()) ||
+                            planItem.name.lowercased().contains(exercise.name.lowercased())
+            
+            // Or match by category if available
+            let categoryMatch = planItem.category.map { category in
+                exercise.type.rawValue.lowercased() == category.lowercased()
+            } ?? false
+            
+            return nameMatch || categoryMatch
+        }
+        return matchingExercise != nil
+    }
+    
+    /// Get ExerciseType from plan item category
+    func exerciseTypeForPlanItem(_ planItem: ExercisePlanItem) -> ExerciseType {
+        guard let category = planItem.category?.lowercased() else {
+            return .other
+        }
+        
+        switch category {
+        case "running", "run":
+            return .running
+        case "walking", "walk":
+            return .walking
+        case "cycling", "bike", "bicycle":
+            return .cycling
+        case "swimming", "swim":
+            return .swimming
+        case "yoga", "stretch", "stretching":
+            return .yoga
+        case "weightlifting", "weights", "strength", "strength training":
+            return .weightlifting
+        case "hiit", "interval", "cardio":
+            return .hiit
+        case "sports", "sport":
+            return .sports
+        default:
+            return .other
+        }
     }
     
     // MARK: - Private Methods
@@ -302,14 +371,4 @@ class ExerciseViewModel: ObservableObject {
         return metValue * weightKg * timeHours
     }
     
-    private func syncExerciseToSupabase(_ exercise: Exercise) async {
-        do {
-            try await supabaseService.saveExercise(exercise)
-        } catch {
-            print("Failed to sync exercise to Supabase: \(error)")
-            await MainActor.run {
-                errorMessage = "Failed to sync exercise: \(error.localizedDescription)"
-            }
-        }
-    }
 }

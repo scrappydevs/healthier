@@ -15,6 +15,7 @@ struct ExerciseView: View {
     @State private var showingAddExercise = false
     @State private var showingVideoCapture = false
     @State private var showingLiveRecording = false
+    @State private var selectedPlanItem: ExercisePlanItem?
     
     init(viewModel: ExerciseViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -107,7 +108,16 @@ struct ExerciseView: View {
                 VideoUploadView(viewModel: viewModel)
             }
             .fullScreenCover(isPresented: $showingLiveRecording) {
-                LiveExerciseView(viewModel: viewModel)
+                LiveExerciseView(
+                    viewModel: viewModel,
+                    initialExerciseType: selectedPlanItem.map { viewModel.exerciseTypeForPlanItem($0) },
+                    planItemName: selectedPlanItem?.name
+                )
+            }
+            .onChange(of: showingLiveRecording) { _, isShowing in
+                if !isShowing {
+                    selectedPlanItem = nil
+                }
             }
         }
     }
@@ -195,6 +205,10 @@ struct ExerciseView: View {
                     .foregroundColor(.textPrimary)
                 
                 Spacer()
+                
+                Text("Tap to start")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundColor(.textSecondary)
             }
             
             if activePlan.isEmpty {
@@ -204,8 +218,17 @@ struct ExerciseView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(activePlan.enumerated()), id: \.element.id) { idx, item in
-                        ExercisePlanRow(item: item)
+                        Button {
+                            selectedPlanItem = item
+                            showingLiveRecording = true
+                        } label: {
+                            ExercisePlanRow(
+                                item: item,
+                                isCompleted: viewModel.isPlanItemCompletedToday(item)
+                            )
                             .padding(.vertical, AppTheme.Spacing.sm)
+                        }
+                        .buttonStyle(.plain)
                         
                         if idx < activePlan.count - 1 {
                             Divider().background(Color.divider.opacity(0.6))
@@ -351,6 +374,7 @@ struct ExerciseView: View {
 
 struct ExercisePlanRow: View {
     let item: ExercisePlanItem
+    var isCompleted: Bool = false
     
     private let dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     
@@ -389,22 +413,54 @@ struct ExercisePlanRow: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(item.name)
-                .font(AppTheme.Typography.headline)
-                .foregroundColor(.textPrimary)
+        HStack(spacing: AppTheme.Spacing.md) {
+            // Completion indicator
+            ZStack {
+                Circle()
+                    .stroke(isCompleted ? Color.success : Color.divider, lineWidth: 2)
+                    .frame(width: 24, height: 24)
+                
+                if isCompleted {
+                    Circle()
+                        .fill(Color.success)
+                        .frame(width: 24, height: 24)
+                    
+                    Image(systemName: "checkmark")
+                        .font(.caption.bold())
+                        .foregroundColor(.white)
+                }
+            }
             
-            Text(scheduleLabel)
-                .font(AppTheme.Typography.caption)
-                .foregroundColor(.textSecondary)
-            
-            if let detailsLabel {
-                Text(detailsLabel)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.name)
+                    .font(AppTheme.Typography.headline)
+                    .foregroundColor(isCompleted ? .textSecondary : .textPrimary)
+                    .strikethrough(isCompleted)
+                
+                Text(scheduleLabel)
                     .font(AppTheme.Typography.caption)
                     .foregroundColor(.textSecondary)
+                
+                if let detailsLabel {
+                    Text(detailsLabel)
+                        .font(AppTheme.Typography.caption)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+            
+            Spacer()
+            
+            if !isCompleted {
+                Image(systemName: "video.fill")
+                    .font(.caption)
+                    .foregroundColor(.appPrimary)
+                    .padding(AppTheme.Spacing.sm)
+                    .background(Color.appPrimary.opacity(0.1))
+                    .cornerRadius(AppTheme.CornerRadius.sm)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
