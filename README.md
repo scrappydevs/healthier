@@ -16,11 +16,18 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 
 ## Mobile App Workflows
 
-<p align="center">
-  <img src="assets/demos/Medication Analysis.gif" width="30%" alt="Medication Analysis" />&nbsp;&nbsp;&nbsp;
-  <img src="assets/demos/Journaling w: Voice.gif" width="30%" alt="Journaling with Voice" />&nbsp;&nbsp;&nbsp;
-  <img src="assets/demos/Exercise Tracking.gif" width="30%" alt="Exercise Tracking" />
-</p>
+<table align="center" border="0" cellspacing="0" cellpadding="10">
+  <tr>
+    <td align="center" width="33%"><img src="assets/demos/Medication Analysis.gif" width="100%" alt="Medication Analysis" /></td>
+    <td align="center" width="33%"><img src="assets/demos/Journaling w: Voice.gif" width="100%" alt="Journaling with Voice" /></td>
+    <td align="center" width="33%"><img src="assets/demos/Exercise Tracking.gif" width="100%" alt="Exercise Tracking" /></td>
+  </tr>
+  <tr>
+    <td align="center">Medication Analysis, CUDA/Pytorch</td>
+    <td align="center">Journaling with Voice, Livekit/Overshoot</td>
+    <td align="center">Exercise Tracking, Mediapipe/Cerebras</td>
+  </tr>
+</table>
 
 <br>
 
