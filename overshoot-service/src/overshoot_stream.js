@@ -14,72 +14,7 @@ function baseUrlToWsUrl(baseUrl) {
   return baseUrl.replace("http://", "ws://").replace("https://", "wss://");
 }
 
-function clampByte(x) {
-  if (x < 0) return 0;
-  if (x > 255) return 255;
-  return x;
-}
-
-// Convert RGBA (width*height*4) -> I420 (Y plane + U plane + V plane)
-// I420 size: width*height + (width/2*height/2)*2
-function rgbaToI420(rgba, width, height) {
-  const ySize = width * height;
-  const uvWidth = Math.floor(width / 2);
-  const uvHeight = Math.floor(height / 2);
-  const uvSize = uvWidth * uvHeight;
-
-  const out = Buffer.allocUnsafe(ySize + uvSize * 2);
-  const yPlane = out.subarray(0, ySize);
-  const uPlane = out.subarray(ySize, ySize + uvSize);
-  const vPlane = out.subarray(ySize + uvSize, ySize + uvSize * 2);
-
-  // Y for every pixel
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const rgbaIdx = (y * width + x) * 4;
-      const r = rgba[rgbaIdx];
-      const g = rgba[rgbaIdx + 1];
-      const b = rgba[rgbaIdx + 2];
-      // BT.601 limited range approximation
-      const yy = clampByte(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
-      yPlane[y * width + x] = yy;
-    }
-  }
-
-  // U/V subsampled 2x2
-  for (let y = 0; y < uvHeight; y++) {
-    for (let x = 0; x < uvWidth; x++) {
-      const px = x * 2;
-      const py = y * 2;
-
-      // average of 2x2 pixels
-      let r = 0, g = 0, b = 0;
-      for (let dy = 0; dy < 2; dy++) {
-        for (let dx = 0; dx < 2; dx++) {
-          const ix = px + dx;
-          const iy = py + dy;
-          if (ix >= width || iy >= height) continue;
-          const idx = (iy * width + ix) * 4;
-          r += rgba[idx];
-          g += rgba[idx + 1];
-          b += rgba[idx + 2];
-        }
-      }
-      r = r >> 2;
-      g = g >> 2;
-      b = b >> 2;
-
-      const uu = clampByte(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
-      const vv = clampByte(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
-
-      const uvIdx = y * uvWidth + x;
-      uPlane[uvIdx] = uu;
-      vPlane[uvIdx] = vv;
-    }
-  }
-
-  return out;
-}
+const { rgbaToI420 } = wrtc.nonstandard;
 
 export class OvershootStreamSession {
   constructor({
@@ -107,6 +42,7 @@ export class OvershootStreamSession {
     this.keepaliveInterval = null;
     this.isStarted = false;
     this.lastFrameAt = 0;
+    this.statsInterval = null;
   }
 
   async start() {
@@ -203,11 +139,39 @@ export class OvershootStreamSession {
 
       this.connectResultsWebSocket();
       this.setupKeepalive(json.lease?.ttl_seconds);
+      this.setupStats();
       this.isStarted = true;
     } catch (err) {
       this.onError?.(err);
       throw err;
     }
+  }
+
+  setupStats() {
+    if (!this.pc) return;
+    this.statsInterval = setInterval(async () => {
+      try {
+        if (!this.pc) return;
+        const stats = await this.pc.getStats();
+        let outbound = null;
+        stats.forEach((report) => {
+          if (report.type === "outbound-rtp" && report.kind === "video") {
+            outbound = report;
+          }
+        });
+        if (outbound) {
+          // eslint-disable-next-line no-console
+          console.log(
+            "OvershootStreamSession outbound video:",
+            `bytesSent=${outbound.bytesSent ?? "?"}`,
+            `packetsSent=${outbound.packetsSent ?? "?"}`,
+            `framesEncoded=${outbound.framesEncoded ?? "?"}`
+          );
+        }
+      } catch (err) {
+        // ignore stats errors
+      }
+    }, 2000);
   }
 
   setupKeepalive(ttlSeconds) {
@@ -252,11 +216,18 @@ export class OvershootStreamSession {
     });
 
     this.resultsWs.on("error", (err) => {
+      // eslint-disable-next-line no-console
+      console.error("OvershootStreamSession results websocket error:", err);
       this.onError?.(err);
     });
 
-    this.resultsWs.on("close", () => {
-      // no-op; session stop handles cleanup
+    this.resultsWs.on("close", (code, reason) => {
+      // eslint-disable-next-line no-console
+      console.log(
+        "OvershootStreamSession results websocket closed:",
+        `code=${code}`,
+        `reason=${reason?.toString?.() ?? ""}`
+      );
     });
   }
 
@@ -272,12 +243,24 @@ export class OvershootStreamSession {
     const { width, height, data } = decoded;
     if (!width || !height || !data) return;
 
-    const i420 = rgbaToI420(data, width, height);
-    this.videoSource.onFrame({ width, height, data: i420 });
+    // Convert RGBA -> I420 using libyuv bindings from @roamhq/wrtc
+    const rgbaFrame = {
+      width,
+      height,
+      data: data instanceof Uint8ClampedArray ? data : new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength),
+    };
+    const i420Data = new Uint8ClampedArray(width * height * 1.5);
+    const i420Frame = { width, height, data: i420Data };
+    rgbaToI420(rgbaFrame, i420Frame);
+    this.videoSource.onFrame(i420Frame);
   }
 
   async stop() {
     try {
+      if (this.statsInterval) {
+        clearInterval(this.statsInterval);
+        this.statsInterval = null;
+      }
       if (this.keepaliveInterval) {
         clearInterval(this.keepaliveInterval);
         this.keepaliveInterval = null;
