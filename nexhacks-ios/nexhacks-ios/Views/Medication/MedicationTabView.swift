@@ -14,6 +14,7 @@ struct MedicationTabView: View {
     @State private var selectedMedication: Medication?
     @State private var showingHistory = false
     @State private var showingAnalytics = false
+    @State private var showingVoiceAssistant = false
 
     var body: some View {
         NavigationView {
@@ -28,6 +29,7 @@ struct MedicationTabView: View {
                 VStack {
                     Spacer()
                     HStack {
+                        // History button
                         Button {
                             showingHistory = true
                         } label: {
@@ -42,6 +44,31 @@ struct MedicationTabView: View {
                         
                         Spacer()
                         
+                        // Voice Assistant button (center, larger)
+                        Button {
+                            showingVoiceAssistant = true
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [Color.appPrimary, Color.appAccent]),
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 72, height: 72)
+                                    .shadow(color: .appPrimary.opacity(0.4), radius: 16, x: 0, y: 8)
+                                
+                                Image(systemName: "mic.fill")
+                                    .font(.title)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        // Analytics button
                         Button {
                             showingAnalytics = true
                         } label: {
@@ -86,6 +113,9 @@ struct MedicationTabView: View {
                             }
                         }
                 }
+            }
+            .fullScreenCover(isPresented: $showingVoiceAssistant) {
+                VoiceMedicationAssistantView(viewModel: viewModel)
             }
         }
     }

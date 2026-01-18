@@ -366,7 +366,7 @@ class LiveKitService: NSObject, ObservableObject {
     private func configureAudioSessionForLiveKit() throws {
         // LiveKit manages audio session, but we need playAndRecord for agent audio playback
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try audioSession.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth])
         try audioSession.setActive(true)
     }
 
