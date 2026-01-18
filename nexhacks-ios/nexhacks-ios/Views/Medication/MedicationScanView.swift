@@ -476,7 +476,8 @@ struct MedicationScanView: View {
 
                 // Deduplicate across pages
                 for medication in medications {
-                    let key = "\(medication.name.lowercased())-\(medication.dosage.lowercased())"
+                    let timeKey = normalizedTimeKey(from: medication.times)
+                    let key = "\(medication.name.lowercased())-\(medication.dosage.lowercased())-\(timeKey)"
                     if !seenMedications.contains(key) {
                         seenMedications.insert(key)
                         allMedications.append(medication)
@@ -501,9 +502,11 @@ struct MedicationScanView: View {
     }
     
     private func isDuplicate(_ parsed: ParsedMedication) -> Bool {
+        let parsedTimeKey = normalizedTimeKey(from: parsed.times)
         return viewModel.medications.contains { existing in
             existing.name.lowercased() == parsed.name.lowercased() &&
-            existing.dosage.lowercased() == parsed.dosage.lowercased()
+            existing.dosage.lowercased() == parsed.dosage.lowercased() &&
+            normalizedTimeKey(from: existing.reminderTimes) == parsedTimeKey
         }
     }
     
@@ -567,6 +570,43 @@ struct MedicationScanView: View {
             }
             return nil
         }
+    }
+
+    private func normalizedTimeKey(from times: [String]) -> String {
+        let parsed = parseTimeStrings(times)
+        return parsed.sorted().joined(separator: "|")
+    }
+
+    private func normalizedTimeKey(from reminderTimes: [Date]) -> String {
+        guard !reminderTimes.isEmpty else { return "" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let normalized = reminderTimes.map { formatter.string(from: $0) }
+        return normalized.sorted().joined(separator: "|")
+    }
+
+    private func parseTimeStrings(_ times: [String]) -> [String] {
+        guard !times.isEmpty else { return [] }
+        let primaryFormatter = DateFormatter()
+        primaryFormatter.dateFormat = "h:mm a"
+        primaryFormatter.locale = Locale(identifier: "en_US_POSIX")
+
+        let fallbackFormatter = DateFormatter()
+        fallbackFormatter.dateFormat = "H:mm"
+        fallbackFormatter.locale = Locale(identifier: "en_US_POSIX")
+
+        let outputFormatter = DateFormatter()
+        outputFormatter.dateFormat = "HH:mm"
+        outputFormatter.locale = Locale(identifier: "en_US_POSIX")
+
+        var normalized: [String] = []
+        for time in times {
+            if let date = primaryFormatter.date(from: time) ?? fallbackFormatter.date(from: time) {
+                normalized.append(outputFormatter.string(from: date))
+            }
+        }
+        return normalized
     }
 }
 
