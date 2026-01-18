@@ -37,8 +37,164 @@ app.post('/api/analyze-frame', async (req, res) => {
 // Create HTTP server
 const server = createServer(app);
 
-// WebSocket server for real-time streaming
+// WebSocket server for real-time exercise streaming
 const wss = new WebSocketServer({ server, path: '/ws/exercise' });
+
+// WebSocket server for medication vision analysis
+const wssMedication = new WebSocketServer({ server, path: '/ws/medication' });
+
+// Medication vision WebSocket handler
+wssMedication.on('connection', (ws) => {
+  console.log('Client connected for medication vision analysis');
+  
+  let overshootSession = null;
+  let frameCount = 0;
+  let lastDescription = '';
+  let medicationContext = '';
+  
+  ws.on('message', async (message) => {
+    try {
+      const data = JSON.parse(message.toString());
+      
+      switch (data.type) {
+        case 'start':
+          // Store medication context if provided
+          medicationContext = data.medicationContext || '';
+          frameCount = 0;
+          lastDescription = '';
+          console.log('Started medication vision session');
+          console.log('Medication context length:', medicationContext.length);
+
+          if (process.env.OVERSHOOT_API_KEY) {
+            const prompt = `You are a medication assistant with vision capabilities helping elderly patients.
+
+Describe what you see in the camera. Focus on:
+- Pills (color, shape, size, markings/imprints)
+- Medication bottles or packaging
+- Prescription labels
+- Pill organizers or dispensers
+
+${medicationContext ? `\nUser's Medications:\n${medicationContext}\n\nIf you can match what you see to the user's medications, identify which one it is.` : ''}
+
+Respond with a brief, clear description suitable for an elderly person. Be specific about colors and shapes.`;
+
+            overshootSession = new OvershootStreamSession({
+              apiUrl: process.env.OVERSHOOT_API_URL || "https://cluster1.overshoot.ai/api/v0.2",
+              apiKey: process.env.OVERSHOOT_API_KEY,
+              prompt,
+              processing: {
+                sampling_ratio: 0.2,
+                fps: 15,
+                clip_length_seconds: 2,
+                delay_seconds: 1
+              },
+              onResult: (result) => {
+                const payload = result?.result ?? result;
+                if (!payload) return;
+
+                let description = '';
+                if (typeof payload === "string") {
+                  description = payload;
+                } else if (typeof payload?.result === "string") {
+                  description = payload.result;
+                } else if (payload?.description) {
+                  description = payload.description;
+                } else {
+                  description = JSON.stringify(payload);
+                }
+
+                // Only send if description changed meaningfully
+                if (description && description !== lastDescription) {
+                  lastDescription = description;
+                  ws.send(JSON.stringify({
+                    type: 'vision',
+                    description: description,
+                    timestamp: Date.now()
+                  }));
+                }
+              },
+              onError: (err) => {
+                console.error("Medication vision Overshoot error:", err);
+                ws.send(JSON.stringify({
+                  type: 'error',
+                  message: err.message || 'Vision analysis error'
+                }));
+              }
+            });
+
+            try {
+              await overshootSession.start();
+              console.log("Medication vision Overshoot stream started");
+            } catch (err) {
+              console.error("Failed to start medication vision stream:", err);
+              overshootSession = null;
+            }
+          }
+
+          ws.send(JSON.stringify({
+            type: 'started',
+            message: 'Medication vision started'
+          }));
+          break;
+          
+        case 'frame':
+          if (data.frame) {
+            frameCount++;
+            if (overshootSession) {
+              const jpegBuffer = Buffer.from(data.frame, "base64");
+              overshootSession.pushJpegFrame(jpegBuffer);
+              if (frameCount % 15 === 0) {
+                console.log(`Medication vision: pushed ${frameCount} frames`);
+              }
+            } else {
+              // Fallback: mock response when no Overshoot API
+              if (frameCount % 30 === 0) {
+                ws.send(JSON.stringify({
+                  type: 'vision',
+                  description: 'Point your camera at your medication to identify it.',
+                  timestamp: Date.now()
+                }));
+              }
+            }
+          }
+          break;
+          
+        case 'stop':
+          console.log(`Medication vision session ended. Frames processed: ${frameCount}`);
+          if (overshootSession) {
+            await overshootSession.stop();
+            overshootSession = null;
+          }
+          ws.send(JSON.stringify({
+            type: 'stopped',
+            message: 'Medication vision stopped'
+          }));
+          break;
+          
+        default:
+          console.log('Unknown medication message type:', data.type);
+      }
+    } catch (error) {
+      console.error('Medication WebSocket message error:', error);
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: error.message
+      }));
+    }
+  });
+  
+  ws.on('close', () => {
+    console.log('Medication vision client disconnected');
+    if (overshootSession) {
+      overshootSession.stop().catch(() => {});
+      overshootSession = null;
+    }
+  });
+  
+  ws.on('error', (error) => {
+    console.error('Medication WebSocket error:', error);
+  });
+});
 
 wss.on('connection', (ws) => {
   console.log('Client connected for exercise analysis');
@@ -226,7 +382,8 @@ wss.on('connection', (ws) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Overshoot Exercise Analysis Service running on port ${PORT}`);
-  console.log(`WebSocket endpoint: ws://localhost:${PORT}/ws/exercise`);
+  console.log(`Overshoot Analysis Service running on port ${PORT}`);
+  console.log(`Exercise WebSocket: ws://localhost:${PORT}/ws/exercise`);
+  console.log(`Medication WebSocket: ws://localhost:${PORT}/ws/medication`);
   console.log(`HTTP endpoint: http://localhost:${PORT}/api/analyze-frame`);
 });
