@@ -1,0 +1,6 @@
+roboflow==1.0.1
+ultralytics==8.0.20
+pillow
+pillow-avif-plugin
+ipykernel
+requests
