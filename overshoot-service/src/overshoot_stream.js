@@ -25,6 +25,8 @@ export class OvershootStreamSession {
     processing,
     onResult,
     onError,
+    onResultsReady,
+    onResultsClosed,
   }) {
     this.apiUrl = apiUrl;
     this.apiKey = apiKey;
@@ -33,12 +35,16 @@ export class OvershootStreamSession {
     this.processing = processing;
     this.onResult = onResult;
     this.onError = onError;
+    this.onResultsReady = onResultsReady;
+    this.onResultsClosed = onResultsClosed;
 
     this.pc = null;
     this.videoSource = null;
     this.videoTrack = null;
     this.streamId = null;
     this.resultsWs = null;
+    this.resultsWsReady = false;
+    this.framesDroppedBeforeResults = 0;
     this.keepaliveInterval = null;
     this.isStarted = false;
     this.lastFrameAt = 0;
@@ -221,6 +227,8 @@ export class OvershootStreamSession {
       const authMsg = JSON.stringify({ api_key: this.apiKey });
       console.log("OvershootStreamSession sending auth (key length):", this.apiKey?.length || 0);
       this.resultsWs?.send(authMsg);
+      this.resultsWsReady = true;
+      this.onResultsReady?.();
     });
 
     this.resultsWs.on("message", (data) => {
@@ -243,6 +251,10 @@ export class OvershootStreamSession {
     this.resultsWs.on("error", (err) => {
       // eslint-disable-next-line no-console
       console.error("OvershootStreamSession results websocket error:", err);
+      if (this.resultsWsReady) {
+        this.resultsWsReady = false;
+        this.onResultsClosed?.(err);
+      }
       this.onError?.(err);
     });
 
@@ -253,11 +265,25 @@ export class OvershootStreamSession {
         `code=${code}`,
         `reason=${reason?.toString?.() ?? ""}`
       );
+      if (this.resultsWsReady) {
+        this.resultsWsReady = false;
+        this.onResultsClosed?.(new Error(`Results WS closed code=${code}`));
+      }
     });
   }
 
   pushJpegFrame(jpegBuffer) {
     if (!this.videoSource) return;
+    if (!this.resultsWsReady) {
+      this.framesDroppedBeforeResults += 1;
+      if (this.framesDroppedBeforeResults % 30 === 0) {
+        console.warn(
+          "OvershootStreamSession dropping frames until results WS ready:",
+          this.framesDroppedBeforeResults
+        );
+      }
+      return;
+    }
 
     // Throttle to avoid flooding (server-side safety)
     const now = Date.now();
@@ -297,6 +323,8 @@ export class OvershootStreamSession {
         } catch {}
         this.resultsWs = null;
       }
+      this.resultsWsReady = false;
+      this.framesDroppedBeforeResults = 0;
 
       if (this.videoTrack) {
         try {

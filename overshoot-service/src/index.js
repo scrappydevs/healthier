@@ -143,6 +143,23 @@ wssMedication.on('connection', (ws) => {
                 clip_length_seconds: 0.2,
                 delay_seconds: 0.2
               },
+              onResultsReady: () => {
+                if (resultTimeout) {
+                  clearTimeout(resultTimeout);
+                  resultTimeout = null;
+                }
+                resultTimeout = setTimeout(() => {
+                  if (!firstResultReceived) {
+                    console.warn("Medication vision: No results received after results WS ready. Check Overshoot configuration and API key.");
+                  }
+                }, 12000);
+              },
+              onResultsClosed: () => {
+                if (resultTimeout) {
+                  clearTimeout(resultTimeout);
+                  resultTimeout = null;
+                }
+              },
               onResult: (result) => {
                 try {
                   console.log("Medication vision Overshoot response:", JSON.stringify(result));
@@ -211,13 +228,6 @@ wssMedication.on('connection', (ws) => {
                 }));
               }
             });
-
-            // Set a timeout to warn if no results after reasonable time
-            resultTimeout = setTimeout(() => {
-              if (!firstResultReceived) {
-                console.warn("Medication vision: No results received after 10 seconds. Check Overshoot configuration and API key.");
-              }
-            }, 10000);
 
             try {
               await overshootSession.start();
