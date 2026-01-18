@@ -10,6 +10,10 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 - Aarush — Entries (logging + input flows)
 - Julian — Dashboard
 - Dheeraj — 3D / Floor plan
+-
+
+![3D Map (1)](https://github.com/user-attachments/assets/35713d75-b1ec-49ec-943f-ae0e78066021)
+
 
 ## Current Features (Planned / In Progress)
 
