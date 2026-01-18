@@ -51,12 +51,8 @@ class MedicationAssistantService: NSObject, ObservableObject {
     private var visionWebSocket: URLSessionWebSocketTask?
     private var visionURLSession: URLSession!
     private var visionWSURL: URL {
-        #if targetEnvironment(simulator)
-        return URL(string: "ws://localhost:3001/ws/medication")!
-        #else
-        // Update to your computer's local IP for physical device
-        return URL(string: "ws://10.0.0.70:3001/ws/medication")!
-        #endif
+        // Production backend on Render (secure websocket)
+        return URL(string: "wss://healthier-overshoot-service.onrender.com/ws/medication")!
     }
     
     var visionEndpointDescription: String {
@@ -72,12 +68,12 @@ class MedicationAssistantService: NSObject, ObservableObject {
     private var hasRequestedIntro: Bool = false
     private var lastVisionSent: String = ""
     private var lastVisionSentAt: Date = .distantPast
-    private let visionUpdateCooldown: TimeInterval = 10.0
+    private let visionUpdateCooldown: TimeInterval = 5.0
     private var isAgentResponding: Bool = false
     private var lastAgentActivityAt: Date = .distantPast
     private var lastUserFinalUtteranceSentAt: Date = .distantPast
     private var lastUserFinalUtteranceSent: String = ""
-    private let userUtteranceCooldown: TimeInterval = 3.0
+    private let userUtteranceCooldown: TimeInterval = 0.5
     
     // Speech recognition for user transcription
     private let speechRecognizer: SFSpeechRecognizer? = SFSpeechRecognizer()
@@ -264,11 +260,16 @@ class MedicationAssistantService: NSObject, ObservableObject {
         guard !trimmed.isEmpty else { return }
 
         let now = Date()
-        if now.timeIntervalSince(lastUserFinalUtteranceSentAt) < userUtteranceCooldown { return }
-        if trimmed == lastUserFinalUtteranceSent { return }
-
         let vision = visionDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !vision.isEmpty else { return }
+
+        // Allow sending same question if vision changed since last time
+        let visionChanged = vision != lastVisionSent
+
+        // Skip cooldown if vision changed significantly, otherwise respect cooldown
+        if !visionChanged && now.timeIntervalSince(lastUserFinalUtteranceSentAt) < userUtteranceCooldown {
+            return
+        }
 
         lastUserFinalUtteranceSentAt = now
         lastUserFinalUtteranceSent = trimmed

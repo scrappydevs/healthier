@@ -30,17 +30,10 @@ class ExerciseAnalysisService: NSObject, ObservableObject {
     private var lastSpokenTime: Date = .distantPast
     private let feedbackCooldown: TimeInterval = 3.0 // Min seconds between voice feedback
     
-    // WebSocket URL - update this to your server IP for physical device testing
-    // For simulator: use localhost
-    // For physical device: use your computer's IP (e.g., "ws://192.168.1.100:3001/ws/exercise")
+    // WebSocket URL - Production backend on Render
     private var wsURL: URL {
-        #if targetEnvironment(simulator)
-        return URL(string: "ws://localhost:3001/ws/exercise")!
-        #else
-        // Update this to your computer's local IP address
-        // Find it with: ifconfig | grep "inet " | grep -v 127.0.0.1
-        return URL(string: "ws://172.26.114.222:3001/ws/exercise")!
-        #endif
+        // Production backend on Render (secure websocket)
+        return URL(string: "wss://healthier-overshoot-service.onrender.com/ws/exercise")!
     }
     
     // MARK: - Initialization
