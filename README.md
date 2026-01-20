@@ -1,11 +1,11 @@
 ## Healthier
 
+<div align="center">
+  <p><em>A lightweight elderly care app focused on medication guidance, nutrition insights, exercise support, and Apple Watch integration, with a simple dashboard for summaries.</em></p>
+  <h3>🏆 2nd in Healthcare at NexHacks 🏆 - AI-Powered Senior Care</h3>
+</div>
+
 ![hero](https://github.com/user-attachments/assets/202783c9-5902-40b9-913d-6c4c5826adb2)
-
-A lightweight elderly care app focused on medication guidance, nutrition insights, exercise support, and Apple Watch integration, with a simple dashboard for summaries.
-
-
-![3D Map (1)](https://github.com/user-attachments/assets/35713d75-b1ec-49ec-943f-ae0e78066021)
 
 <br>
 
@@ -32,6 +32,9 @@ A lightweight elderly care app focused on medication guidance, nutrition insight
 <br>
 
 ## Web Dashboard Features
+
+### 3D Clinic View
+![3D Map (1)](https://github.com/user-attachments/assets/35713d75-b1ec-49ec-943f-ae0e78066021)
 
 ### Medication Logging and Procedures
 - Scan medications to generate clear instructions + interact with a voice agent that will guide you through yuor daily routine
