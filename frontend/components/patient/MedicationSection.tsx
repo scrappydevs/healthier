@@ -110,18 +110,24 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
         const response = await getPatientMedications(patientId);
         setMedications(response.medications || []);
         
-        // Parse assigned medications from the response
         const assigned = response.assigned_medications || [];
-        setAssignedMeds(assigned.map((m: Record<string, unknown>) => ({
-          id: m.id as string,
-          name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
-          strength: (m.pills as Record<string, unknown>)?.strength as number,
-          unit: (m.pills as Record<string, unknown>)?.unit as string,
-          image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
-          frequency: m.frequency as string,
-          times_of_day: m.times_of_day as string[],
-          is_active: m.is_active as boolean,
-        })));
+        setAssignedMeds(assigned.map((m: Record<string, unknown>) => {
+          const dosageStr = (m.dosage as string) || "";
+          const dosageMatch = dosageStr.match(/^(\d+\.?\d*)\s*(.*)$/);
+          const strength = dosageMatch ? parseFloat(dosageMatch[1]) : undefined;
+          const unit = dosageMatch ? dosageMatch[2] || "mg" : undefined;
+          
+          return {
+            id: m.id as string,
+            name: (m.name as string) || "Unknown",
+            strength,
+            unit,
+            image_url: (m.plan_image_url as string) || null,
+            frequency: (m.frequency as string) || "Daily",
+            times_of_day: (m.reminder_times as string[]) || [],
+            is_active: m.is_active as boolean,
+          };
+        }));
         
         // Auto-expand today
         const today = getLocalDateString(new Date());

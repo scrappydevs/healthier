@@ -273,6 +273,16 @@ export async function getPatientMedications(
   return request<PatientMedicationsResponse>(`/api/v1/patients/${patientId}/medications`);
 }
 
+export async function deletePatientMedication(
+  patientId: string,
+  medicationId: string
+): Promise<{ success: boolean; message: string }> {
+  return request<{ success: boolean; message: string }>(
+    `/api/v1/patients/${patientId}/medications/${medicationId}`,
+    { method: "DELETE" }
+  );
+}
+
 // ============================================
 // ALERTS
 // ============================================

@@ -23,7 +23,8 @@ import {
   BarChart3,
   Loader2,
   Info,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ import {
   getPrescribedExercises,
   prescribeExercise,
   removePrescribedExercise,
+  deletePatientMedication,
   type Patient,
   type Pill as PillType,
   type PillLog,
@@ -1088,23 +1090,28 @@ function PlansContent({ patient }: { patient: Patient }) {
           )[0] 
         : null);
       
-      // Store full medication list from assigned_medications
       const assignedMeds = medsRes.assigned_medications || [];
-      setMedications(assignedMeds.map((m: Record<string, unknown>) => ({
-        id: m.id as string,
-        pill_id: m.pill_id as string,
-        name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
-        strength: (m.pills as Record<string, unknown>)?.strength as number,
-        unit: (m.pills as Record<string, unknown>)?.unit as string,
-        dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
-        image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
-        frequency: m.frequency as string,
-        days_of_week: m.days_of_week as number[],
-        times_of_day: m.times_of_day as string[],
-        pill_details: m.pills as PillType, // Store full pill object
-      })));
-      
-      // Store prescribed exercises
+      setMedications(assignedMeds.map((m: Record<string, unknown>) => {
+        const dosageStr = (m.dosage as string) || "";
+        const dosageParts = dosageStr.split(" ");
+        const strength = parseFloat(dosageParts[0]) || 0;
+        const unit = dosageParts.slice(1).join(" ") || "mg";
+
+        return {
+          id: m.id as string,
+          pill_id: m.id as string,
+          name: (m.name as string) || "Unknown",
+          strength,
+          unit,
+          dosage_form: (m.form as string) || "tablet",
+          image_url: (m.plan_image_url as string) || null,
+          frequency: (m.frequency as string) || "once_daily",
+          days_of_week: [0, 1, 2, 3, 4, 5, 6],
+          times_of_day: (m.reminder_times as string[]) || ["08:00"],
+          pill_details: null,
+        };
+      }));
+
       setPrescribedExercises(prescribedRes.prescribed_exercises || []);
     } catch (err) {
       console.error("Failed to fetch plans:", err);
@@ -1119,6 +1126,16 @@ function PlansContent({ patient }: { patient: Patient }) {
 
   const handlePlanSaved = () => {
     fetchPlans();
+  };
+
+  const handleDeleteMedication = async (medicationId: string) => {
+    if (!confirm("Are you sure you want to remove this medication?")) return;
+    try {
+      await deletePatientMedication(patient.id, medicationId);
+      fetchPlans();
+    } catch (err) {
+      console.error("Failed to delete medication:", err);
+    }
   };
 
   return (
@@ -1179,7 +1196,7 @@ function PlansContent({ patient }: { patient: Patient }) {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     {med.pill_details && (
                       <button
                         onClick={() => setSelectedMedForDetails(med.pill_details!)}
@@ -1189,6 +1206,13 @@ function PlansContent({ patient }: { patient: Patient }) {
                         <Info className="h-4 w-4" />
                       </button>
                     )}
+                    <button
+                      onClick={() => handleDeleteMedication(med.id)}
+                      className="text-muted-foreground hover:text-red-500 transition-colors"
+                      title="Remove medication"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1447,22 +1471,28 @@ function OverviewContent({ patient }: { patient: Patient }) {
     async function fetchPatientData() {
       setIsLoading(true);
       try {
-        // Always fetch assigned medications (the plan)
         const medsRes = await getPatientMedications(patient.id);
         const assignedMeds = medsRes.assigned_medications || [];
-        setAssignedMedications(assignedMeds.map((m: Record<string, unknown>) => ({
-          id: m.id as string,
-          pill_id: m.pill_id as string,
-          name: (m.pills as Record<string, unknown>)?.name as string || "Unknown",
-          strength: (m.pills as Record<string, unknown>)?.strength as number,
-          unit: (m.pills as Record<string, unknown>)?.unit as string,
-          dosage_form: (m.pills as Record<string, unknown>)?.dosage_form as string,
-          image_url: ((m.pills as Record<string, unknown>)?.image_url as string) || null,
-          frequency: m.frequency as string,
-          days_of_week: m.days_of_week as number[],
-          times_of_day: m.times_of_day as string[],
-          pill_details: m.pills as PillType, // Store full pill object
-        })));
+        setAssignedMedications(assignedMeds.map((m: Record<string, unknown>) => {
+          const dosageStr = (m.dosage as string) || "";
+          const dosageParts = dosageStr.split(" ");
+          const strength = parseFloat(dosageParts[0]) || 0;
+          const unit = dosageParts.slice(1).join(" ") || "mg";
+          
+          return {
+            id: m.id as string,
+            pill_id: m.id as string,
+            name: (m.name as string) || "Unknown",
+            strength,
+            unit,
+            dosage_form: (m.form as string) || "tablet",
+            image_url: (m.plan_image_url as string) || null,
+            frequency: (m.frequency as string) || "once_daily",
+            days_of_week: [0, 1, 2, 3, 4, 5, 6],
+            times_of_day: (m.reminder_times as string[]) || ["08:00"],
+            pill_details: null,
+          };
+        }));
         
         if (viewMode === "all") {
           // Fetch all recent data without date filter

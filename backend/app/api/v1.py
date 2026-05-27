@@ -282,21 +282,18 @@ async def get_patient_medications(
     patient_id: UUID,
     db: Client = Depends(get_db),
 ):
-    """Get medications and logs for a patient via the iOS app."""
-    # First get the patient's user_id
+    """Get medications for a patient."""
     patient_response = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
     if not patient_response.data:
         raise HTTPException(status_code=404, detail="Patient not found")
-    
+
     user_id = patient_response.data.get("user_id")
     medications = []
-    
+
     if user_id:
-        # Query medications by user_id (iOS self-logged)
-        meds_response = db.table("medications").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+        meds_response = db.table("medications").select("*").eq("user_id", user_id).eq("is_active", True).order("created_at", desc=True).execute()
         medications = meds_response.data or []
-        
-        # For each medication, get recent logs
+
         for med in medications:
             logs_response = db.table("medication_logs").select("*").eq(
                 "medication_id", med.get("id")
@@ -308,15 +305,33 @@ async def get_patient_medications(
             on_time_logs = len([l for l in (logs_response.data or []) if l.get("was_on_time")])
             med["adherence_rate"] = round((on_time_logs / total_logs * 100) if total_logs > 0 else 100, 1)
     
-    # Get clinician-assigned medications from patient_pills
-    patient_pills_response = db.table("patient_pills").select("*, pills(*)").eq("patient_id", str(patient_id)).eq("is_active", True).execute()
-    assigned_medications = patient_pills_response.data or []
-    
     return {
         "medications": medications,
-        "assigned_medications": assigned_medications,
-        "total": len(assigned_medications),  # Count clinician-assigned active prescriptions
+        "assigned_medications": medications,
+        "total": len(medications),
     }
+
+
+@router.delete("/patients/{patient_id}/medications/{medication_id}")
+async def delete_patient_medication(
+    patient_id: UUID,
+    medication_id: UUID,
+    db: Client = Depends(get_db),
+):
+    """Delete a medication from a patient's plan."""
+    patient_response = db.table("patients").select("user_id").eq("id", str(patient_id)).single().execute()
+    if not patient_response.data:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    user_id = patient_response.data.get("user_id")
+
+    med_response = db.table("medications").select("id").eq("id", str(medication_id)).eq("user_id", user_id).single().execute()
+    if not med_response.data:
+        raise HTTPException(status_code=404, detail="Medication not found")
+
+    db.table("medications").update({"is_active": False}).eq("id", str(medication_id)).execute()
+
+    return {"success": True, "message": "Medication deleted"}
 
 
 @router.post("/patients/{patient_id}/medications/assign")
