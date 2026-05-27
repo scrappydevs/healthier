@@ -14,11 +14,9 @@ if not supabase_url or not supabase_key:
 
 supabase = create_client(supabase_url, supabase_key)
 
-# Helper function to clean medication data - remove fields that might not exist in schema
 def clean_med_data(med):
     """Remove contraindications field if schema doesn't support it"""
     cleaned = med.copy()
-    # Remove contraindications if it exists (may not be in DB schema)
     if 'contraindications' in cleaned:
         del cleaned['contraindications']
     return cleaned
@@ -499,14 +497,12 @@ error_count = 0
 for med in additional_medications:
     cleaned_med = clean_med_data(med)
     try:
-        # Try to insert the medication
         result = supabase.table("pills").insert(cleaned_med).execute()
         print(f"✓ Added: {med['name']}")
         success_count += 1
     except Exception as e:
         error_str = str(e)
         if "duplicate" in error_str.lower() or "23505" in error_str:
-            # Try to update if it already exists
             try:
                 result = supabase.table("pills").update(cleaned_med).eq("id", med["id"]).execute()
                 print(f"↻ Updated: {med['name']}")

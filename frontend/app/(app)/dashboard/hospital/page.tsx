@@ -132,7 +132,6 @@ export default function HospitalViewPage() {
     criticalAlertCount: 0,
   });
 
-  // Fetch room details when a room is selected
   useEffect(() => {
     if (!selectedRoom) {
       setRoomDetails(null);
@@ -157,7 +156,6 @@ export default function HospitalViewPage() {
     // Initial fetch
     fetchRoomDetails();
 
-    // Auto-refresh every 10 seconds to keep room details updated
     const refreshInterval = setInterval(() => {
       fetchRoomDetails();
     }, 10000);
@@ -186,13 +184,9 @@ export default function HospitalViewPage() {
 
   return (
     <div className="h-full flex flex-col gap-4">
-      {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Floor Plan Viewer */}
         <div className="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
-          {/* Control Bar - 2D/3D Toggle and Active Alerts */}
           <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
-            {/* 2D/3D Toggle */}
             <div className="flex items-center gap-1">
               <button
                 onClick={() => handleModeToggle('2d')}
@@ -216,7 +210,6 @@ export default function HospitalViewPage() {
               </button>
             </div>
 
-            {/* Active Alerts Indicator */}
             {viewerState.alertCount > 0 && (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5">
@@ -236,7 +229,6 @@ export default function HospitalViewPage() {
             )}
           </div>
 
-          {/* 3D Viewer */}
           <div className="flex-1">
             <SpaceViewer
               viewMode="map"
@@ -249,10 +241,8 @@ export default function HospitalViewPage() {
           </div>
         </div>
 
-        {/* Room Detail Card - Shows below map when room is selected */}
         {selectedRoom && (
           <div className="mt-4 bg-white rounded-lg shadow-sm border border-neutral-200">
-            {/* Header */}
             <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <h2 className="text-base font-semibold text-neutral-950">{selectedRoom.name}</h2>
@@ -285,9 +275,7 @@ export default function HospitalViewPage() {
               </div>
             ) : (
               <div className="p-4">
-                {/* Room Summary Row */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                  {/* Patient Summary */}
                   <div>
                     <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">Patient</p>
                     {roomDetails?.patient ? (
@@ -310,7 +298,6 @@ export default function HospitalViewPage() {
                     )}
                   </div>
 
-                  {/* Tasks Summary */}
                   <div>
                     <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">Tasks</p>
                     {roomDetails ? (
@@ -332,7 +319,6 @@ export default function HospitalViewPage() {
                     )}
                   </div>
 
-                  {/* Medications Summary */}
                   <div>
                     <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">Medications</p>
                     {roomDetails ? (
@@ -351,7 +337,6 @@ export default function HospitalViewPage() {
                     )}
                   </div>
 
-                  {/* Alerts Summary */}
                   <div>
                     <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-1">Alerts</p>
                     {roomDetails ? (
@@ -370,10 +355,8 @@ export default function HospitalViewPage() {
                   </div>
                 </div>
 
-                {/* Detailed Sections - Only show if we have details */}
                 {roomDetails && (roomDetails.tasks.length > 0 || roomDetails.medications.length > 0 || roomDetails.alerts.length > 0 || roomDetails.hazards.length > 0 || (roomDetails.patient?.conditions?.length ?? 0) > 0) && (
                   <div className="border-t border-neutral-100 pt-4 mt-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* Patient Conditions */}
                     {roomDetails.patient && roomDetails.patient.conditions.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">Conditions</p>
@@ -387,7 +370,6 @@ export default function HospitalViewPage() {
                       </div>
                     )}
 
-                    {/* Tasks List */}
                     {roomDetails.tasks.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">
@@ -415,7 +397,6 @@ export default function HospitalViewPage() {
                       </div>
                     )}
 
-                    {/* Medications List */}
                     {roomDetails.medications.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">
@@ -432,7 +413,6 @@ export default function HospitalViewPage() {
                       </div>
                     )}
 
-                    {/* Alerts & Hazards List */}
                     {(roomDetails.alerts.length > 0 || roomDetails.hazards.length > 0) && (
                       <div>
                         <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">

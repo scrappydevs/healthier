@@ -51,7 +51,6 @@ export function LoginForm() {
 
   return (
     <div className="grid gap-6">
-      {/* Google OAuth Button */}
       <div className="grid gap-2">
         <Button
           type="button"
@@ -101,7 +100,6 @@ export function LoginForm() {
         </div>
       </div>
 
-      {/* Email/Password Form */}
       <form action={formAction} className="grid gap-4">
         {state.message ? (
           <div

@@ -7,7 +7,6 @@ from supabase import Client
 
 from app.models import PatientCreate, PatientUpdate, PatientWithAdherence
 
-
 class PatientService:
     """Service for patient-related database operations."""
 
@@ -37,7 +36,6 @@ class PatientService:
 
         offset = (page - 1) * per_page
         query = query.range(offset, offset + per_page - 1)
-        # Sort by care_setting (in_clinic first) then by created_at
         query = query.order("care_setting", desc=False).order("created_at", desc=True)
 
         response = query.execute()
@@ -131,7 +129,6 @@ class PatientService:
     def _calculate_adherence(self, patient_id: str) -> float:
         """Calculate adherence rate for a patient (last 7 days)."""
         try:
-            # Try RPC function first
             response = self.db.rpc(
                 "calculate_adherence_rate",
                 {"p_patient_id": patient_id, "p_days": 7}

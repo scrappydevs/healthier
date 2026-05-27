@@ -89,7 +89,6 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      {/* Profile Section */}
       <div className="bg-white rounded-md p-4">
         <h2 className="text-sm font-semibold text-foreground mb-4">Profile</h2>
         
@@ -141,7 +140,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Notifications Section */}
       <div className="bg-white rounded-md p-4">
         <h2 className="text-sm font-semibold text-foreground mb-4">Notifications</h2>
         
@@ -205,7 +203,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Alert Thresholds Section */}
       <div className="bg-white rounded-md p-4">
         <h2 className="text-sm font-semibold text-foreground mb-4">Alert Thresholds</h2>
         
@@ -252,7 +249,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-2">
         <button 
           onClick={handleSave}

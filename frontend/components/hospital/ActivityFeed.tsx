@@ -66,7 +66,6 @@ function getRelativeTime(date: Date): string {
 export function ActivityFeed({ events }: ActivityFeedProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to top when new events added
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
@@ -75,13 +74,11 @@ export function ActivityFeed({ events }: ActivityFeedProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <div className="px-3 py-2 border-b flex items-center justify-between shrink-0">
         <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Activity</h3>
         <span className="text-xs text-muted-foreground">{events.length} events</span>
       </div>
 
-      {/* Event List */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
@@ -103,12 +100,10 @@ export function ActivityFeed({ events }: ActivityFeedProps) {
                   )}
                 >
                   <div className="flex items-start gap-2">
-                    {/* Icon */}
                     <div className={cn("w-6 h-6 rounded flex items-center justify-center shrink-0 mt-0.5", colorClass)}>
                       <Icon className="w-3 h-3" />
                     </div>
 
-                    {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">

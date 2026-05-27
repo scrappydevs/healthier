@@ -14,15 +14,12 @@ export interface ActivityDataPoint {
   timestamp: string;
 }
 
-// Generate activity data for heatmap visualization
 // Higher values = more patient activity/movement
 export const activityData: ActivityDataPoint[] = rooms.map((room) => {
-  // Generate realistic activity values based on room type
   let baseActivity: number;
   
   switch (room.type) {
     case 'critical':
-      // Critical rooms have high activity due to constant monitoring
       baseActivity = 70 + Math.random() * 25;
       break;
     case 'waiting':
@@ -51,7 +48,6 @@ export const activityData: ActivityDataPoint[] = rooms.map((room) => {
       break;
     case 'patient':
     default:
-      // Patient rooms - activity based on status
       if (room.status === 'vacant') {
         baseActivity = 5 + Math.random() * 10;
       } else if (room.status === 'critical') {
@@ -74,7 +70,6 @@ export const activityData: ActivityDataPoint[] = rooms.map((room) => {
   };
 });
 
-// Time series data for historical view (last 24 hours, hourly)
 export const generateTimeSeries = (roomId: string, hours: number = 24): { timestamp: string; value: number }[] => {
   const room = rooms.find(r => r.id === roomId);
   if (!room) return [];
@@ -107,7 +102,6 @@ export const generateTimeSeries = (roomId: string, hours: number = 24): { timest
   return data;
 };
 
-// Get aggregate stats
 export const getActivityStats = () => {
   const values = activityData.map(d => d.value);
   return {

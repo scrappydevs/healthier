@@ -508,7 +508,6 @@ export async function getPatientJournal(
   return request<PatientJournalResponse>(`/api/v1/patients/${patientId}/journal${query ? `?${query}` : ""}`);
 }
 
-
 // ============================================
 // PILL LOGS
 // ============================================
@@ -549,7 +548,6 @@ export async function getPatientPillLogs(
   const query = params.toString();
   return request<PatientPillLogsResponse>(`/api/v1/patients/${patientId}/pill-logs${query ? `?${query}` : ""}`);
 }
-
 
 // ============================================
 // DAILY SUMMARY
@@ -600,7 +598,6 @@ export async function generateDailySummary(
     method: "POST",
   });
 }
-
 
 // ============================================
 // PATIENT PLANS (Diet & Exercise)
@@ -667,7 +664,6 @@ export async function deletePatientPlan(
   });
 }
 
-
 // ============================================
 // SUMMARIES
 // ============================================
@@ -709,7 +705,6 @@ export async function generateExerciseSummary(
   });
 }
 
-
 // ============================================
 // POSE ANALYSIS
 // ============================================
@@ -743,7 +738,6 @@ export type PoseAnalysis = {
   exercise_type?: string;
   processed_video_url?: string;
   error?: string;
-  // Exercise-specific guidance
   form_tips?: string[];
   key_metrics?: string;
   ideal_ranges?: Record<string, { min: number; max: number; note: string }>;

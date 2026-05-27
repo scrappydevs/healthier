@@ -1,10 +1,8 @@
 import type { ActivityEvent, EventType, EventSeverity } from './ActivityFeed';
 import { rooms } from './rooms';
 
-// Generate a unique ID
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
-// Generate mock events for demonstration
 export function generateMockEvents(): ActivityEvent[] {
   const now = new Date();
   
@@ -118,11 +116,9 @@ export function generateMockEvents(): ActivityEvent[] {
     },
   ];
 
-  // Sort by timestamp descending (most recent first)
   return mockEvents.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 }
 
-// Create a new event
 export function createEvent(
   type: EventType,
   severity: EventSeverity,
@@ -141,13 +137,11 @@ export function createEvent(
   };
 }
 
-// Get random room for demo purposes
 export function getRandomRoom() {
   const occupiedRooms = rooms.filter(r => r.status !== 'vacant');
   return occupiedRooms[Math.floor(Math.random() * occupiedRooms.length)];
 }
 
-// Generate a random vital check event
 export function generateVitalCheckEvent(): ActivityEvent {
   const room = getRandomRoom();
   const hr = Math.floor(60 + Math.random() * 40); // 60-100 bpm
@@ -164,7 +158,6 @@ export function generateVitalCheckEvent(): ActivityEvent {
   );
 }
 
-// Generate a random alert event
 export function generateAlertEvent(): ActivityEvent {
   const room = getRandomRoom();
   const alertTypes = [
@@ -188,7 +181,6 @@ export function generateAlertEvent(): ActivityEvent {
   );
 }
 
-// Generate a random medication event
 export function generateMedicationEvent(): ActivityEvent {
   const room = getRandomRoom();
   const medications = [

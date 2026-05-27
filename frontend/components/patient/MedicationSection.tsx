@@ -21,7 +21,6 @@ type AssignedMed = {
   is_active?: boolean;
 };
 
-// Get local date string (YYYY-MM-DD) from a date
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -29,14 +28,12 @@ function getLocalDateString(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// Get local date string from ISO timestamp
 function getLocalDateFromTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
   return getLocalDateString(date);
 }
 
 function formatDateLabel(dateStr: string): string {
-  // Parse date string as local date
   const [year, month, day] = dateStr.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   
@@ -69,14 +66,12 @@ function groupLogsByDate(medications: Medication[]): Map<string, LogWithMed[]> {
     }
   }
   
-  // Sort by date descending
   allLogs.sort((a, b) => {
     const dateA = a.taken_at || a.created_at || "";
     const dateB = b.taken_at || b.created_at || "";
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
   
-  // Group by local date
   for (const log of allLogs) {
     const timestamp = log.taken_at || log.created_at || "";
     const dateKey = getLocalDateFromTimestamp(timestamp);
@@ -129,7 +124,6 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
           };
         }));
         
-        // Auto-expand today
         const today = getLocalDateString(new Date());
         setExpandedDays(new Set([today]));
       } catch (err) {
@@ -141,7 +135,6 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
     fetchMedications();
   }, [patientId]);
 
-  // Fetch all available pills for the gallery
   useEffect(() => {
     async function fetchAllPills() {
       setIsLoadingPills(true);
@@ -188,7 +181,6 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
     );
   }
 
-  // Show assigned medications even if no logs exist
   const activeMeds = medications.filter((m) => m.is_active);
   const logsByDate = groupLogsByDate(medications);
   const activeAssigned = assignedMeds.filter((m) => m.is_active !== false);
@@ -206,9 +198,7 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
 
   return (
     <div className="space-y-4">
-      {/* Card 1: Prescribed Medications & Stats */}
       <div className="bg-white rounded-lg border">
-        {/* Summary Stats */}
         <div className="px-4 py-3 border-b">
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-muted/30 rounded-md p-3 text-center">
@@ -232,7 +222,6 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
           </div>
         </div>
 
-        {/* Prescribed Medications */}
         <div className="p-4">
           {activeAssigned.length > 0 ? (
             <div className="space-y-1">
@@ -283,7 +272,6 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
         </div>
       </div>
 
-      {/* Card 2: Medication Gallery - Extended Height */}
       <div className="bg-white rounded-lg border flex flex-col" style={{ height: 'calc(100vh - 400px)', minHeight: '500px' }}>
         <div className="px-4 py-3 border-b">
           <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -343,7 +331,6 @@ export function MedicationSection({ patientId }: MedicationSectionProps) {
         </div>
       </div>
 
-      {/* Medication Details Modal */}
       {selectedPill && (
         <MedicationDetailsModal
           pill={selectedPill}
@@ -369,7 +356,6 @@ function MedicationCard({
         onClick={onToggle}
         className="w-full p-2.5 flex items-start gap-2.5 hover:bg-muted/30 transition-colors text-left"
       >
-        {/* Icon or Image */}
         {medication.plan_image_url ? (
           <img
             src={medication.plan_image_url}
@@ -382,7 +368,6 @@ function MedicationCard({
           </div>
         )}
 
-        {/* Main info */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground">{medication.name}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -390,7 +375,6 @@ function MedicationCard({
           </p>
         </div>
 
-        {/* Adherence */}
         <div className="text-right shrink-0 flex items-center gap-1.5">
           <span
             className={cn(
@@ -412,7 +396,6 @@ function MedicationCard({
         </div>
       </button>
 
-      {/* Expanded details */}
       {isExpanded && (
         <div className="px-2.5 pb-2.5 pt-0 border-t">
           <div className="pt-2.5 space-y-2">

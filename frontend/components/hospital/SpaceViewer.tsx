@@ -10,7 +10,6 @@ declare global {
   }
 }
 
-// Patient interface
 interface Patient {
   id: string;
   name: string;
@@ -45,7 +44,6 @@ interface Room {
   patient?: Patient | null;
 }
 
-// Alert interface from backend
 interface Alert {
   id: string;
   title: string;
@@ -114,7 +112,6 @@ export function SpaceViewer({
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [viewerMode, setViewerMode] = useState<'2d' | '3d'>(initialViewerMode);
 
-  // Sync external mode changes
   useEffect(() => {
     if (initialViewerMode !== viewerMode && spaceRef.current && isViewerReady) {
       spaceRef.current.setMode(initialViewerMode);
@@ -128,7 +125,6 @@ export function SpaceViewer({
   const [hazards, setHazards] = useState<Hazard[]>([]);
   const [flashingRooms, setFlashingRooms] = useState<Set<string>>(new Set()); // rooms with new tasks
 
-  // Fetch Smplrspace config from backend
   useEffect(() => {
     const fetchSmplrConfig = async () => {
       try {
@@ -144,7 +140,6 @@ export function SpaceViewer({
     fetchSmplrConfig();
   }, []);
 
-  // Fetch rooms from backend (database-backed)
   // IMPORTANT: Merges DB data with existing room polygons to preserve visualization
   const fetchRooms = useCallback(async () => {
     try {
@@ -159,7 +154,6 @@ export function SpaceViewer({
         
         // Merge DB data with existing rooms to preserve polygon/position data
         setRooms(prevRooms => {
-          // If we have existing rooms with polygons, merge DB data into them
           if (prevRooms.length > 0 && prevRooms.some(r => r.position.polygon && r.position.polygon.length > 0)) {
             console.log('   Merging with existing polygon data...');
             return prevRooms.map(existingRoom => {
@@ -175,7 +169,6 @@ export function SpaceViewer({
             });
           }
           
-          // First load - no polygons yet, create basic room objects
           // Polygons will be added by syncRoomsFromSmplrspace
           console.log('   Initial load - creating room placeholders...');
           return dbRooms.map((room: any) => ({
@@ -198,7 +191,6 @@ export function SpaceViewer({
     }
   }, []);
 
-  // Fetch alerts from backend (database-backed)
   const fetchAlerts = useCallback(async () => {
     try {
       const alertMap: Record<string, string> = {};
@@ -227,7 +219,6 @@ export function SpaceViewer({
     }
   }, []);
 
-  // Fetch hazards from backend (database-backed)
   const fetchHazards = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/api/v1/hospital/hazards`);
@@ -240,7 +231,6 @@ export function SpaceViewer({
     }
   }, []);
 
-  // Sync rooms from Smplrspace walls (like Haven)
   const syncRoomsFromSmplrspace = useCallback(async (spaceId: string) => {
     if (!window.smplr || !smplrConfig || !spaceRef.current) {
       console.log('⏸️ Cannot sync rooms - dependencies not ready');
@@ -255,7 +245,6 @@ export function SpaceViewer({
         clientToken: smplrConfig.clientToken,
       });
 
-      // Get rooms detected from walls
       const allRoomsData = await smplrClient.getRoomsOnLevel({
         spaceId: spaceId,
         levelIndex: 0,
@@ -269,14 +258,12 @@ export function SpaceViewer({
         return;
       }
 
-      // Get space definition for annotations
       const definition = spaceRef.current.getDefinition();
       const level0 = definition?.levels?.[0];
       const annotationsArray = level0?.annotations || [];
       
       console.log('📋 Annotations found:', annotationsArray.length);
 
-      // Filter all relevant area annotations (rooms, critical rooms, spaces, etc.)
       const candidateAnnotations = annotationsArray.filter((a: any) => {
         const name = (a?.name || a?.text || '').toString().trim();
         if (!name) return false;
@@ -418,10 +405,7 @@ export function SpaceViewer({
       );
 
       // MANUAL OVERRIDE MAPPING (comment out to use automatic matching)
-      // Format: 'Annotation Name': polygon_index (from console log above)
-      // Set to -1 to force an annotation to render as highlight patch (open area)
       const manualMapping: Record<string, number | null> = {
-        // Patient rooms (auto-match working correctly)
         'Room 1': null,
         'Room 2': null,
         'Room 3': null,
@@ -429,7 +413,6 @@ export function SpaceViewer({
         'Room 5': null,
         'Room 6': null,
         
-        // Critical room - force highlight patch (no enclosing walls, open area)
         'Critical Room': -1,
         
         // Utility rooms
@@ -457,7 +440,6 @@ export function SpaceViewer({
           if (numMatch) {
             return { id: `critical-room-${numMatch[1]}`, name, room_type: 'critical', matchGroup: 'enclosed' };
           }
-          // Critical Room without a number
           return { id: 'critical-room', name, room_type: 'critical', matchGroup: 'enclosed' };
         }
         if (lower.includes('nurse station')) {
@@ -486,7 +468,6 @@ export function SpaceViewer({
           return { id: 'entrance', name, room_type: 'hallway', matchGroup: 'open' };
         }
 
-        // Fallback: still visualize it, but treat as enclosed so it doesn't steal open-area behavior.
         const fallbackId = lower.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         return { id: fallbackId || `area-${Math.random().toString(36).slice(2, 8)}`, name, room_type: 'patient', matchGroup: 'enclosed' };
       };
@@ -511,7 +492,6 @@ export function SpaceViewer({
           raw: any;
         }>;
 
-      // Make WC IDs deterministic when there are multiple "WC" labels without numbers.
       const wcNoNumber = annotations.filter((a) => a.id === 'wc');
       wcNoNumber.sort((a, b) => (a.x - b.x) || (a.z - b.z));
       wcNoNumber.forEach((a, idx) => {
@@ -521,12 +501,10 @@ export function SpaceViewer({
       const enclosedAnnotations = annotations.filter((a) => a.matchGroup === 'enclosed');
       const openAnnotations = annotations.filter((a) => a.matchGroup === 'open');
 
-      // Apply manual overrides first
       const assignedPolygons = new Set<number>();
       const syncedRooms: any[] = [];
       const forcedOpenAreas: any[] = []; // Annotations forced to be open areas
 
-      // Process manual mappings for enclosed areas
       for (const a of enclosedAnnotations) {
         const manualPolyIdx = manualMapping[a.name];
         if (manualPolyIdx === -1) {
@@ -550,7 +528,6 @@ export function SpaceViewer({
         }
       }
 
-      // Now do automatic matching for remaining enclosed annotations (exclude forced open areas)
       const remainingEnclosed = enclosedAnnotations.filter(a => 
         !syncedRooms.some(r => r.id === a.id) && !forcedOpenAreas.some(f => f.id === a.id)
       );
@@ -591,7 +568,6 @@ export function SpaceViewer({
         ];
       };
 
-      // Build synced rooms for remaining enclosed annotations (automatic matching)
       for (let ai = 0; ai < remainingEnclosed.length; ai++) {
         const a = remainingEnclosed[ai];
         const pIdx = assignment.get(ai);
@@ -610,14 +586,11 @@ export function SpaceViewer({
         });
       }
 
-      // Match open areas to any remaining polygon that CONTAINS the label. If none, use a small highlight patch.
       const allOpenAreas = [...openAnnotations, ...forcedOpenAreas];
       for (const a of allOpenAreas) {
-        // Check if this open area has a manual override forcing it to be a highlight patch
         const manualPolyIdx = manualMapping[a.name];
         if (manualPolyIdx === -1) {
           // Forced to highlight patch - skip polygon matching
-          // Use smaller, more compact patches
           let size = 2; // Default 2m patch
           if (a.id === 'check-in-space') size = 4;   // Check-in space (slightly bigger)
           if (a.id === 'waiting-space') size = 2;    // Waiting space
@@ -666,7 +639,6 @@ export function SpaceViewer({
             polygon: chosen.polygon,
           });
         } else {
-          // Check-in space may not be fully enclosed; highlight a portion instead.
           const size = a.id === 'check-in-space' ? 6 : 3;
           console.log(`✅ Assigned open area ${a.name} (${a.id}) -> highlight patch (${size}m)`);
           syncedRooms.push({
@@ -683,7 +655,6 @@ export function SpaceViewer({
       if (syncedRooms.length > 0) {
         console.log(`✅ Prepared ${syncedRooms.length} rooms for visualization`);
         
-        // Fetch database data to merge with polygon data (patient assignments, status)
         let dbRoomData: Record<string, any> = {};
         try {
           const dbRes = await fetch(`${API_URL}/api/v1/hospital/rooms`);
@@ -697,7 +668,6 @@ export function SpaceViewer({
           console.warn('⚠️ Could not fetch database room data');
         }
         
-        // Convert to frontend Room format, merging Smplrspace polygons with DB data
         const frontendRooms: Room[] = syncedRooms.map((room: any) => {
           const dbRoom = dbRoomData[room.id] || {};
           return {
@@ -736,7 +706,6 @@ export function SpaceViewer({
     }
   }, [smplrConfig]);
 
-  // Initialize Smplrspace viewer
   useEffect(() => {
     if (!containerRef.current || !smplrLoaded || !window.smplr || !smplrConfig) return;
 
@@ -776,10 +745,8 @@ export function SpaceViewer({
             setIsViewerReady(true);
             setViewerError(null);
 
-            // Sync rooms from walls (this sets rooms state directly)
             await syncRoomsFromSmplrspace(spaceId);
             
-            // Fetch alerts and hazards
             await fetchAlerts();
             await fetchHazards();
           },
@@ -816,7 +783,6 @@ export function SpaceViewer({
     };
   }, [smplrLoaded, smplrConfig, viewerMode, syncRoomsFromSmplrspace, fetchRooms, fetchAlerts]);
 
-  // Helper to safely execute space operations
   const safeSpaceOperation = useCallback((operation: () => void, operationName: string) => {
     if (!spaceRef.current || !isViewerReady) {
       console.log(`⏸️ Skipping ${operationName} - viewer not ready`);
@@ -826,7 +792,6 @@ export function SpaceViewer({
       operation();
       return true;
     } catch (e: any) {
-      // Check if it's a "viewer not ready" error - these are expected during transitions
       if (e?.message?.includes('viewer is not ready') || e?.message?.includes('not ready yet')) {
         console.log(`⏸️ ${operationName} skipped - viewer transitioning`);
         return false;
@@ -836,7 +801,6 @@ export function SpaceViewer({
     }
   }, [isViewerReady]);
 
-  // Update room visualization layers when rooms or alerts change
   useEffect(() => {
     if (!isViewerReady || !spaceRef.current) {
       console.log('⏸️ Skipping layer update - viewer not ready:', { isViewerReady, hasSpace: !!spaceRef.current });
@@ -854,7 +818,6 @@ export function SpaceViewer({
       console.log(`   - ${r.name}: pos=(${r.position.x?.toFixed(2)}, ${r.position.z?.toFixed(2)}), polygon=${r.position.polygon?.length || 0} points`);
     });
 
-    // Remove old layers - wrap in try/catch since viewer might be transitioning
     const removeLayers = () => {
       const layerIds = [
         'room-polygons', 'room-icons', 'patient-room-polygons', 'critical-room-polygons',
@@ -874,7 +837,6 @@ export function SpaceViewer({
       return; // Viewer not ready, skip the entire update
     }
 
-    // Filter rooms with valid positions (must have non-zero x OR z, OR polygon data)
     const validRooms = rooms.filter(r => 
       (r.position.x !== 0 || r.position.z !== 0) || 
       (r.position.polygon && r.position.polygon.length > 0)
@@ -888,15 +850,12 @@ export function SpaceViewer({
       }
     });
 
-    // Wrap all layer additions in try-catch to handle viewer state transitions
     try {
-      // Verify viewer is still ready before adding layers
       if (!spaceRef.current || !isViewerReady) {
         console.log('⏸️ Viewer became unavailable during update');
         return;
       }
 
-    // Add polygon layers for EACH room type (like Haven does)
     
     // 1. Patient rooms (only render if occupied or have special status)
     const patientPolygonData = validRooms
@@ -946,7 +905,6 @@ export function SpaceViewer({
             return '#22c55e'; // Green - occupied and stable
           }
           
-          // Fallback (shouldn't reach here due to filter)
           return '#e5e7eb';
         },
         onClick: (data: any) => {
@@ -1169,7 +1127,6 @@ export function SpaceViewer({
       // Layer might not exist
     }
 
-    // Helper to get initials from a name
     const getInitials = (name: string): string => {
       const parts = name.trim().split(/\s+/);
       if (parts.length >= 2) {
@@ -1178,13 +1135,11 @@ export function SpaceViewer({
       return name.substring(0, 2).toUpperCase();
     };
 
-    // Get rooms with patients that have polygon data (for position calculation)
     const roomsWithPatients = validRooms.filter(r => 
       r.patient && r.position.polygon && r.position.polygon.length > 0
     );
 
     if (roomsWithPatients.length > 0) {
-      // Calculate centroid of polygon for marker placement
       const calculateCentroid = (polygon: Array<{ x: number; z: number }>) => {
         let sumX = 0, sumZ = 0;
         for (const point of polygon) {
@@ -1214,7 +1169,6 @@ export function SpaceViewer({
 
       console.log(`   Patient markers: ${patientMarkerData.length}`);
 
-      // Use point layer with colored dots for patients
       spaceRef.current.addDataLayer({
         id: 'patient-markers',
         type: 'point',
@@ -1244,9 +1198,7 @@ export function SpaceViewer({
       // Layer might not exist
     }
 
-    // Map hazard locations to room positions
     const hazardsWithPositions = hazards.map(hazard => {
-      // Find matching room by location name
       const matchingRoom = validRooms.find(r => 
         r.name.toLowerCase().includes(hazard.location.toLowerCase()) ||
         hazard.location.toLowerCase().includes(r.name.toLowerCase())
@@ -1277,7 +1229,6 @@ export function SpaceViewer({
     if (hazardsWithPositions.length > 0) {
       console.log(`   Hazard markers: ${hazardsWithPositions.length}`);
 
-      // Use small point markers for hazards - simple and works in both 2D/3D
       spaceRef.current.addDataLayer({
         id: 'hazard-markers',
         type: 'point',
@@ -1301,7 +1252,6 @@ export function SpaceViewer({
     console.log('✅ Room visualization updated');
     
     } catch (e: any) {
-      // Handle viewer not ready errors gracefully - these happen during view transitions
       if (e?.message?.includes('viewer is not ready') || e?.message?.includes('not ready yet')) {
         console.log('⏸️ Visualization skipped - viewer transitioning between modes');
       } else {
@@ -1316,7 +1266,6 @@ export function SpaceViewer({
   useEffect(() => {
     if (!isViewerReady || !spaceRef.current) return;
     
-    // Remove previous flash layer
     try {
       spaceRef.current.removeDataLayer('flash-overlay');
     } catch (e) {
@@ -1325,7 +1274,6 @@ export function SpaceViewer({
     
     if (flashingRooms.size === 0) return;
     
-    // Find rooms that need to flash
     const flashingRoomData = rooms
       .filter(r => flashingRooms.has(r.id) && r.position.polygon && r.position.polygon.length > 0)
       .map(room => ({
@@ -1339,7 +1287,6 @@ export function SpaceViewer({
     
     console.log(`✨ Rendering flash overlay for ${flashingRoomData.length} rooms`);
     
-    // Create pulsing effect by toggling layer visibility
     let flashCount = 0;
     const maxFlashes = 10;
     
@@ -1386,7 +1333,6 @@ export function SpaceViewer({
     };
   }, [isViewerReady, flashingRooms, rooms]);
 
-  // Refresh all data periodically (every 10s) to ensure UI is always current
   useEffect(() => {
     if (!isViewerReady) return;
 
@@ -1403,7 +1349,6 @@ export function SpaceViewer({
             const data = await res.json();
             const dbRooms = data.rooms || [];
             
-            // Update existing rooms with fresh database data
             setRooms(prev => prev.map(room => {
               const dbRoom = dbRooms.find((r: any) => r.id === room.id);
               if (dbRoom) {
@@ -1429,7 +1374,6 @@ export function SpaceViewer({
     return () => clearInterval(interval);
   }, [isViewerReady, fetchAlerts, fetchHazards]);
 
-  // Listen for cache invalidation events from chat
   useEffect(() => {
     const handleCacheInvalidate = async (event: Event) => {
       const customEvent = event as CustomEvent;
@@ -1438,12 +1382,10 @@ export function SpaceViewer({
       console.log('🔄 Cache invalidation received:', customEvent.detail);
       console.log('   Keys to refresh:', keys);
       
-      // Handle flash room (when task is assigned)
       if (flashRoomId) {
         console.log(`✨ Flashing room: ${flashRoomId}`);
         setFlashingRooms(prev => new Set(prev).add(flashRoomId));
         
-        // Remove flash after 5 seconds
         setTimeout(() => {
           setFlashingRooms(prev => {
             const next = new Set(prev);
@@ -1453,7 +1395,6 @@ export function SpaceViewer({
         }, 5000);
       }
       
-      // Refresh both rooms and alerts when AI makes changes
       // Room status changes, patient transfers, etc. need both to update
       if (keys.includes('rooms') || keys.includes('patients') || keys.includes('tasks')) {
         console.log('♻️ Refreshing rooms...');
@@ -1470,7 +1411,6 @@ export function SpaceViewer({
         await fetchHazards();
       }
       
-      // If no specific keys, refresh everything
       if (keys.length === 0) {
         await fetchRooms();
         await fetchAlerts();
@@ -1486,7 +1426,6 @@ export function SpaceViewer({
     };
   }, [fetchAlerts, fetchRooms, fetchHazards]);
 
-  // Handle 2D/3D mode toggle
   const handleModeToggle = useCallback((mode: '2d' | '3d') => {
     if (spaceRef.current && isViewerReady) {
       spaceRef.current.setMode(mode);
@@ -1531,7 +1470,6 @@ export function SpaceViewer({
 
   return (
     <div className="relative w-full h-full flex flex-col" style={{ backgroundColor: '#fdfefe' }}>
-      {/* Load Smplrspace library */}
       <Script
         src="https://app.smplrspace.com/lib/smplr.js"
         strategy="afterInteractive"
@@ -1546,7 +1484,6 @@ export function SpaceViewer({
       />
       <link href="https://app.smplrspace.com/lib/smplr.css" rel="stylesheet" />
 
-      {/* Loading state */}
       {!isViewerReady && !viewerError && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-50 z-10">
           <div className="text-center">
@@ -1556,7 +1493,6 @@ export function SpaceViewer({
         </div>
       )}
 
-      {/* 3D Viewer container */}
       <div
         id="smplr-container"
         ref={containerRef}

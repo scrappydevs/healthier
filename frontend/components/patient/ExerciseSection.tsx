@@ -16,7 +16,6 @@ const intensityColors: Record<string, string> = {
   vigorous: "bg-red-100 text-red-700",
 };
 
-// Get local date string (YYYY-MM-DD) from a date
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -24,7 +23,6 @@ function getLocalDateString(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// Get local date string from ISO timestamp
 function getLocalDateFromTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
   return getLocalDateString(date);
@@ -132,7 +130,6 @@ export function ExerciseSection({ patientId }: ExerciseSectionProps) {
         const label = formatDateLabel(dateKey);
         const isToday = label === "Today";
 
-        // Today is always expanded, past days are collapsible
         if (!isToday) {
           return (
             <details key={dateKey} className="group border-b last:border-b-0" open={idx === 0}>
@@ -158,7 +155,6 @@ export function ExerciseSection({ patientId }: ExerciseSectionProps) {
 
         return (
           <div key={dateKey} className="border-b last:border-b-0 pb-4">
-            {/* Day Header */}
             <div className="flex items-center justify-between py-3">
               <h3 className="text-sm font-semibold text-foreground">{label}</h3>
               <span className="text-xs text-muted-foreground">
@@ -168,7 +164,6 @@ export function ExerciseSection({ patientId }: ExerciseSectionProps) {
               </span>
             </div>
 
-            {/* Exercise List */}
             <div className="divide-y divide-slate-100">
               {dateExercises.map((exercise) => (
                 <ExerciseEntry key={exercise.id} exercise={exercise} />
@@ -181,7 +176,6 @@ export function ExerciseSection({ patientId }: ExerciseSectionProps) {
   );
 }
 
-// Format exercise type - handle weird values like "00"
 function formatExerciseType(type: string): string {
   if (!type || type === "00" || type === "0" || /^\d+$/.test(type)) {
     return "Exercise";
@@ -205,7 +199,6 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
   const hasAnalyzedVideo = !!processedUrl;
   const exerciseLabel = formatExerciseType(exercise.exercise_type);
 
-  // Auto-trigger analysis if video exists but no analysis
   useEffect(() => {
     if (exercise.video_url && !exercise.pose_analysis && !isAnalyzing) {
       handleAnalyze();
@@ -228,7 +221,6 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
               clearInterval(pollInterval);
             }
           } catch {
-            // Continue polling
           }
         }, 3000);
         setTimeout(() => {
@@ -247,7 +239,6 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
 
   return (
     <div className="py-3">
-      {/* Exercise Header - inline */}
       <div className="flex items-center gap-2 flex-wrap mb-2">
         <span className="text-sm font-medium text-foreground">{exerciseLabel}</span>
         <span className="text-xs text-muted-foreground">{time}</span>
@@ -265,10 +256,8 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
         )}
       </div>
 
-      {/* Videos Side by Side */}
       {hasVideo && (
         <div className={cn("grid gap-3 mb-2", hasAnalyzedVideo || isAnalyzing ? "grid-cols-2" : "grid-cols-1 max-w-sm")}>
-          {/* Original Video */}
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">Original</p>
             <video
@@ -280,7 +269,6 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
             />
           </div>
 
-          {/* Analyzed Video */}
           {(hasAnalyzedVideo || isAnalyzing) && (
             <div>
               <p className="text-[10px] text-emerald-600 mb-1">
@@ -310,14 +298,12 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
         </div>
       )}
 
-      {/* Analysis Summary */}
       {analysis?.summary && (
         <p className="text-sm text-foreground leading-relaxed mb-2">
           {analysis.summary}
         </p>
       )}
 
-      {/* Symmetry stats inline with severity colors */}
       {analysis?.symmetry_analysis && Object.keys(analysis.symmetry_analysis).length > 0 && (
         <div className="flex flex-wrap gap-2 text-xs">
           {Object.entries(analysis.symmetry_analysis).map(([joint, data]) => {
@@ -340,7 +326,6 @@ function ExerciseEntry({ exercise }: { exercise: Exercise }) {
         </div>
       )}
 
-      {/* Notes */}
       {exercise.notes && (
         <p className="text-xs text-muted-foreground mt-1">{exercise.notes}</p>
       )}

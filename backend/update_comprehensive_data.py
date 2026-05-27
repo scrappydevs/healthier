@@ -11,7 +11,6 @@ if not supabase_url or not supabase_key:
 
 supabase = create_client(supabase_url, supabase_key)
 
-# Get all pills first
 result = supabase.table('pills').select('id, name, generic_name, image_url').execute()
 
 # Generic medication images and data

@@ -29,11 +29,9 @@ from app.chat_context import (
     generate_smart_title,
 )
 
-
 # AI clients
 _cerebras_client: Optional[OpenAI] = None
 _claude_client: Optional[anthropic.Anthropic] = None
-
 
 def get_cerebras_client() -> Optional[OpenAI]:
     """Get or create Cerebras client"""
@@ -62,7 +60,6 @@ def get_cerebras_client() -> Optional[OpenAI]:
         print(f"❌ Failed to initialize Cerebras: {e}")
         return None
 
-
 def get_claude_client() -> Optional[anthropic.Anthropic]:
     """Get or create Claude client"""
     global _claude_client
@@ -72,7 +69,6 @@ def get_claude_client() -> Optional[anthropic.Anthropic]:
     
     settings = get_settings()
     
-    # Try multiple env var names for Claude API key
     import os
     claude_key = settings.claude_api_key or os.getenv("CLAUDE_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
     
@@ -90,7 +86,6 @@ def get_claude_client() -> Optional[anthropic.Anthropic]:
     except Exception as e:
         print(f"❌ Failed to initialize Claude: {e}")
         return None
-
 
 def create_title_generator(client: OpenAI):
     """Create a title generator function using Cerebras"""
@@ -114,7 +109,6 @@ def create_title_generator(client: OpenAI):
             title = response.choices[0].message.content.strip()
             # Clean up the title - remove quotes if present
             title = title.strip('"\'')
-            # Ensure it's not too long
             if len(title) > 50:
                 title = title[:47] + "..."
             return title
@@ -123,7 +117,6 @@ def create_title_generator(client: OpenAI):
             return message[:40] + "..." if len(message) > 40 else message
     
     return generate_title
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -136,11 +129,9 @@ async def lifespan(app: FastAPI):
     print(f"🚀 Starting {settings.app_name} v{settings.app_version}")
     print(f"📚 API docs available at http://{settings.host}:{settings.port}/docs")
     
-    # Initialize AI clients (prefer Claude, fallback to Cerebras)
     get_claude_client()
     cerebras_client = get_cerebras_client()
     
-    # Set up title generator using Cerebras (it's fast!)
     if cerebras_client:
         set_title_generator(create_title_generator(cerebras_client))
         print("✅ Chat title generator configured (Cerebras)")
@@ -149,7 +140,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     print("👋 Shutting down...")
-
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
@@ -179,9 +169,7 @@ def create_app() -> FastAPI:
 
     return app
 
-
 app = create_app()
-
 
 # ============================================================================
 # AI CHAT ENDPOINTS
@@ -193,7 +181,6 @@ class ChatRequest(BaseModel):
     user_id: str = "default_user"
     chat_state: Optional[Dict] = None
 
-
 class ChatResponse(BaseModel):
     response: str
     session_id: str
@@ -204,7 +191,6 @@ class ChatResponse(BaseModel):
     cache_keys: list = []
     flash_room_id: Optional[str] = None  # Room to flash when task is assigned
     error: Optional[str] = None
-
 
 def convert_tools_for_claude(openai_tools: list) -> list:
     """Convert OpenAI tool format to Claude tool format"""
@@ -219,14 +205,12 @@ def convert_tools_for_claude(openai_tools: list) -> list:
             })
     return claude_tools
 
-
 async def chat_with_claude(client: anthropic.Anthropic, messages: list, system_prompt: str, tools: list) -> tuple:
     """Handle Claude chat with tool calling"""
     all_tool_results = []
     max_rounds = 5
     round_num = 0
     
-    # Convert messages to Claude format (no system in messages)
     claude_messages = []
     for msg in messages:
         if msg["role"] == "system":
@@ -249,7 +233,6 @@ async def chat_with_claude(client: anthropic.Anthropic, messages: list, system_p
             messages=claude_messages
         )
         
-        # Check if we have tool use
         tool_uses = [block for block in response.content if block.type == "tool_use"]
         text_blocks = [block for block in response.content if block.type == "text"]
         
@@ -259,10 +242,8 @@ async def chat_with_claude(client: anthropic.Anthropic, messages: list, system_p
             print(f"\n✅ Claude response (no tools): {final_text[:200]}...")
             return final_text, all_tool_results, round_num
         
-        # Process tool calls
         print(f"   Found {len(tool_uses)} tool calls")
         
-        # Add assistant message with tool use
         claude_messages.append({
             "role": "assistant",
             "content": response.content
@@ -287,20 +268,17 @@ async def chat_with_claude(client: anthropic.Anthropic, messages: list, system_p
                 "content": json.dumps(tool_result)
             })
         
-        # Add tool results to messages
         claude_messages.append({
             "role": "user",
             "content": tool_results
         })
         
-        # Check stop reason
         if response.stop_reason == "end_turn":
             final_text = "".join(block.text for block in text_blocks)
             return final_text, all_tool_results, round_num
     
     # Max rounds reached
     return "I've gathered the information. Let me know if you need anything else.", all_tool_results, round_num
-
 
 async def chat_with_cerebras(client: OpenAI, api_messages: list, tools: list) -> tuple:
     """Handle Cerebras/OpenAI chat with tool calling"""
@@ -375,7 +353,6 @@ async def chat_with_cerebras(client: OpenAI, api_messages: list, tools: list) ->
     assistant_response = current_response.choices[0].message.content or ""
     return assistant_response, all_tool_results, round_num
 
-
 async def fetch_hospital_state() -> dict:
     """Fetch current hospital state for AI context injection"""
     supabase = get_supabase()
@@ -385,11 +362,9 @@ async def fetch_hospital_state() -> dict:
     hospital_state = {}
     
     try:
-        # Fetch rooms with patient assignments
         rooms_res = supabase.table("hospital_rooms").select("*").execute()
         rooms = rooms_res.data or []
         
-        # Fetch active room assignments with patient info
         assignments_res = supabase.table("room_assignments").select(
             "room_id, patient_id, patients(id, age, medical_conditions, status, users!patients_user_id_fkey(full_name))"
         ).is_("discharged_at", "null").execute()
@@ -418,13 +393,11 @@ async def fetch_hospital_state() -> dict:
                 "patient": patient
             })
         
-        # Fetch active alerts
         alerts_res = supabase.table("alerts").select(
             "id, title, message, severity, type, patient_id"
         ).eq("acknowledged", False).execute()
         hospital_state["alerts"] = alerts_res.data or []
         
-        # Fetch active hazards
         try:
             hazards_res = supabase.table("hospital_hazards").select("*").in_(
                 "status", ["active", "responding"]
@@ -443,7 +416,6 @@ async def fetch_hospital_state() -> dict:
             print(f"⚠️ Error fetching hazards for state: {hazard_err}")
             hospital_state["hazards"] = []
         
-        # Calculate stats
         patient_rooms = [r for r in hospital_state["rooms"] if r["type"] in ["patient", "critical"]]
         occupied = len([r for r in patient_rooms if r.get("patient")])
         total = len(patient_rooms)
@@ -465,7 +437,6 @@ async def fetch_hospital_state() -> dict:
     
     return hospital_state
 
-
 @app.post("/ai/generate-title")
 async def generate_chat_title(request: dict):
     """Generate a chat title from a message using Cerebras"""
@@ -476,7 +447,6 @@ async def generate_chat_title(request: dict):
     
     cerebras_client = get_cerebras_client()
     if not cerebras_client:
-        # Fallback to truncation
         return {"title": message[:40] + "..." if len(message) > 40 else message}
     
     try:
@@ -506,7 +476,6 @@ async def generate_chat_title(request: dict):
         print(f"⚠️ Title generation failed: {e}")
         return {"title": message[:40] + "..." if len(message) > 40 else message}
 
-
 @app.post("/ai/chat", response_model=ChatResponse)
 async def ai_chat(request: ChatRequest):
     """
@@ -523,7 +492,6 @@ async def ai_chat(request: ChatRequest):
         )
     
     try:
-        # Get or create session
         if request.session_id:
             try:
                 context = await read_context(request.session_id)
@@ -538,12 +506,9 @@ async def ai_chat(request: ChatRequest):
             session_id = session["id"]
             context = await read_context(session_id)
         
-        # Update context state
         if request.chat_state:
             context.state.update(request.chat_state)
 
-        # Ensure title is always present (frontend may send chat_state["title"]).
-        # This prevents a blank title when the frontend restores a stale sessionId
         # but the backend has no in-memory session state after restart.
         session_title = context.state.get("title")
         if not session_title:
@@ -553,13 +518,11 @@ async def ai_chat(request: ChatRequest):
                 session_title = "New Chat"
             context.state["title"] = session_title
         
-        # Add user message to context
         context.messages.append({
             "role": "user",
             "content": request.message
         })
         
-        # Fetch current hospital state for context injection
         hospital_state = await fetch_hospital_state()
         
         system_prompt = build_system_prompt(context, hospital_state)
@@ -590,16 +553,13 @@ async def ai_chat(request: ChatRequest):
         print(f"\n✅ Tool execution complete after {round_num} rounds")
         print(f"   Total tools called: {len(all_tool_results)}")
         
-        # Add assistant response to context
         context.messages.append({
             "role": "assistant",
             "content": assistant_response
         })
         
-        # Save updated context
         await write_context(session_id, context)
         
-        # Check if cache should be invalidated and detect flash room
         invalidate_cache = False
         cache_keys = []
         flash_room_id = None
@@ -611,7 +571,6 @@ async def ai_chat(request: ChatRequest):
                 
                 # Detect tasks assigned to rooms for flash effect
                 if tool_result.get("room_name"):
-                    # Convert room name to ID
                     room_name = tool_result["room_name"]
                     room_id = room_name.lower().replace(" ", "-")
                     flash_room_id = room_id
@@ -641,7 +600,6 @@ async def ai_chat(request: ChatRequest):
             error=str(e)
         )
 
-
 @app.get("/ai/sessions")
 async def get_sessions(user_id: str = "default_user"):
     """Get all chat sessions for a user"""
@@ -651,7 +609,6 @@ async def get_sessions(user_id: str = "default_user"):
     except Exception as e:
         print(f"❌ Error fetching sessions: {e}")
         return {"sessions": [], "error": str(e)}
-
 
 @app.get("/ai/sessions/{session_id}")
 async def get_session(session_id: str):
@@ -669,7 +626,6 @@ async def get_session(session_id: str):
         print(f"❌ Error fetching session: {e}")
         return {"error": str(e)}
 
-
 @app.get("/smplrspace/config")
 async def get_smplrspace_config():
     """
@@ -677,13 +633,11 @@ async def get_smplrspace_config():
     Keeps sensitive tokens on the backend.
     """
     import os
-    # Use os.getenv directly - handle both correct and typo'd Infisical keys
     return {
         "organizationId": os.getenv("SMPLR_ORG_ID") or os.getenv("SMPLR_ORD_ID"),
         "clientToken": os.getenv("SMPLR_CLIENT_TOKEN") or os.getenv("SMPLR_TOKEN") or os.getenv("SMPR_CLIENT_TOKEN"),
         "spaceId": os.getenv("SMPLR_SPACE_ID"),
     }
-
 
 # ============================================================================
 # FLOOR PLAN DATA ENDPOINTS (DATABASE-BACKED)
@@ -697,17 +651,13 @@ async def get_hospital_rooms():
         return {"error": "Database not configured", "rooms": []}
     
     try:
-        # Fetch all rooms
         rooms_res = supabase.table("hospital_rooms").select("*").execute()
         rooms = rooms_res.data or []
         
-        # Fetch all active room assignments with patient info
-        # Use explicit FK hint to disambiguate patients->users relationship
         assignments_res = supabase.table("room_assignments").select(
             "room_id, patient_id, patients(id, age, medical_conditions, status, users!patients_user_id_fkey(full_name))"
         ).is_("discharged_at", "null").execute()
         
-        # Build assignment map
         assignment_map = {}
         for a in (assignments_res.data or []):
             patient = a.get("patients", {}) or {}
@@ -735,7 +685,6 @@ async def get_hospital_rooms():
     except Exception as e:
         print(f"Error fetching rooms: {e}")
         return {"error": str(e), "rooms": []}
-
 
 @app.get("/api/v1/hospital/hazards")
 async def get_hospital_hazards():
@@ -766,7 +715,6 @@ async def get_hospital_hazards():
         print(f"Error fetching hazards: {e}")
         return {"error": str(e), "hazards": []}
 
-
 @app.get("/api/v1/hospital/alerts")
 async def get_hospital_alerts():
     """Get all active alerts from database"""
@@ -780,7 +728,6 @@ async def get_hospital_alerts():
         ).eq("acknowledged", False).execute()
         alerts = response.data or []
         
-        # Get room assignments for alert patients
         patient_ids = [a.get("patient_id") for a in alerts if a.get("patient_id")]
         room_map = {}
         
@@ -808,7 +755,6 @@ async def get_hospital_alerts():
         print(f"Error fetching alerts: {e}")
         return {"error": str(e), "alerts": []}
 
-
 @app.get("/api/v1/hospital/rooms/{room_id}/details")
 async def get_room_details(room_id: str):
     """Get full details for a specific room including patient, tasks, hazards"""
@@ -817,14 +763,12 @@ async def get_room_details(room_id: str):
         return {"error": "Database not configured"}
     
     try:
-        # Get room
         room_res = supabase.table("hospital_rooms").select("*").eq("id", room_id).execute()
         if not room_res.data:
             return {"error": f"Room '{room_id}' not found"}
         
         room = room_res.data[0]
         
-        # Get patient in room
         assignment_res = supabase.table("room_assignments").select(
             "patient_id, assigned_at, patients(id, age, medical_conditions, status, users!patients_user_id_fkey(full_name, email))"
         ).eq("room_id", room_id).is_("discharged_at", "null").execute()
@@ -843,7 +787,6 @@ async def get_room_details(room_id: str):
                 "assigned_at": assignment_res.data[0].get("assigned_at")
             }
         
-        # Get pending tasks for room
         tasks_res = supabase.table("room_tasks").select("*").eq(
             "room_id", room_id
         ).eq("status", "pending").execute()
@@ -856,7 +799,6 @@ async def get_room_details(room_id: str):
             "due_at": t.get("due_at")
         } for t in (tasks_res.data or [])]
         
-        # Get hazards for room
         hazards_res = supabase.table("hospital_hazards").select("*").eq(
             "room_id", room_id
         ).in_("status", ["active", "responding"]).execute()
@@ -868,7 +810,6 @@ async def get_room_details(room_id: str):
             "status": h["status"]
         } for h in (hazards_res.data or [])]
         
-        # Get alerts for patient in room
         alerts = []
         if patient and patient.get("id"):
             alerts_res = supabase.table("alerts").select("*").eq(
@@ -881,7 +822,6 @@ async def get_room_details(room_id: str):
                 "severity": a.get("severity")
             } for a in (alerts_res.data or [])]
         
-        # Get pending medications for patient
         medications = []
         if patient and patient.get("id"):
             meds_res = supabase.table("pill_logs").select(
@@ -915,7 +855,6 @@ async def get_room_details(room_id: str):
     except Exception as e:
         print(f"Error fetching room details: {e}")
         return {"error": str(e)}
-
 
 if __name__ == "__main__":
     import uvicorn

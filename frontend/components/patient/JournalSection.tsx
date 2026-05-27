@@ -47,7 +47,6 @@ function formatDate(dateString: string): string {
 }
 
 function getEntrySummary(transcript: string): string {
-  // Try to get first sentence, or truncate to ~100 chars
   const firstSentence = transcript.split(/[.!?]/)[0];
   if (firstSentence && firstSentence.length < 120) {
     return firstSentence.trim() + (transcript.length > firstSentence.length ? "..." : "");
@@ -85,12 +84,10 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
         setEntries(response.entries);
         setIsLoading(false);
         
-        // Generate AI summaries for each day (async, don't block UI)
         setLoadingSummaries(true);
         const grouped = groupEntriesByDay(response.entries);
         const summariesMap: Record<string, string> = {};
         
-        // Generate AI summaries in parallel for all days
         await Promise.all(
           Object.keys(grouped).map(async (dayKey) => {
             const firstEntry = grouped[dayKey][0];
@@ -100,7 +97,6 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
               const result = await generateJournalDaySummary(patientId, entryDate);
               summariesMap[dayKey] = result.summary;
             } catch {
-              // If AI summary fails, don't show anything
               summariesMap[dayKey] = "";
             }
           })
@@ -160,7 +156,6 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
         
         return (
           <div key={dayKey} className="bg-white">
-            {/* Day Header */}
             <div className="px-4 py-3 flex items-center justify-between">
               <span className="text-sm font-medium text-foreground">
                 {formatDate(firstEntry.logged_at)}
@@ -170,7 +165,6 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
               </span>
             </div>
 
-            {/* Day Summary */}
             {(loadingSummaries || daySummaries[dayKey]) && (
               <div className="px-4 pb-3">
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Summary</p>
@@ -182,7 +176,6 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
               </div>
             )}
 
-            {/* Day Entries - Raw Transcripts */}
             <div className="px-4 pb-4 space-y-3">
               {dayEntries.map((entry) => {
                 const moodInfo = entry.mood ? moodIcons[entry.mood] : null;
@@ -194,18 +187,14 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
                     className="py-2"
                   >
                     <div className="flex items-start gap-3">
-                      {/* Time */}
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground w-20 shrink-0">
                         <Clock className="h-3 w-3" />
                         {formatTime(entry.logged_at)}
                       </div>
 
-                      {/* Content */}
                       <div className="flex-1 min-w-0 space-y-2">
-                        {/* Raw Transcript */}
                         <p className="text-sm text-foreground leading-relaxed">{entry.transcript}</p>
 
-                        {/* Tags */}
                         {entry.tags && entry.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1.5">
                             {entry.tags.map((tag, idx) => (
@@ -220,16 +209,13 @@ export function JournalSection({ patientId, startDate, endDate }: JournalSection
                         )}
                       </div>
 
-                      {/* Meta Info */}
                       <div className="flex items-center gap-3 shrink-0">
-                        {/* Duration */}
                         {entry.duration_seconds && (
                           <span className="text-xs text-muted-foreground">
                             {formatDuration(entry.duration_seconds)}
                           </span>
                         )}
 
-                        {/* Mood Indicator */}
                         {MoodIcon && moodInfo && (
                           <div className={cn("flex items-center gap-1", moodInfo.color)} title={moodInfo.label}>
                             <MoodIcon className="h-4 w-4" />

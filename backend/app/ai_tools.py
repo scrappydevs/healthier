@@ -9,7 +9,6 @@ import uuid
 
 from app.core.database import get_supabase
 
-
 # ============================================================================
 # TOOL DEFINITIONS (OpenAI function calling format)
 # ============================================================================
@@ -940,7 +939,6 @@ PILLPAL_TOOLS = [
     },
 ]
 
-
 # ============================================================================
 # HELPER FUNCTIONS FOR DATABASE QUERIES
 # ============================================================================
@@ -953,7 +951,6 @@ def fuzzy_match_room_db(query: str, supabase) -> Optional[Dict]:
     query_lower = query.lower().strip()
     
     try:
-        # Fetch all rooms from database
         response = supabase.table("hospital_rooms").select("*").execute()
         rooms = response.data or []
         
@@ -962,7 +959,6 @@ def fuzzy_match_room_db(query: str, supabase) -> Optional[Dict]:
             if query_lower == room["id"].lower() or query_lower == room["name"].lower():
                 return room
         
-        # Handle "Room X" format
         if query_lower.startswith("room "):
             room_num = query_lower.replace("room ", "").strip()
             for room in rooms:
@@ -970,7 +966,6 @@ def fuzzy_match_room_db(query: str, supabase) -> Optional[Dict]:
                 if name_lower == f"room {room_num}" or name_lower == f"room-{room_num}":
                     return room
         
-        # Handle just number like "1", "2"
         if query_lower.isdigit():
             for room in rooms:
                 if room["name"].lower() == f"room {query_lower}":
@@ -991,7 +986,6 @@ def fuzzy_match_room_db(query: str, supabase) -> Optional[Dict]:
     
     return None
 
-
 def fuzzy_match_patient_db(query: str, supabase) -> Optional[Dict]:
     """Fuzzy match patient by ID or name from database"""
     if not supabase:
@@ -1000,7 +994,6 @@ def fuzzy_match_patient_db(query: str, supabase) -> Optional[Dict]:
     query_lower = query.lower().strip()
     
     try:
-        # Fetch all patients with user info
         response = supabase.table("patients").select(
             "id, user_id, age, gender, medical_conditions, status, users!patients_user_id_fkey(full_name, email)"
         ).execute()
@@ -1038,14 +1031,12 @@ def fuzzy_match_patient_db(query: str, supabase) -> Optional[Dict]:
     
     return None
 
-
 def get_patient_in_room_db(room_id: str, supabase) -> Optional[Dict]:
     """Get the patient currently assigned to a room"""
     if not supabase:
         return None
     
     try:
-        # Get active room assignment (where discharged_at is null)
         response = supabase.table("room_assignments").select(
             "patient_id, assigned_at, patients(id, user_id, age, medical_conditions, status, users!patients_user_id_fkey(full_name))"
         ).eq("room_id", room_id).is_("discharged_at", "null").execute()
@@ -1067,7 +1058,6 @@ def get_patient_in_room_db(room_id: str, supabase) -> Optional[Dict]:
         print(f"Error getting patient in room: {e}")
     
     return None
-
 
 async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a tool call and return results"""
@@ -1106,7 +1096,6 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
         elif tool_name == "get_hallways":
             return await get_hallways(supabase)
         
-        # Patient Operations
         elif tool_name == "list_all_patients":
             return await list_all_patients(tool_input.get("include_discharged", False), supabase)
         elif tool_name == "list_unassigned_patients":
@@ -1152,7 +1141,6 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
         elif tool_name == "get_activity_summary":
             return await get_activity_summary(tool_input.get("hours", 24), supabase)
         
-        # Medication Adherence
         elif tool_name == "get_medication_schedule":
             return await get_medication_schedule(tool_input.get("patient_id"), supabase)
         elif tool_name == "add_food_instructions":
@@ -1164,7 +1152,6 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
         elif tool_name == "get_medication_alerts":
             return await get_medication_alerts(supabase)
         
-        # Alert System
         elif tool_name == "get_active_alerts":
             return await get_active_alerts(tool_input.get("severity"), supabase)
         elif tool_name == "create_alert":
@@ -1197,7 +1184,6 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, 
         print(f"❌ Error executing tool {tool_name}: {e}")
         return {"error": str(e)}
 
-
 # ============================================================================
 # TOOL IMPLEMENTATIONS (using Supabase database)
 # ============================================================================
@@ -1213,10 +1199,8 @@ async def get_room_status(room_id: str, supabase) -> Dict[str, Any]:
     if not room:
         return {"error": f"Room '{room_id}' not found"}
     
-    # Get patient assigned to this room
     patient = get_patient_in_room_db(room["id"], supabase)
     
-    # Get active tasks for this room
     tasks = []
     try:
         tasks_res = supabase.table("room_tasks").select("*").eq(
@@ -1226,7 +1210,6 @@ async def get_room_status(room_id: str, supabase) -> Dict[str, Any]:
     except Exception as e:
         print(f"Error fetching room tasks: {e}")
     
-    # Get hazards for this room
     hazards = []
     try:
         hazards_res = supabase.table("hospital_hazards").select("*").eq(
@@ -1247,23 +1230,19 @@ async def get_room_status(room_id: str, supabase) -> Dict[str, Any]:
         "active_hazards": len(hazards)
     }
 
-
 async def list_all_rooms(supabase) -> Dict[str, Any]:
     """List all rooms with their current occupancy status from database"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
-        # Fetch all rooms
         rooms_res = supabase.table("hospital_rooms").select("*").execute()
         rooms = rooms_res.data or []
         
-        # Fetch all active room assignments with patient info
         assignments_res = supabase.table("room_assignments").select(
             "room_id, patient_id, patients(id, users!patients_user_id_fkey(full_name))"
         ).is_("discharged_at", "null").execute()
         
-        # Build assignment map
         assignment_map = {}
         for a in (assignments_res.data or []):
             patient = a.get("patients", {}) or {}
@@ -1290,7 +1269,6 @@ async def list_all_rooms(supabase) -> Dict[str, Any]:
         print(f"Error listing rooms: {e}")
         return {"error": str(e)}
 
-
 async def list_rooms_by_type(room_type: str, supabase) -> Dict[str, Any]:
     """List rooms filtered by type from database"""
     if not supabase:
@@ -1310,26 +1288,22 @@ async def list_rooms_by_type(room_type: str, supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 async def list_available_rooms(supabase) -> Dict[str, Any]:
     """List rooms available for patient admission from database"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
-        # Get patient-capable rooms
         rooms_res = supabase.table("hospital_rooms").select("*").in_(
             "room_type", ["patient", "critical"]
         ).neq("status", "maintenance").execute()
         rooms = rooms_res.data or []
         
-        # Get occupied room IDs
         assignments_res = supabase.table("room_assignments").select(
             "room_id"
         ).is_("discharged_at", "null").execute()
         occupied_ids = set(a["room_id"] for a in (assignments_res.data or []))
         
-        # Filter to available rooms
         available = [
             {"id": r["id"], "name": r["name"], "type": r["room_type"], "status": r["status"]}
             for r in rooms if r["id"] not in occupied_ids
@@ -1342,14 +1316,12 @@ async def list_available_rooms(supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 async def list_occupied_rooms(supabase) -> Dict[str, Any]:
     """List rooms with patients assigned from database"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
-        # Get active assignments with room and patient info
         assignments_res = supabase.table("room_assignments").select(
             "room_id, hospital_rooms(id, name, room_type, status), patients(id, medical_conditions, users!patients_user_id_fkey(full_name))"
         ).is_("discharged_at", "null").execute()
@@ -1376,7 +1348,6 @@ async def list_occupied_rooms(supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 async def update_room_status(room_id: str, status: str, reason: Optional[str], supabase) -> Dict[str, Any]:
     """Update room status in database"""
     if not supabase:
@@ -1389,7 +1360,6 @@ async def update_room_status(room_id: str, status: str, reason: Optional[str], s
     old_status = room["status"]
     
     try:
-        # Update room status
         supabase.table("hospital_rooms").update({
             "status": status
         }).eq("id", room["id"]).execute()
@@ -1413,7 +1383,6 @@ async def update_room_status(room_id: str, status: str, reason: Optional[str], s
         }
     except Exception as e:
         return {"error": str(e)}
-
 
 async def get_room_patient(room_id: str, supabase) -> Dict[str, Any]:
     """Get patient currently in a room from database"""
@@ -1439,7 +1408,6 @@ async def get_room_patient(room_id: str, supabase) -> Dict[str, Any]:
         "patient": patient
     }
 
-
 async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dict[str, Any]:
     """Assign a patient to a room in database.
     
@@ -1448,7 +1416,6 @@ async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dic
     if not supabase:
         return {"error": "Database not configured"}
     
-    # If no patient_id provided, help by listing unassigned patients
     if not patient_id or patient_id.strip() == "":
         unassigned = await list_unassigned_patients(supabase)
         if unassigned.get("count", 0) > 0:
@@ -1471,7 +1438,6 @@ async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dic
     
     patient = fuzzy_match_patient_db(patient_id, supabase)
     if not patient:
-        # Patient not found - suggest available patients
         unassigned = await list_unassigned_patients(supabase)
         if unassigned.get("count", 0) > 0:
             patients = unassigned.get("unassigned_patients", [])
@@ -1482,30 +1448,25 @@ async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dic
             }
         return {"error": f"Patient '{patient_id}' not found"}
     
-    # Check if room is already occupied
     existing_patient = get_patient_in_room_db(room["id"], supabase)
     if existing_patient:
         return {"error": f"Room '{room['name']}' is already occupied by {existing_patient['name']}. Discharge them first or choose another room."}
     
     try:
-        # Remove patient from any previous room
         supabase.table("room_assignments").update({
             "discharged_at": datetime.now().isoformat()
         }).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
         
-        # Create new assignment
         supabase.table("room_assignments").insert({
             "room_id": room["id"],
             "patient_id": patient["id"],
             "notes": "Assigned via AI assistant"
         }).execute()
         
-        # Update patient care_setting to in_clinic
         supabase.table("patients").update({
             "care_setting": "in_clinic"
         }).eq("id", patient["id"]).execute()
         
-        # Update room status if vacant
         if room["status"] == "vacant":
             supabase.table("hospital_rooms").update({
                 "status": "normal"
@@ -1520,7 +1481,6 @@ async def assign_patient_to_room(patient_id: str, room_id: str, supabase) -> Dic
         }
     except Exception as e:
         return {"error": str(e)}
-
 
 async def admit_new_patient(
     name: str, 
@@ -1538,24 +1498,20 @@ async def admit_new_patient(
     if not name or not name.strip():
         return {"error": "Patient name is required"}
     
-    # Validate room
     room = fuzzy_match_room_db(room_id, supabase)
     if not room:
         return {"error": f"Room '{room_id}' not found"}
     
-    # Check if room is already occupied
     existing_patient = get_patient_in_room_db(room["id"], supabase)
     if existing_patient:
         return {"error": f"Room '{room['name']}' is already occupied by {existing_patient['name']}. Choose another room or discharge the current patient first."}
     
     try:
-        # Generate a unique email for the user (required by schema)
         import random
         import string
         random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
         email = f"{name.lower().replace(' ', '.')}_{random_suffix}@patient.hospital.local"
         
-        # Create user first
         user_res = supabase.table("users").insert({
             "email": email,
             "full_name": name,
@@ -1567,7 +1523,6 @@ async def admit_new_patient(
         
         user_id = user_res.data[0]["id"]
         
-        # Create patient record
         patient_data = {
             "user_id": user_id,
             "status": status or "stable",
@@ -1587,14 +1542,12 @@ async def admit_new_patient(
         
         patient_id = patient_res.data[0]["id"]
         
-        # Create room assignment
         supabase.table("room_assignments").insert({
             "room_id": room["id"],
             "patient_id": patient_id,
             "notes": f"New patient admitted via AI assistant"
         }).execute()
         
-        # Update room status to normal (occupied)
         supabase.table("hospital_rooms").update({
             "status": "normal"
         }).eq("id", room["id"]).execute()
@@ -1611,7 +1564,6 @@ async def admit_new_patient(
         print(f"Error admitting new patient: {e}")
         return {"error": str(e)}
 
-
 async def remove_patient_from_room(room_id: str, reason: Optional[str], supabase) -> Dict[str, Any]:
     """Remove/discharge patient from a room in database"""
     if not supabase:
@@ -1626,7 +1578,6 @@ async def remove_patient_from_room(room_id: str, reason: Optional[str], supabase
         return {"error": f"{room['name']} is already empty"}
     
     try:
-        # Mark assignment as discharged
         supabase.table("room_assignments").update({
             "discharged_at": datetime.now().isoformat(),
             "notes": reason or "Discharged via AI assistant"
@@ -1634,12 +1585,10 @@ async def remove_patient_from_room(room_id: str, reason: Optional[str], supabase
             "discharged_at", "null"
         ).execute()
         
-        # Update patient care_setting to at_home (discharged)
         supabase.table("patients").update({
             "care_setting": "at_home"
         }).eq("id", patient["id"]).execute()
         
-        # Set room status to vacant (for patient-type rooms)
         if room["room_type"] in ["patient"]:
             supabase.table("hospital_rooms").update({
                 "status": "vacant"
@@ -1653,7 +1602,6 @@ async def remove_patient_from_room(room_id: str, reason: Optional[str], supabase
         }
     except Exception as e:
         return {"error": str(e)}
-
 
 async def get_hallways(supabase) -> Dict[str, Any]:
     """Get all hallway areas from database"""
@@ -1673,7 +1621,6 @@ async def get_hallways(supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 # --- Patient Operations ---
 
 async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any]:
@@ -1686,7 +1633,6 @@ async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any
             ).execute()
             patients = response.data if response.data else []
             
-            # Format patients for response
             formatted = []
             for p in patients:
                 user = p.get("users", {}) or {}
@@ -1708,31 +1654,26 @@ async def list_all_patients(include_discharged: bool, supabase) -> Dict[str, Any
     except Exception as e:
         print(f"Error fetching patients from Supabase: {e}")
     
-    # Return empty if Supabase query fails - no mock data fallback
     return {
         "patients": [],
         "count": 0,
         "note": "No patients found or database query failed"
     }
 
-
 async def list_unassigned_patients(supabase) -> Dict[str, Any]:
     """Get patients who are NOT currently assigned to any room"""
     try:
         if supabase:
-            # Get all patients
             patients_res = supabase.table("patients").select(
                 "id, user_id, age, gender, medical_conditions, status, users!patients_user_id_fkey(full_name, email)"
             ).execute()
             all_patients = patients_res.data or []
             
-            # Get currently assigned patient IDs
             assignments_res = supabase.table("room_assignments").select(
                 "patient_id"
             ).is_("discharged_at", "null").execute()
             assigned_ids = {a["patient_id"] for a in (assignments_res.data or [])}
             
-            # Filter to unassigned patients
             unassigned = []
             for p in all_patients:
                 if p["id"] not in assigned_ids:
@@ -1763,18 +1704,15 @@ async def list_unassigned_patients(supabase) -> Dict[str, Any]:
     
     return {"error": "Database not configured"}
 
-
 async def search_patients(query: str, supabase) -> Dict[str, Any]:
     """Search for real patients in Supabase database"""
     try:
         if supabase:
-            # Get all patients with user info, then filter by name
             response = supabase.table("patients").select(
                 "id, user_id, age, gender, medical_conditions, users!patients_user_id_fkey(full_name, email)"
             ).execute()
             all_patients = response.data if response.data else []
             
-            # Filter by name (case insensitive)
             query_lower = query.lower()
             patients = []
             for p in all_patients:
@@ -1783,7 +1721,6 @@ async def search_patients(query: str, supabase) -> Dict[str, Any]:
                 if full_name and query_lower in full_name.lower():
                     patients.append(p)
             
-            # Format patients for response
             formatted = []
             for p in patients:
                 user = p.get("users", {}) or {}
@@ -1804,7 +1741,6 @@ async def search_patients(query: str, supabase) -> Dict[str, Any]:
     except Exception as e:
         print(f"Error searching patients in Supabase: {e}")
     
-    # Return empty if Supabase query fails - no mock data fallback
     return {
         "patients": [],
         "count": 0,
@@ -1812,19 +1748,15 @@ async def search_patients(query: str, supabase) -> Dict[str, Any]:
         "note": "No patients found or database query failed"
     }
 
-
 async def get_patient_details(patient_id: str, supabase) -> Dict[str, Any]:
     """Fetch real patient details from Supabase database"""
     try:
         if supabase:
-            # Try to fetch by ID first with user info
             response = supabase.table("patients").select(
                 "id, user_id, age, gender, medical_conditions, users!patients_user_id_fkey(full_name, email)"
             ).eq("id", patient_id).execute()
             
-            # If not found by ID, search by name
             if not response.data:
-                # Get all patients and search by name
                 all_patients = supabase.table("patients").select(
                     "id, user_id, age, gender, medical_conditions, users!patients_user_id_fkey(full_name, email)"
                 ).execute()
@@ -1841,7 +1773,6 @@ async def get_patient_details(patient_id: str, supabase) -> Dict[str, Any]:
                 user = p.get("users", {}) or {}
                 patient_name = user.get("full_name", "Unknown")
                 
-                # Fetch medications for this patient (through patient_pills)
                 meds_response = supabase.table("patient_pills").select(
                     "id, pill_id, pills(name, strength, unit)"
                 ).eq("patient_id", p["id"]).execute()
@@ -1854,7 +1785,6 @@ async def get_patient_details(patient_id: str, supabase) -> Dict[str, Any]:
                         "dosage": pill.get("dosage")
                     })
                 
-                # Fetch alerts for this patient
                 alerts_response = supabase.table("alerts").select(
                     "id, title, message, severity, type, created_at"
                 ).eq("patient_id", p["id"]).eq("resolved", False).execute()
@@ -1880,18 +1810,15 @@ async def get_patient_details(patient_id: str, supabase) -> Dict[str, Any]:
     
     return {"error": f"Failed to fetch patient '{patient_id}'"}
 
-
 async def get_patient_medications(patient_id: str, supabase) -> Dict[str, Any]:
     """Fetch real patient medications from Supabase database"""
     try:
         if supabase:
-            # Get patient info first
             patient_res = supabase.table("patients").select(
                 "id, user_id, users!patients_user_id_fkey(full_name)"
             ).eq("id", patient_id).execute()
             
             if not patient_res.data:
-                # Try searching by name
                 all_patients = supabase.table("patients").select(
                     "id, user_id, users!patients_user_id_fkey(full_name)"
                 ).execute()
@@ -1909,7 +1836,6 @@ async def get_patient_medications(patient_id: str, supabase) -> Dict[str, Any]:
                 patient_name = user.get("full_name", "Unknown")
                 actual_patient_id = p["id"]
                 
-                # Get medications through patient_pills
                 meds_res = supabase.table("patient_pills").select(
                     "id, pill_id, frequency, special_instructions, pills(name, strength, unit, instructions)"
                 ).eq("patient_id", actual_patient_id).execute()
@@ -1940,7 +1866,6 @@ async def get_patient_medications(patient_id: str, supabase) -> Dict[str, Any]:
     
     return {"error": f"Failed to fetch medications for patient '{patient_id}'"}
 
-
 async def get_patient_vitals(patient_id: str, supabase) -> Dict[str, Any]:
     """Get patient vitals from database"""
     if not supabase:
@@ -1951,7 +1876,6 @@ async def get_patient_vitals(patient_id: str, supabase) -> Dict[str, Any]:
         return {"error": f"Patient '{patient_id}' not found"}
     
     try:
-        # Get most recent vitals
         vitals_res = supabase.table("vitals").select("*").eq(
             "patient_id", patient["id"]
         ).order("measured_at", desc=True).limit(10).execute()
@@ -1975,7 +1899,6 @@ async def get_patient_vitals(patient_id: str, supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 async def get_patient_meals_tool(patient_id: str, date: Optional[str], supabase) -> Dict[str, Any]:
     """Get meals logged for a patient (defaults to today)."""
     if not supabase:
@@ -1997,7 +1920,6 @@ async def get_patient_meals_tool(patient_id: str, date: Optional[str], supabase)
         if user_id:
             query = query.eq("user_id", str(user_id))
         else:
-            # Fallback for older rows that may not have user_id set
             query = query.eq("patient_id", patient["id"])
         
         # Timezone-agnostic string filtering (matches API style)
@@ -2031,7 +1953,6 @@ async def get_patient_meals_tool(patient_id: str, date: Optional[str], supabase)
         }
     except Exception as e:
         return {"error": str(e)}
-
 
 async def get_patient_pill_logs_tool(patient_id: str, date: Optional[str], supabase) -> Dict[str, Any]:
     """Get pill logs for a patient for a given day (defaults to today)."""
@@ -2099,7 +2020,6 @@ async def get_patient_pill_logs_tool(patient_id: str, date: Optional[str], supab
     except Exception as e:
         return {"error": str(e)}
 
-
 async def get_patient_exercises_tool(patient_id: str, date: Optional[str], supabase) -> Dict[str, Any]:
     """Get exercise logs for a patient (date optional)."""
     if not supabase:
@@ -2113,7 +2033,6 @@ async def get_patient_exercises_tool(patient_id: str, date: Optional[str], supab
         # Primary: patient_id
         query = supabase.table("exercises").select("*").eq("patient_id", str(patient["id"]))
         
-        # Filter by date if provided
         if date:
             date_start = f"{date}T00:00:00"
             date_end = f"{date}T23:59:59"
@@ -2122,7 +2041,6 @@ async def get_patient_exercises_tool(patient_id: str, date: Optional[str], supab
         exercises_res = query.order("logged_at", desc=True).execute()
         exercises = exercises_res.data or []
         
-        # Fallback: user_id (some iOS records may not set patient_id)
         if not exercises and patient.get("user_id"):
             query = supabase.table("exercises").select("*").eq("user_id", str(patient["user_id"]))
             if date:
@@ -2164,7 +2082,6 @@ async def get_patient_exercises_tool(patient_id: str, date: Optional[str], supab
     except Exception as e:
         return {"error": str(e)}
 
-
 async def get_patient_care_plans_tool(patient_id: str, supabase) -> Dict[str, Any]:
     """Get active diet/exercise plans for a patient."""
     if not supabase:
@@ -2193,7 +2110,6 @@ async def get_patient_care_plans_tool(patient_id: str, supabase) -> Dict[str, An
             "count": len(plans),
         }
     except Exception:
-        # Fallback: active tasks as proxies (PillPal / floor plan workflow)
         try:
             tasks_res = supabase.table("room_tasks").select("*").eq(
                 "patient_id", str(patient["id"])
@@ -2212,7 +2128,6 @@ async def get_patient_care_plans_tool(patient_id: str, supabase) -> Dict[str, An
             }
         except Exception as e:
             return {"error": str(e)}
-
 
 async def mark_pill_taken(patient_id: str, medication_name: str, date: Optional[str], supabase) -> Dict[str, Any]:
     """Mark a scheduled pill dose as taken for a patient."""
@@ -2282,7 +2197,6 @@ async def mark_pill_taken(patient_id: str, medication_name: str, date: Optional[
     except Exception as e:
         return {"error": str(e)}
 
-
 async def get_patient_daily_summary(patient_id: str, date: Optional[str], supabase, force_refresh: bool = False) -> Dict[str, Any]:
     """Get daily summary (cached if available; otherwise returns a data-backed rollup)."""
     if not supabase:
@@ -2294,7 +2208,6 @@ async def get_patient_daily_summary(patient_id: str, date: Optional[str], supaba
     
     target_date = date or datetime.now().strftime("%Y-%m-%d")
     
-    # Try cached daily summary first (unless force_refresh)
     if not force_refresh:
         try:
             cached_res = supabase.table("daily_summaries").select("*").eq(
@@ -2306,7 +2219,6 @@ async def get_patient_daily_summary(patient_id: str, date: Optional[str], supaba
                 cached["cached"] = True
                 return cached
         except Exception:
-            # If the table/schema isn't available, fall back to rollup
             pass
     
     # Rollup from raw data
@@ -2354,7 +2266,6 @@ async def get_patient_daily_summary(patient_id: str, date: Optional[str], supaba
             "entries": journal_entries,
         },
     }
-
 
 async def refresh_patient_summary(patient_id: str, date: Optional[str], supabase) -> Dict[str, Any]:
     """Recompute daily rollup and attempt to upsert into daily_summaries."""
@@ -2410,7 +2321,6 @@ async def refresh_patient_summary(patient_id: str, date: Optional[str], supabase
         rollup["cached"] = False
     return rollup
 
-
 async def update_patient_status(patient_id: str, status: str, notes: Optional[str], supabase) -> Dict[str, Any]:
     """Update patient status in database"""
     if not supabase:
@@ -2423,7 +2333,6 @@ async def update_patient_status(patient_id: str, status: str, notes: Optional[st
     old_status = patient.get("status", "unknown")
     
     try:
-        # Update patient status
         supabase.table("patients").update({
             "status": status,
             "notes": notes
@@ -2440,7 +2349,6 @@ async def update_patient_status(patient_id: str, status: str, notes: Optional[st
     except Exception as e:
         return {"error": str(e)}
 
-
 async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], to_room: str, reason: Optional[str], supabase) -> Dict[str, Any]:
     """Transfer patient from one room to another in database"""
     if not supabase:
@@ -2450,12 +2358,10 @@ async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], 
     if not dest_room:
         return {"error": f"Destination room '{to_room}' not found"}
     
-    # Check if destination room is already occupied
     existing_patient = get_patient_in_room_db(dest_room["id"], supabase)
     if existing_patient:
         return {"error": f"Destination room '{dest_room['name']}' is already occupied by {existing_patient['name']}"}
     
-    # Find patient to transfer
     patient = None
     source_room = None
     if patient_id:
@@ -2469,7 +2375,6 @@ async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], 
         return {"error": "Patient not found"}
     
     try:
-        # Get current room assignment to find source room
         if not source_room:
             assignment_res = supabase.table("room_assignments").select(
                 "room_id, hospital_rooms(id, name, room_type)"
@@ -2486,25 +2391,21 @@ async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], 
             "notes": f"Transferred to {dest_room['name']}: {reason or 'No reason provided'}"
         }).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
         
-        # Update source room status to vacant if it's a patient room
         if source_room and source_room.get("room_type") == "patient":
             supabase.table("hospital_rooms").update({
                 "status": "vacant"
             }).eq("id", source_room["id"]).execute()
         
-        # Create new assignment
         supabase.table("room_assignments").insert({
             "room_id": dest_room["id"],
             "patient_id": patient["id"],
             "notes": f"Transferred from {old_room_name or 'unknown'}: {reason or 'No reason provided'}"
         }).execute()
         
-        # Update patient care_setting to in_clinic
         supabase.table("patients").update({
             "care_setting": "in_clinic"
         }).eq("id", patient["id"]).execute()
         
-        # Update destination room status
         if dest_room["status"] == "vacant":
             supabase.table("hospital_rooms").update({
                 "status": "normal"
@@ -2521,7 +2422,6 @@ async def transfer_patient(patient_id: Optional[str], from_room: Optional[str], 
     except Exception as e:
         return {"error": str(e)}
 
-
 async def add_patient_note(patient_id: str, note_type: str, content: str, supabase) -> Dict[str, Any]:
     """Add a note for a patient (stored as room task)"""
     if not supabase:
@@ -2532,14 +2432,12 @@ async def add_patient_note(patient_id: str, note_type: str, content: str, supaba
         return {"error": f"Patient '{patient_id}' not found"}
     
     try:
-        # Get patient's current room
         assignment_res = supabase.table("room_assignments").select(
             "room_id"
         ).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
         
         room_id = assignment_res.data[0]["room_id"] if assignment_res.data else None
         
-        # Create a task for the note
         supabase.table("room_tasks").insert({
             "room_id": room_id,
             "patient_id": patient["id"],
@@ -2562,7 +2460,6 @@ async def add_patient_note(patient_id: str, note_type: str, content: str, supaba
     except Exception as e:
         return {"error": str(e)}
 
-
 async def add_food_instructions(patient_id: str, instructions: str, duration_days: Optional[int], supabase) -> Dict[str, Any]:
     """Add food instructions for a patient (stored as room task)"""
     if not supabase:
@@ -2575,19 +2472,16 @@ async def add_food_instructions(patient_id: str, instructions: str, duration_day
     try:
         from datetime import timedelta
         
-        # Get patient's current room
         assignment_res = supabase.table("room_assignments").select(
             "room_id"
         ).eq("patient_id", patient["id"]).is_("discharged_at", "null").execute()
         
         room_id = assignment_res.data[0]["room_id"] if assignment_res.data else None
         
-        # Calculate due date
         due_at = None
         if duration_days:
             due_at = (datetime.now() + timedelta(days=duration_days)).isoformat()
         
-        # Create a food task
         supabase.table("room_tasks").insert({
             "room_id": room_id,
             "patient_id": patient["id"],
@@ -2613,7 +2507,6 @@ async def add_food_instructions(patient_id: str, instructions: str, duration_day
     except Exception as e:
         return {"error": str(e)}
 
-
 # --- Hazard Management ---
 # Note: Hazards table may not exist in current schema
 
@@ -2628,7 +2521,6 @@ async def list_active_hazards(supabase) -> Dict[str, Any]:
         ).execute()
         hazards = response.data or []
         
-        # Format for response
         formatted = [{
             "id": str(h["id"]),
             "type": h["hazard_type"],
@@ -2647,14 +2539,12 @@ async def list_active_hazards(supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 async def report_hazard(hazard_type: str, location: str, description: str, severity: str, supabase) -> Dict[str, Any]:
     """Report a new hazard to database"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
-        # Try to find matching room for the location
         room = fuzzy_match_room_db(location, supabase)
         room_id = room["id"] if room else None
         
@@ -2684,14 +2574,12 @@ async def report_hazard(hazard_type: str, location: str, description: str, sever
     except Exception as e:
         return {"error": str(e)}
 
-
 async def update_hazard_status(hazard_id: str, status: str, notes: Optional[str], supabase) -> Dict[str, Any]:
     """Update hazard status in database"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
-        # Get current hazard
         current = supabase.table("hospital_hazards").select("*").eq(
             "id", hazard_id
         ).execute()
@@ -2719,7 +2607,6 @@ async def update_hazard_status(hazard_id: str, status: str, notes: Optional[str]
         }
     except Exception as e:
         return {"error": str(e)}
-
 
 async def get_hazard_details(hazard_id: str, supabase) -> Dict[str, Any]:
     """Get hazard details from database"""
@@ -2750,7 +2637,6 @@ async def get_hazard_details(hazard_id: str, supabase) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"error": str(e)}
-
 
 async def get_hazards_by_room(room_id: str, supabase) -> Dict[str, Any]:
     """Get hazards for a specific room from database"""
@@ -2787,7 +2673,6 @@ async def get_hazards_by_room(room_id: str, supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 async def get_hazards_by_type(hazard_type: str, supabase) -> Dict[str, Any]:
     """Get hazards filtered by type from database"""
     if not supabase:
@@ -2815,7 +2700,6 @@ async def get_hazards_by_type(hazard_type: str, supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 # --- Hospital Statistics ---
 
 async def get_hospital_stats(supabase) -> Dict[str, Any]:
@@ -2824,36 +2708,30 @@ async def get_hospital_stats(supabase) -> Dict[str, Any]:
         return {"error": "Database not configured"}
     
     try:
-        # Count patient-capable rooms
         rooms_res = supabase.table("hospital_rooms").select("id, status").in_(
             "room_type", ["patient", "critical"]
         ).execute()
         rooms = rooms_res.data or []
         total_rooms = len(rooms)
         
-        # Count occupied rooms
         assignments_res = supabase.table("room_assignments").select(
             "room_id"
         ).is_("discharged_at", "null").execute()
         occupied_ids = set(a["room_id"] for a in (assignments_res.data or []))
         occupied_count = len([r for r in rooms if r["id"] in occupied_ids])
         
-        # Count critical rooms
         critical_rooms = len([r for r in rooms if r["status"] == "critical"])
         
-        # Count active hazards
         hazards_res = supabase.table("hospital_hazards").select(
             "id", count="exact"
         ).eq("status", "active").execute()
         active_hazards = hazards_res.count or 0
         
-        # Count active alerts
         alerts_res = supabase.table("alerts").select(
             "id", count="exact"
         ).eq("acknowledged", False).execute()
         active_alerts = alerts_res.count or 0
         
-        # Count total patients with room assignments
         total_patients = len(occupied_ids)
         
         return {
@@ -2869,7 +2747,6 @@ async def get_hospital_stats(supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 async def get_occupancy_rate(supabase) -> Dict[str, Any]:
     """Get room occupancy rate from database"""
     if not supabase:
@@ -2880,7 +2757,6 @@ async def get_occupancy_rate(supabase) -> Dict[str, Any]:
         if "error" in stats:
             return stats
         
-        # Build occupancy summary by room type
         by_type = {}
         for room_type in ["patient", "critical"]:
             rooms_res = supabase.table("hospital_rooms").select("id").eq(
@@ -2913,14 +2789,12 @@ async def get_occupancy_rate(supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 async def get_critical_summary(supabase) -> Dict[str, Any]:
     """Get summary of critical situations from database"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
-        # Get critical rooms
         rooms_res = supabase.table("hospital_rooms").select("*").eq(
             "status", "critical"
         ).execute()
@@ -2930,7 +2804,6 @@ async def get_critical_summary(supabase) -> Dict[str, Any]:
             "type": r["room_type"]
         } for r in (rooms_res.data or [])]
         
-        # Get critical alerts
         alerts_res = supabase.table("alerts").select("*").eq(
             "severity", "critical"
         ).eq("acknowledged", False).execute()
@@ -2941,7 +2814,6 @@ async def get_critical_summary(supabase) -> Dict[str, Any]:
             "patient_id": str(a.get("patient_id")) if a.get("patient_id") else None
         } for a in (alerts_res.data or [])]
         
-        # Get critical hazards
         hazards_res = supabase.table("hospital_hazards").select("*").eq(
             "severity", "critical"
         ).eq("status", "active").execute()
@@ -2965,7 +2837,6 @@ async def get_critical_summary(supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 async def get_activity_summary(hours: int, supabase) -> Dict[str, Any]:
     """Get activity summary from database"""
     if not supabase:
@@ -2975,22 +2846,18 @@ async def get_activity_summary(hours: int, supabase) -> Dict[str, Any]:
         from datetime import timedelta
         cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
         
-        # Count recent room assignments (admissions)
         admissions_res = supabase.table("room_assignments").select(
             "id", count="exact"
         ).gte("assigned_at", cutoff).execute()
         
-        # Count recent discharges
         discharges_res = supabase.table("room_assignments").select(
             "id", count="exact"
         ).gte("discharged_at", cutoff).execute()
         
-        # Count recent hazards
         hazards_res = supabase.table("hospital_hazards").select(
             "id", count="exact"
         ).gte("created_at", cutoff).execute()
         
-        # Count resolved hazards
         resolved_res = supabase.table("hospital_hazards").select(
             "id", count="exact"
         ).gte("resolved_at", cutoff).execute()
@@ -3008,7 +2875,6 @@ async def get_activity_summary(hours: int, supabase) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
-
 # --- Medication Adherence ---
 
 async def get_medication_schedule(patient_id: Optional[str], supabase) -> Dict[str, Any]:
@@ -3022,7 +2888,6 @@ async def get_medication_schedule(patient_id: Optional[str], supabase) -> Dict[s
             if not patient:
                 return {"error": f"Patient '{patient_id}' not found"}
             
-            # Get medications for specific patient
             meds_res = supabase.table("patient_pills").select(
                 "id, dosage_amount, frequency, times_of_day, is_active, pills(name, strength, unit, instructions)"
             ).eq("patient_id", patient["id"]).eq("is_active", True).execute()
@@ -3048,7 +2913,6 @@ async def get_medication_schedule(patient_id: Optional[str], supabase) -> Dict[s
                 "patient_name": patient["name"]
             }
         else:
-            # Get all pending medications
             meds_res = supabase.table("pill_logs").select(
                 "id, scheduled_time, status, patient_pills(pills(name, strength), patients(id, users!patients_user_id_fkey(full_name)))"
             ).eq("status", "pending").execute()
@@ -3078,7 +2942,6 @@ async def get_medication_schedule(patient_id: Optional[str], supabase) -> Dict[s
     except Exception as e:
         return {"error": str(e)}
 
-
 async def mark_medication_given(patient_id: str, medication_id: str, administered_by: Optional[str], notes: Optional[str], supabase) -> Dict[str, Any]:
     """Mark a medication as given in database"""
     if not supabase:
@@ -3089,7 +2952,6 @@ async def mark_medication_given(patient_id: str, medication_id: str, administere
         return {"error": f"Patient '{patient_id}' not found"}
     
     try:
-        # Update pill_log status
         supabase.table("pill_logs").update({
             "status": "taken",
             "taken_time": datetime.now().isoformat(),
@@ -3127,7 +2989,6 @@ async def mark_medication_given(patient_id: str, medication_id: str, administere
     except Exception as e:
         return {"error": str(e)}
 
-
 async def get_missed_medications(supabase) -> Dict[str, Any]:
     """Fetch real missed medications from Supabase database"""
     try:
@@ -3135,7 +2996,6 @@ async def get_missed_medications(supabase) -> Dict[str, Any]:
             from datetime import date
             today = date.today().isoformat()
             
-            # Get all pill logs for today that are missed or late
             # Join through patient_pills to get pill info
             response = supabase.table("pill_logs").select(
                 "id, patient_id, scheduled_time, status, patient_pills(pill_id, pills(name, strength, unit))"
@@ -3143,7 +3003,6 @@ async def get_missed_medications(supabase) -> Dict[str, Any]:
             
             missed = response.data if response.data else []
             
-            # Get patient names separately (patients -> users for full_name)
             patient_ids = list(set(m.get("patient_id") for m in missed if m.get("patient_id")))
             patient_names = {}
             
@@ -3156,7 +3015,6 @@ async def get_missed_medications(supabase) -> Dict[str, Any]:
                     user = p.get("users", {}) or {}
                     patient_names[p.get("id")] = user.get("full_name", "Unknown")
             
-            # Format the response
             formatted = []
             for m in missed:
                 patient_pills = m.get("patient_pills", {}) or {}
@@ -3178,26 +3036,22 @@ async def get_missed_medications(supabase) -> Dict[str, Any]:
     except Exception as e:
         print(f"Error fetching missed medications from Supabase: {e}")
     
-    # Return empty if Supabase query fails - no mock data fallback
     return {
         "missed_medications": [],
         "count": 0,
         "note": "No missed medications found or database query failed"
     }
 
-
 async def get_medication_alerts(supabase) -> Dict[str, Any]:
     """Fetch real medication alerts from Supabase database"""
     try:
         if supabase:
-            # Get medication-related alerts (missed_dose, low_adherence)
             response = supabase.table("alerts").select(
                 "id, title, message, severity, type, patient_id, created_at"
             ).in_("type", ["missed_dose", "low_adherence", "pattern_detected"]).eq("resolved", False).execute()
             
             alerts = response.data if response.data else []
             
-            # Get patient names separately
             patient_ids = list(set(a.get("patient_id") for a in alerts if a.get("patient_id")))
             patient_names = {}
             
@@ -3210,7 +3064,6 @@ async def get_medication_alerts(supabase) -> Dict[str, Any]:
                     user = p.get("users", {}) or {}
                     patient_names[p.get("id")] = user.get("full_name", "Unknown")
             
-            # Format the response
             formatted = []
             for a in alerts:
                 formatted.append({
@@ -3231,13 +3084,11 @@ async def get_medication_alerts(supabase) -> Dict[str, Any]:
     except Exception as e:
         print(f"Error fetching medication alerts from Supabase: {e}")
     
-    # Return empty if Supabase query fails - no mock data fallback
     return {
         "alerts": [],
         "count": 0,
         "note": "No medication alerts found or database query failed"
     }
-
 
 # --- Alert System ---
 
@@ -3255,7 +3106,6 @@ async def get_active_alerts(severity: Optional[str], supabase) -> Dict[str, Any]
             response = query.execute()
             alerts = response.data if response.data else []
             
-            # Get patient names separately
             patient_ids = list(set(a.get("patient_id") for a in alerts if a.get("patient_id")))
             patient_names = {}
             
@@ -3268,7 +3118,6 @@ async def get_active_alerts(severity: Optional[str], supabase) -> Dict[str, Any]
                     user = p.get("users", {}) or {}
                     patient_names[p.get("id")] = user.get("full_name", "Unknown")
             
-            # Format the response
             formatted = []
             for a in alerts:
                 formatted.append({
@@ -3290,14 +3139,12 @@ async def get_active_alerts(severity: Optional[str], supabase) -> Dict[str, Any]
     except Exception as e:
         print(f"Error fetching active alerts from Supabase: {e}")
     
-    # Return empty if Supabase query fails - no mock data fallback
     return {
         "alerts": [],
         "count": 0,
         "severity_filter": severity,
         "note": "No active alerts found or database query failed"
     }
-
 
 async def create_alert(title: str, description: str, severity: str, patient_id: Optional[str], room_id: Optional[str], supabase) -> Dict[str, Any]:
     """Create a new alert in database"""
@@ -3359,14 +3206,12 @@ async def create_alert(title: str, description: str, severity: str, patient_id: 
     except Exception as e:
         return {"error": str(e)}
 
-
 async def acknowledge_alert(alert_id: str, acknowledged_by: Optional[str], supabase) -> Dict[str, Any]:
     """Acknowledge an alert in database"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
-        # Check if alert exists
         check = supabase.table("alerts").select("id").eq("id", alert_id).execute()
         if not check.data:
             return {"error": f"Alert '{alert_id}' not found"}
@@ -3385,14 +3230,12 @@ async def acknowledge_alert(alert_id: str, acknowledged_by: Optional[str], supab
     except Exception as e:
         return {"error": str(e)}
 
-
 async def resolve_alert(alert_id: str, resolution_notes: Optional[str], supabase) -> Dict[str, Any]:
     """Resolve an alert in database"""
     if not supabase:
         return {"error": "Database not configured"}
     
     try:
-        # Check if alert exists
         check = supabase.table("alerts").select("id").eq("id", alert_id).execute()
         if not check.data:
             return {"error": f"Alert '{alert_id}' not found"}

@@ -132,11 +132,9 @@ export const hazards: Hazard[] = [
   },
 ];
 
-// Get only active hazards
 export const getActiveHazards = () => 
   hazards.filter(h => h.status === 'active' || h.status === 'responding');
 
-// Get hazard count by severity
 export const getHazardCountBySeverity = () => {
   const active = getActiveHazards();
   return {

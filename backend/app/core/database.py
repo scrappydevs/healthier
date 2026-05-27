@@ -9,9 +9,7 @@ from supabase import create_client, Client
 
 from app.core.config import get_settings
 
-
 _supabase_client: Optional[Client] = None
-
 
 def get_supabase() -> Optional[Client]:
     """
@@ -40,10 +38,8 @@ def get_supabase() -> Optional[Client]:
         print(f"❌ Failed to initialize Supabase: {e}")
         return None
 
-
 # Convenience alias
 supabase = get_supabase()
-
 
 def get_db() -> Client:
     """
@@ -55,7 +51,6 @@ def get_db() -> Client:
         raise RuntimeError("Database not configured - check SUPABASE_URL and SUPABASE_KEY")
     return client
 
-
 def get_db_sync() -> Client:
     """
     Get database client for use in background tasks (non-dependency injection).
@@ -65,7 +60,6 @@ def get_db_sync() -> Client:
     if client is None:
         raise RuntimeError("Database not configured - check SUPABASE_URL and SUPABASE_KEY")
     return client
-
 
 async def upload_image_to_bucket(
     bucket_name: str, 
@@ -103,14 +97,12 @@ async def upload_image_to_bucket(
             }
         )
         
-        # Get public URL
         public_url = client.storage.from_(bucket_name).get_public_url(file_path)
         
         return public_url
     except Exception as e:
         print(f"❌ Failed to upload to Supabase storage: {e}")
         raise RuntimeError(f"Failed to upload image to storage: {str(e)}")
-
 
 def ensure_bucket_exists(bucket_name: str, public: bool = True) -> bool:
     """
@@ -128,7 +120,6 @@ def ensure_bucket_exists(bucket_name: str, public: bool = True) -> bool:
         return False
     
     try:
-        # Try to list files in bucket (will fail if doesn't exist)
         client.storage.from_(bucket_name).list(limit=1)
         return True
     except Exception:

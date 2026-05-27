@@ -37,12 +37,10 @@ export function PatientCard({
       href={`/dashboard/patients/${id}`}
       className="flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors hover:bg-muted/40"
     >
-      {/* Avatar */}
       <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 shrink-0">
         <span className="text-xs font-medium text-primary">{initials}</span>
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-foreground truncate">
@@ -60,7 +58,6 @@ export function PatientCard({
         </p>
       </div>
 
-      {/* Last active */}
       <span className="text-xs text-muted-foreground shrink-0">
         {lastActive}
       </span>

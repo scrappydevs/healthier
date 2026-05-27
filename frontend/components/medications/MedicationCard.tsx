@@ -41,7 +41,6 @@ export function MedicationCard({ medication, patientId }: MedicationCardProps) {
 
   return (
     <div className="relative border rounded-lg p-4 hover:shadow-md transition-shadow">
-      {/* Menu Button */}
       <button
         onClick={() => setShowMenu(!showMenu)}
         className="absolute top-3 right-3 p-1 text-muted-foreground hover:text-foreground transition-colors"
@@ -74,7 +73,6 @@ export function MedicationCard({ medication, patientId }: MedicationCardProps) {
         </div>
       )}
 
-      {/* Medication Info */}
       <div className="flex items-start gap-3 mb-3">
         {pill.image_url && (
           <img
@@ -92,7 +90,6 @@ export function MedicationCard({ medication, patientId }: MedicationCardProps) {
         </div>
       </div>
 
-      {/* Status Badge */}
       <div className="mb-3">
         <span className={cn(
           "inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full",
@@ -108,7 +105,6 @@ export function MedicationCard({ medication, patientId }: MedicationCardProps) {
         </span>
       </div>
 
-      {/* Schedule Details */}
       <div className="space-y-2 text-sm">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Pill className="h-3 w-3" />
@@ -126,7 +122,6 @@ export function MedicationCard({ medication, patientId }: MedicationCardProps) {
         </div>
       </div>
 
-      {/* Additional Info */}
       {medication.with_food && (
         <div className="mt-3 pt-3 border-t">
           <p className="text-xs text-muted-foreground">Take with food</p>

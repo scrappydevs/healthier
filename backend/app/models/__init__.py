@@ -44,14 +44,12 @@ from app.models.journal_log import (
 )
 
 __all__ = [
-    # Patient
     "PatientBase",
     "PatientCreate",
     "PatientUpdate",
     "PatientResponse",
     "PatientWithAdherence",
     "PatientListResponse",
-    # Medication
     "MedicationBase",
     "MedicationCreate",
     "MedicationResponse",
@@ -62,7 +60,6 @@ __all__ = [
     "MedicationLogCreate",
     "MedicationLogResponse",
     "MedicationLogUpdate",
-    # Alert
     "AlertBase",
     "AlertCreate",
     "AlertResponse",
@@ -76,7 +73,6 @@ __all__ = [
     "ExerciseLogCreate",
     "ExerciseLogResponse",
     "ActivitySummary",
-    # Journal Logs
     "JournalLogBase",
     "JournalLogCreate",
     "JournalLogUpdate",

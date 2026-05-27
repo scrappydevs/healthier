@@ -79,7 +79,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     toggle: toggleSidebar,
   } = useSidebarStore();
 
-  // Handle resize drag
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
@@ -124,10 +123,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [toggleChat, toggleSidebar]);
 
-  // Handle cache invalidation from AI chat
   const handleCacheInvalidate = useCallback((keys: string[]) => {
     console.log('🔄 Cache invalidated:', keys);
-    // Dispatch custom event for components to refresh their data
     window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
       detail: { keys, timestamp: Date.now() }
     }));
@@ -135,14 +132,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Sidebar - white background */}
       <aside 
         className={cn(
           "flex h-screen flex-col bg-white border-r shrink-0 transition-all duration-200 ease-in-out",
           sidebarOpen ? "w-56" : "w-14"
         )}
       >
-        {/* Header - Logo centered */}
         <div className={cn(
           "flex items-center justify-center h-12 border-b shrink-0",
           sidebarOpen ? "px-4" : "px-2"
@@ -158,7 +153,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           )}
         </div>
 
-        {/* Navigation */}
         <nav className={cn("flex flex-1 flex-col", sidebarOpen ? "px-3 pt-4 pb-2" : "px-2 pt-4 pb-2")}>
           <div className="flex flex-col gap-0.5">
             {navigation.map((item) => {
@@ -202,7 +196,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </nav>
       </aside>
 
-      {/* Main Content - slight tint */}
       <div className="flex-1 flex min-w-0">
         <div 
           className={cn(
@@ -211,7 +204,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           )}
           style={{ marginRight: isChatOpen ? chatWidth : 0 }}
         >
-          {/* Header */}
           <header className="flex h-12 items-center justify-between bg-white px-4 shrink-0 border-b">
             <div className="flex items-center gap-2">
               <Button
@@ -258,7 +250,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </div>
           </header>
 
-          {/* Page Content - muted background */}
           <main className="flex-1 overflow-auto bg-muted/40">
             <div className="p-4">
               {children}
@@ -266,7 +257,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </main>
         </div>
 
-        {/* Chat Panel - white background */}
         <div 
           className={cn(
             "fixed top-0 right-0 h-full bg-white border-l",
@@ -275,7 +265,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           )}
           style={{ width: chatWidth }}
         >
-          {/* Resize Handle */}
           <div
             className={cn(
               "absolute left-0 top-0 bottom-0 w-1 cursor-col-resize",

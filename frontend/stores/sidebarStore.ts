@@ -39,7 +39,6 @@ export const useSidebarStore = create<SidebarStore>((set, get) => ({
   },
 }));
 
-// Initialize from localStorage
 if (typeof window !== "undefined") {
   const saved = localStorage.getItem(SIDEBAR_OPEN_KEY);
   if (saved === "false") {

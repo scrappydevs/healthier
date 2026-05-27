@@ -10,16 +10,13 @@ from pydantic import BaseModel
 from app.services.pill_detection_service import get_pill_detection_service, PillDetection
 from app.core.database import upload_image_to_bucket, ensure_bucket_exists
 
-
 router = APIRouter(prefix="/api/v1/pills", tags=["pills"])
-
 
 # Response Models
 class DetectionResult(BaseModel):
     """Single pill detection result"""
     confidence: float
     bbox: List[float]  # [x, y, width, height]
-
 
 class PillDetectionResponse(BaseModel):
     """Response for pill detection endpoint"""
@@ -29,7 +26,6 @@ class PillDetectionResponse(BaseModel):
     detections: List[DetectionResult]
     warnings: List[str]
     error: Optional[str] = None
-
 
 @router.post("/detect", response_model=PillDetectionResponse)
 async def detect_pills(
@@ -54,7 +50,6 @@ async def detect_pills(
         PillDetectionResponse with detection results and bounded image URL
     """
     try:
-        # Validate file type
         if not image.content_type or not image.content_type.startswith("image/"):
             raise HTTPException(
                 status_code=400,
@@ -67,10 +62,8 @@ async def detect_pills(
         if len(image_data) == 0:
             raise HTTPException(status_code=400, detail="Empty image file")
         
-        # Get pill detection service
         detection_service = get_pill_detection_service()
         
-        # Run detection and get annotated image
         detections, annotated_image_bytes = detection_service.detect_and_annotate(
             image_data,
             conf_threshold=0.25,
@@ -88,11 +81,9 @@ async def detect_pills(
             if avg_confidence < 0.5:
                 warnings.append("Low detection confidence. Consider retaking the photo with better lighting.")
         
-        # Ensure storage bucket exists
         bucket_name = "bounded-pill-images"
         ensure_bucket_exists(bucket_name, public=True)
         
-        # Generate unique filename
         file_extension = "jpg"  # Always save as JPEG
         filename = f"{uuid4()}.{file_extension}"
         file_path = f"pills/{filename}"
@@ -107,7 +98,6 @@ async def detect_pills(
             )
         except Exception as storage_error:
             print(f"⚠️ Failed to upload to Supabase storage: {storage_error}")
-            # Return success with detections but note storage failure
             return PillDetectionResponse(
                 success=True,
                 pill_count=len(detections),
@@ -123,7 +113,6 @@ async def detect_pills(
                 error=f"Storage upload failed: {str(storage_error)}"
             )
         
-        # Return successful response
         return PillDetectionResponse(
             success=True,
             pill_count=len(detections),
@@ -149,7 +138,6 @@ async def detect_pills(
             status_code=500,
             detail=f"Failed to process image: {str(e)}"
         )
-
 
 @router.get("/health")
 async def health_check():

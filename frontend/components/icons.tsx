@@ -1,5 +1,4 @@
 // Centralized icon exports from lucide-react
-// Use these across the app for consistency
 
 export {
   // Navigation
@@ -39,7 +38,6 @@ export {
   Thermometer,
   Droplets,
   
-  // Food & Exercise
   Apple,
   Utensils,
   Coffee,
@@ -61,7 +59,6 @@ export {
   Mail,
   Send,
   
-  // User
   User,
   UserPlus,
   LogOut,

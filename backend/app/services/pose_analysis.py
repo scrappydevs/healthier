@@ -48,7 +48,6 @@ SKELETON_CONNECTIONS = [
     (24, 26), (26, 28),  # right leg
 ]
 
-
 def get_pose_detector():
     """Get MediaPipe Pose detector (loads instantly, no download)."""
     try:
@@ -68,7 +67,6 @@ def get_pose_detector():
         logger.error(f"Failed to initialize MediaPipe Pose: {e}")
         return None
 
-
 def calculate_angle(p1: Dict, p2: Dict, p3: Dict) -> Optional[float]:
     """Calculate angle at p2 given three points."""
     if not all([p1.get("visibility", 0) > 0.3, p2.get("visibility", 0) > 0.3, p3.get("visibility", 0) > 0.3]):
@@ -83,7 +81,6 @@ def calculate_angle(p1: Dict, p2: Dict, p3: Dict) -> Optional[float]:
     
     return float(angle)
 
-
 def extract_joint_angles(landmarks: List[Dict]) -> Dict[str, Optional[float]]:
     """Extract all joint angles from landmarks."""
     angles = {}
@@ -93,7 +90,6 @@ def extract_joint_angles(landmarks: List[Dict]) -> Dict[str, Optional[float]]:
         else:
             angles[name] = None
     return angles
-
 
 def analyze_symmetry(angles: Dict[str, Optional[float]]) -> Dict[str, Any]:
     """Analyze left/right symmetry for bilateral joints."""
@@ -120,7 +116,6 @@ def analyze_symmetry(angles: Dict[str, Optional[float]]) -> Dict[str, Any]:
             }
     
     return symmetry
-
 
 def draw_pose_on_frame(frame, landmarks, width, height):
     """Draw pose skeleton and keypoints on a frame with smooth, clean styling."""
@@ -160,7 +155,6 @@ def draw_pose_on_frame(frame, landmarks, width, height):
                 cv2.circle(frame, pt, KEYPOINT_RADIUS, KEYPOINT_COLOR, -1, cv2.LINE_AA)
     
     return frame
-
 
 def process_video_frames(
     video_path: str, 
@@ -217,17 +211,14 @@ def process_video_frames(
             
             current_landmarks = None
             
-            # Run pose estimation
             should_analyze = (frame_idx % sample_rate == 0)
             should_run_model = should_analyze or (output_video_path and frame_idx % 2 == 0)
             
             if should_run_model:
-                # Convert BGR to RGB for MediaPipe
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 results = pose.process(rgb_frame)
                 
                 if results.pose_landmarks:
-                    # Convert landmarks to our format
                     landmarks = []
                     for idx, lm in enumerate(results.pose_landmarks.landmark):
                         landmarks.append({
@@ -270,7 +261,6 @@ def process_video_frames(
         video_writer.release()
         logger.info(f"Video writer released. Processed {frame_idx} frames.")
     
-    # Calculate statistics
     angle_stats = {}
     for name, values in all_angles.items():
         if values:
@@ -300,12 +290,10 @@ def process_video_frames(
         "frames": frames_data[:20],
     }
 
-
 def get_exercise_specific_guidance(exercise_type: str) -> Dict[str, Any]:
     """Get exercise-specific metrics to focus on and ideal ranges."""
     exercise_lower = (exercise_type or "").lower()
     
-    # Default guidance
     guidance = {
         "focus_joints": ["knee", "hip", "shoulder"],
         "ideal_ranges": {},
@@ -392,7 +380,6 @@ def get_exercise_specific_guidance(exercise_type: str) -> Dict[str, Any]:
             "key_metrics": "overhead reach, elbow extension, shoulder symmetry"
         }
     
-    # Push-up / plank
     elif any(x in exercise_lower for x in ["push", "pushup", "push-up", "plank"]):
         guidance = {
             "focus_joints": ["elbow", "shoulder"],
@@ -440,7 +427,6 @@ def get_exercise_specific_guidance(exercise_type: str) -> Dict[str, Any]:
     
     return guidance
 
-
 def generate_natural_language_summary(
     analysis: Dict[str, Any],
     exercise_type: str,
@@ -455,10 +441,8 @@ def generate_natural_language_summary(
     angle_stats = analysis.get("angle_statistics", {})
     symmetry = analysis.get("symmetry_analysis", {})
     
-    # Get exercise-specific guidance
     guidance = get_exercise_specific_guidance(exercise_type)
     
-    # Build context for AI
     context_parts = []
     
     duration = video_info.get("duration_seconds", 0)
@@ -502,10 +486,8 @@ def generate_natural_language_summary(
     
     context = "\n\n".join(context_parts)
     
-    # Use AI to generate summary if available
     if cerebras_client:
         try:
-            # Build exercise-specific prompt
             exercise_context = f"""Exercise type: {exercise_type or 'Unknown exercise'}
 
 Key metrics to evaluate for this exercise: {guidance['key_metrics']}
@@ -539,11 +521,9 @@ Be specific with angle measurements and relate them to proper {exercise_type or 
         except Exception as e:
             logger.error(f"AI summary generation failed: {e}")
     
-    # Fallback to rule-based summary with exercise-specific insights
     summary_parts = []
     summary_parts.append(f"Analyzed {duration:.0f}s of {exercise_type or 'exercise'}.")
     
-    # Exercise-specific evaluation
     exercise_lower = (exercise_type or "").lower()
     
     # Knee-focused exercises (squats, lunges, step-ups)
@@ -591,7 +571,6 @@ Be specific with angle measurements and relate them to proper {exercise_type or 
     
     return " ".join(summary_parts)
 
-
 async def analyze_exercise_video(
     video_url: str,
     exercise_type: str,
@@ -614,7 +593,6 @@ async def analyze_exercise_video(
     processed_video_url = None
     
     try:
-        # Handle both full URLs and bucket paths
         if video_url.startswith("http"):
             download_url = video_url
         else:
@@ -628,7 +606,6 @@ async def analyze_exercise_video(
             with open(tmp_input_path, "wb") as f:
                 f.write(response.content)
         
-        # Process video with MediaPipe
         analysis = process_video_frames(
             tmp_input_path, 
             sample_rate=5,
@@ -703,10 +680,8 @@ async def analyze_exercise_video(
             except Exception as upload_err:
                 logger.error(f"Failed to upload processed video: {upload_err}")
         
-        # Get exercise-specific guidance
         guidance = get_exercise_specific_guidance(exercise_type)
         
-        # Generate summary
         summary = generate_natural_language_summary(
             analysis, 
             exercise_type,

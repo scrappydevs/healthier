@@ -86,7 +86,6 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [careSettingFilter, setCareSettingFilter] = useState<"all" | "in_clinic" | "at_home">("all");
   
-  // Helper to get local date string (YYYY-MM-DD)
   const getLocalDate = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -187,7 +186,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex -m-4" style={{ height: "calc(100vh - 48px)" }}>
-      {/* Left: Patient List */}
       <div className="w-60 flex flex-col border-r bg-white">
         <div className="p-3 border-b">
           <div className="relative">
@@ -202,7 +200,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Care Setting Tabs */}
         <div className="flex border-b">
           <button
             onClick={() => setCareSettingFilter("all")}
@@ -375,11 +372,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Center: Patient Detail */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {selectedPatient ? (
           <>
-            {/* Patient Header */}
             <div className="px-4 py-3 bg-white border-b flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div>
@@ -392,7 +387,6 @@ export default function DashboardPage() {
                         const newSetting = selectedPatient.care_setting === "in_clinic" ? "at_home" : "in_clinic";
                         try {
                           await updatePatient(selectedPatient.id, { care_setting: newSetting });
-                          // Update local state immediately
                           setSelectedPatient({ ...selectedPatient, care_setting: newSetting });
                           setPatients(prev => prev.map(p => 
                             p.id === selectedPatient.id ? { ...p, care_setting: newSetting } : p
@@ -427,7 +421,6 @@ export default function DashboardPage() {
               </Button>
             </div>
 
-            {/* Tabs */}
             <div className="px-4 bg-white border-b">
               <div className="flex gap-0">
                 {(["overview", "plans", "food", "exercise", "medications", "journal"] as Tab[]).map((tab) => (
@@ -450,7 +443,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Tab Content */}
             <div className="flex-1 overflow-y-auto p-4 bg-muted/20">
               {activeTab === "overview" && (
                 <OverviewContent patient={selectedPatient} />
@@ -503,7 +495,6 @@ function StatusBadge({ status }: { status: "good" | "warning" | "critical" }) {
   );
 }
 
-// Exercise Card with Video and Pose Analysis
 type ExerciseWithAnalysis = {
   id: string;
   exercise_type: string;
@@ -534,7 +525,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
   const autoAnalyzeTriggeredRef = useRef(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Inline editing state - prioritize name over exercise_type
   const displayName = exercise.name || exercise.exercise_type || "Exercise";
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(displayName);
@@ -550,9 +540,7 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
     
     setIsSaving(true);
     try {
-      // Update the name field (prioritized for display and AI analysis)
       await updateExercise(exercise.id, { name: trimmedName });
-      // Update local display - the parent will refetch on next interval
       exercise.name = trimmedName;
     } catch (err) {
       console.error("Failed to update exercise name:", err);
@@ -575,12 +563,10 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
     return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   };
 
-  // Sync state when exercise prop changes (e.g., data refetch)
   useEffect(() => {
     const newProcessedUrl = exercise.processed_video_url || exercise.pose_analysis?.processed_video_url;
     if (newProcessedUrl && newProcessedUrl !== processedUrl) {
       setProcessedUrl(newProcessedUrl);
-      // Auto-switch to analyzed view when processed video becomes available
       if (videoView === "raw") {
         setVideoView("analyzed");
       }
@@ -590,7 +576,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
     }
   }, [exercise.processed_video_url, exercise.pose_analysis]);
 
-  // Cleanup polling on unmount
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) {
@@ -613,7 +598,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
         if (result.has_analysis && result.pose_analysis) {
           // Analysis complete - update state and stop polling
           setAnalysis(result.pose_analysis);
-          // Check both the column and the nested pose_analysis for processed_video_url
           const pUrl = result.processed_video_url || result.pose_analysis?.processed_video_url;
           if (pUrl) {
             setProcessedUrl(pUrl);
@@ -640,7 +624,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
       if (result.status === "completed" && result.pose_analysis) {
         // Already analyzed - use cached result
         setAnalysis(result.pose_analysis);
-        // Check both the column and the nested pose_analysis for processed_video_url
         const pUrl = result.processed_video_url || result.pose_analysis?.processed_video_url;
         if (pUrl) {
           setProcessedUrl(pUrl);
@@ -657,7 +640,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
     }
   };
 
-  // Auto-trigger analysis if video exists but no analysis yet
   useEffect(() => {
     const hasVideo = !!exercise.video_url;
     const hasExistingAnalysis = !!exercise.pose_analysis?.summary;
@@ -672,11 +654,9 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
   const hasAnalysis = !!analysis?.summary;
   const hasProcessedVideo = !!processedUrl;
   
-  // Check if analysis failed (contains error message)
   const analysisError = analysis?.summary?.includes("Unable to analyze") || analysis?.summary?.includes("not available");
   const hasSuccessfulAnalysis = hasAnalysis && !analysisError;
 
-  // Get asymmetry issues
   const asymmetryIssues = analysis?.symmetry_analysis 
     ? Object.entries(analysis.symmetry_analysis)
         .filter(([, data]) => !data.symmetric)
@@ -688,7 +668,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
 
   return (
     <div className="py-3 border-b last:border-b-0">
-      {/* Header - inline layout */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="flex-1 min-w-0">
@@ -772,7 +751,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
           </div>
         </div>
         
-        {/* Video Toggle */}
         {hasVideo && (
           <button
             onClick={() => setShowVideo(!showVideo)}
@@ -787,10 +765,8 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
         )}
       </div>
 
-      {/* Expandable Video Section */}
       {hasVideo && showVideo && (
         <div className="mt-3 border-t pt-3">
-          {/* Video View Toggle */}
           {hasProcessedVideo && (
             <div className="flex gap-2 mb-2">
               <button
@@ -818,7 +794,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
             </div>
           )}
           
-          {/* Video Player */}
           <div className="relative bg-black rounded overflow-hidden flex items-center justify-center min-h-[280px] max-h-[400px]">
             <video
               key={currentVideoUrl}
@@ -829,12 +804,10 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
             />
           </div>
           
-          {/* Pose Analysis Summary */}
           {hasSuccessfulAnalysis && (
             <div className="mt-3 space-y-2">
               <p className="text-sm text-foreground leading-relaxed">{analysis.summary}</p>
               
-              {/* Asymmetry inline with severity colors */}
               {asymmetryIssues.length > 0 && (
                 <div className="flex flex-wrap gap-2 text-xs">
                   {asymmetryIssues.map(({ joint, difference }) => {
@@ -857,7 +830,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
                 </div>
               )}
               
-              {/* Form tips for this exercise */}
               {analysis.form_tips && analysis.form_tips.length > 0 && (
                 <details className="text-xs">
                   <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
@@ -871,7 +843,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
                 </details>
               )}
               
-              {/* Re-analyze button (useful after renaming exercise) */}
               <button
                 onClick={async () => {
                   setAnalysis(null);
@@ -904,7 +875,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
             </div>
           )}
           
-          {/* Analysis Error with Retry */}
           {analysisError && (
             <div className="mt-3 space-y-2">
               <p className="text-sm text-amber-700 leading-relaxed">{analysis?.summary}</p>
@@ -950,7 +920,6 @@ function ExerciseCard({ exercise }: { exercise: ExerciseWithAnalysis }) {
             </div>
           )}
           
-          {/* Analyze button if no analysis */}
           {!hasAnalysis && !analysisError && (
             <button
               onClick={handleAnalyze}
@@ -990,7 +959,6 @@ type AssignedMedication = {
   pill_details?: PillType; // Full pill object with all details
 };
 
-// Helper function to format medication schedule
 function formatMedicationSchedule(frequency: string | undefined, daysOfWeek: number[] | undefined, timesOfDay: string[] | undefined): string {
   if (!frequency) return "";
   
@@ -1003,12 +971,10 @@ function formatMedicationSchedule(frequency: string | undefined, daysOfWeek: num
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  // Format times
   const formattedTimes = timesOfDay && timesOfDay.length > 0 
     ? timesOfDay.map(formatTime)
     : [];
 
-  // Handle daily frequencies
   if (frequency === "daily" || frequency === "once_daily") {
     if (formattedTimes.length === 1) {
       return `Once daily at ${formattedTimes[0]}`;
@@ -1032,7 +998,6 @@ function formatMedicationSchedule(frequency: string | undefined, daysOfWeek: num
     return "3x daily";
   }
 
-  // Handle weekly frequencies
   if (frequency === "weekly" && daysOfWeek && daysOfWeek.length > 0) {
     const daysList = daysOfWeek.map(d => dayNames[d]).join(", ");
     if (formattedTimes.length > 0) {
@@ -1041,12 +1006,10 @@ function formatMedicationSchedule(frequency: string | undefined, daysOfWeek: num
     return daysList;
   }
 
-  // Handle as-needed
   if (frequency === "as_needed") {
     return "As needed";
   }
 
-  // Fallback
   const readableFrequency = frequency.replace(/_/g, " ");
   if (formattedTimes.length > 0) {
     return `${readableFrequency} at ${formattedTimes.join(", ")}`;
@@ -1078,7 +1041,6 @@ function PlansContent({ patient }: { patient: Patient }) {
       const activeDietPlans = plans.filter((p: PatientPlan) => p.plan_type === "diet" && p.is_active);
       const activeExercisePlans = plans.filter((p: PatientPlan) => p.plan_type === "exercise" && p.is_active);
       
-      // Get the most recent active plan (sorted by created_at desc)
       setDietPlan(activeDietPlans.length > 0 
         ? activeDietPlans.sort((a: PatientPlan, b: PatientPlan) => 
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -1140,7 +1102,6 @@ function PlansContent({ patient }: { patient: Patient }) {
 
   return (
     <div className="space-y-3">
-      {/* Medications */}
       <div className="bg-white rounded-lg border">
         <div className="px-4 py-3 flex items-center justify-between border-b">
           <div className="flex items-center gap-2">
@@ -1221,7 +1182,6 @@ function PlansContent({ patient }: { patient: Patient }) {
         </div>
       </div>
 
-      {/* Diet */}
       <div className="bg-white rounded-lg border">
         <div className="px-4 py-3 flex items-center justify-between border-b">
           <h3 className="text-sm font-medium text-foreground">Diet Plan</h3>
@@ -1271,7 +1231,6 @@ function PlansContent({ patient }: { patient: Patient }) {
         </div>
       </div>
 
-      {/* Exercise */}
       <div className="bg-white rounded-lg border">
         <div className="px-4 py-3 flex items-center justify-between border-b">
           <div className="flex items-center gap-2">
@@ -1333,7 +1292,6 @@ function PlansContent({ patient }: { patient: Patient }) {
             </div>
           )}
           
-          {/* General guidelines (if any) */}
           {!showExerciseForm && exercisePlan?.notes && (
             <div className={cn(prescribedExercises.length > 0 && "mt-2 pt-2 border-t")}>
               <p className="text-xs text-muted-foreground">{exercisePlan.notes}</p>
@@ -1342,7 +1300,6 @@ function PlansContent({ patient }: { patient: Patient }) {
         </div>
       </div>
 
-      {/* Medication Details Modal */}
       {selectedMedForDetails && (
         <MedicationDetailsModal
           pill={selectedMedForDetails}
@@ -1402,7 +1359,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
   const [selectedMedForDetails, setSelectedMedForDetails] = useState<PillType | null>(null);
   const [lastDataHash, setLastDataHash] = useState("");
   
-  // Helper to get local date string (YYYY-MM-DD)
   const getLocalDateString = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -1414,9 +1370,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
   const [selectedDate, setSelectedDate] = useState<string>(todayDate);
   const [viewMode, setViewMode] = useState<"day" | "all">("day"); // "day" for specific day (default: today), "all" for all recent
 
-  // Helper to format date for display
   const formatDateDisplay = (dateStr: string) => {
-    // Parse as local date
     const [year, month, day] = dateStr.split("-").map(Number);
     const date = new Date(year, month - 1, day);
     
@@ -1457,9 +1411,7 @@ function OverviewContent({ patient }: { patient: Patient }) {
     setViewMode("all");
   };
 
-  // Fetch all data - reset all state when patient or date changes
   useEffect(() => {
-    // Reset all state when patient changes
     setAiSummary(null);
     setJournalSectionSummary("");
     setMealsSectionSummary("");
@@ -1495,7 +1447,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
         }));
         
         if (viewMode === "all") {
-          // Fetch all recent data without date filter
           const [mealsRes, exercisesRes, journalRes, pillLogsRes] = await Promise.all([
             getPatientMeals(patient.id),
             getPatientExercises(patient.id),
@@ -1508,7 +1459,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
           setJournalEntries(journalRes.entries);
           setPillLogs(pillLogsRes.logs);
         } else {
-          // Fetch data for specific date
           const [mealsRes, exercisesRes, journalRes, pillLogsRes] = await Promise.all([
             getPatientMeals(patient.id, selectedDate),
             getPatientExercises(patient.id, selectedDate),
@@ -1522,7 +1472,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
           setPillLogs(pillLogsRes.logs);
         }
         
-        // Create hash of data to detect changes
         const dataHash = JSON.stringify({
           meals: meals.length,
           exercises: exercises.length,
@@ -1540,7 +1489,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
     fetchPatientData();
   }, [patient.id, selectedDate, viewMode]);
 
-  // Auto-generate summary when there's activity and no summary yet
   useEffect(() => {
     const hasActivity = meals.length > 0 || exercises.length > 0 || journalEntries.length > 0;
     if (hasActivity && !aiSummary && !isGeneratingSummary && !isLoading) {
@@ -1551,12 +1499,9 @@ function OverviewContent({ patient }: { patient: Patient }) {
   const handleGenerateSummary = async (forceRefresh = false) => {
     setIsGeneratingSummary(true);
     try {
-      // Use selected date instead of always using today
       const summaryDate = viewMode === "day" ? selectedDate : todayDate;
-      // Pass forceRefresh to bypass cache when manually refreshing
       const summary = await generateDailySummary(patient.id, summaryDate, forceRefresh);
       setAiSummary(summary);
-      // Set section summaries from the response
       if (summary.journal_summary) setJournalSectionSummary(summary.journal_summary);
       if (summary.meals_summary) setMealsSectionSummary(summary.meals_summary);
       if (summary.activity_summary) setExercisesSectionSummary(summary.activity_summary);
@@ -1618,7 +1563,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
 
   const totalActivity = meals.length + exercises.length + journalEntries.length;
 
-  // Helper to get local date from timestamp
   const getLocalDateFromTimestamp = (timestamp: string): string => {
     const date = new Date(timestamp);
     const year = date.getFullYear();
@@ -1627,7 +1571,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
     return `${year}-${month}-${day}`;
   };
 
-  // Group items by date for display (using local timezone)
   const groupByDate = <T extends { logged_at?: string; consumed_at?: string }>(items: T[]) => {
     const groups: Record<string, T[]> = {};
     items.forEach(item => {
@@ -1644,7 +1587,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
 
   return (
     <div className="space-y-4">
-      {/* Date Navigation */}
       <div className="bg-white rounded-lg border">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1693,7 +1635,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
         </div>
       </div>
 
-      {/* Daily Summary */}
       <div className="bg-white rounded-lg border">
         <div className="px-4 py-3 border-b flex items-center justify-between">
           <h3 className="text-sm font-medium text-foreground">
@@ -1751,7 +1692,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
         </div>
       </div>
 
-      {/* Journal Section */}
       <div className="bg-white rounded-lg shadow-sm">
         <div className="px-4 py-3">
           <button
@@ -1811,7 +1751,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
         )}
       </div>
 
-      {/* Meals Section */}
       <div className="bg-white rounded-lg shadow-sm">
         <div className="px-4 py-3">
           <button
@@ -1882,7 +1821,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
         )}
       </div>
 
-      {/* Activity Section */}
       <div className="bg-white rounded-lg shadow-sm">
         <div className="px-4 py-3">
           <button
@@ -1962,7 +1900,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
         )}
       </div>
 
-      {/* Medications Section */}
       <div className="bg-white rounded-lg shadow-sm">
         <div className="px-4 py-3">
           <button
@@ -2006,7 +1943,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
           <div className="px-4 pb-3 border-t">
             <div className="pt-3 divide-y">
               {assignedMedications.map((med) => {
-                // Find pill log for this medication
                 const log = pillLogs.find(l => 
                   l.patient_pills?.pills?.name === med.name
                 );
@@ -2019,7 +1955,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
                   scheduled: "text-muted-foreground"
                 };
                 
-                // Format status with time for upcoming meds
                 let statusLabel = "";
                 if (status === "taken") {
                   statusLabel = "taken";
@@ -2084,7 +2019,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
         )}
       </div>
 
-      {/* Medication Details Modal */}
       {selectedMedForDetails && (
         <MedicationDetailsModal
           pill={selectedMedForDetails}
@@ -2095,7 +2029,6 @@ function OverviewContent({ patient }: { patient: Patient }) {
   );
 }
 
-// Inline Medication Assignment Form
 function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClose: () => void }) {
   const [pills, setPills] = useState<PillType[]>([]);
   const [selectedMedId, setSelectedMedId] = useState("");
@@ -2138,7 +2071,6 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
 
   return (
     <div className="space-y-4 pt-3 border-t">
-      {/* Medication Selection Row */}
       <div className="flex items-center gap-3">
         <label className="text-xs text-muted-foreground w-16 shrink-0">Medication</label>
         <Select value={selectedMedId} onValueChange={setSelectedMedId} disabled={isLoadingPills}>
@@ -2155,7 +2087,6 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
         </Select>
       </div>
 
-      {/* Frequency Selection Row */}
       <div className="flex items-center gap-3">
         <label className="text-xs text-muted-foreground w-16 shrink-0">Frequency</label>
         <Select value={frequency} onValueChange={setFrequency}>
@@ -2171,7 +2102,6 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
         </Select>
       </div>
 
-      {/* Days Selection Row */}
       <div className="flex items-start gap-3">
         <label className="text-xs text-muted-foreground w-16 shrink-0 pt-1">Days</label>
         <div className="flex gap-1 flex-wrap">
@@ -2192,7 +2122,6 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
         </div>
       </div>
 
-      {/* Time Selection Row */}
       <div className="flex items-center gap-3">
         <label className="text-xs text-muted-foreground w-16 shrink-0">Time</label>
         <input
@@ -2203,7 +2132,6 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
         />
       </div>
 
-      {/* Action Buttons */}
       <div className="flex items-center gap-3 pt-2">
         <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={!selectedMedId}>
           Assign
@@ -2216,7 +2144,6 @@ function MedicationAssignForm({ patientId, onClose }: { patientId: string; onClo
   );
 }
 
-// Inline Diet Instruction Form
 function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: string; existingPlan?: PatientPlan | null; onClose: () => void }) {
   const [notes, setNotes] = useState(existingPlan?.notes || "");
   const [calorieTarget, setCalorieTarget] = useState(existingPlan?.calorie_target?.toString() || "");
@@ -2348,7 +2275,6 @@ function DietInstructionForm({ patientId, existingPlan, onClose }: { patientId: 
   );
 }
 
-// Inline Exercise Plan Form - Now with exercise catalog selection
 function ExercisePlanForm({ 
   patientId, 
   existingPlan, 
@@ -2408,7 +2334,6 @@ function ExercisePlanForm({
     }
   };
 
-  // Filter out already prescribed exercises
   const prescribedIds = new Set(existingPrescriptions?.map(p => p.exercise_id) || []);
   const filteredCatalog = catalog.filter(e => {
     const matchesCategory = categoryFilter === "all" || e.category === categoryFilter;
@@ -2424,7 +2349,6 @@ function ExercisePlanForm({
         <p className="text-xs text-muted-foreground">Loading exercises...</p>
       ) : (
         <>
-          {/* Category Filter */}
           <div className="flex gap-1.5">
             {["all", "strength", "cardio", "flexibility", "balance"].map((cat) => (
               <button
@@ -2442,7 +2366,6 @@ function ExercisePlanForm({
             ))}
           </div>
 
-          {/* Exercise Selection */}
           <div className="flex items-center gap-2">
             <label className="text-xs text-muted-foreground w-14 shrink-0">Exercise</label>
             <Select value={selectedExercise} onValueChange={setSelectedExercise}>
@@ -2462,7 +2385,6 @@ function ExercisePlanForm({
             <p className="text-xs text-muted-foreground pl-[72px]">{selectedExerciseData.description}</p>
           )}
 
-          {/* Form Notes */}
           {selectedExercise && (
             <div className="flex items-center gap-2">
               <label className="text-xs text-muted-foreground w-14 shrink-0">Notes</label>

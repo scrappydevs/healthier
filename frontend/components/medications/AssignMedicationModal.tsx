@@ -104,7 +104,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-foreground">
@@ -120,11 +119,9 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {step === "select" ? (
             <div className="space-y-4">
-              {/* Search */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
@@ -140,7 +137,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
                 />
               </div>
 
-              {/* Results */}
               {isSearching ? (
                 <p className="text-sm text-muted-foreground text-center py-8">Searching...</p>
               ) : pills.length === 0 && searchQuery ? (
@@ -178,7 +174,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Selected Medication */}
               <div className="p-4 bg-muted/50 rounded-lg">
                 <div className="flex items-start gap-3">
                   {selectedPill.image_url && (
@@ -197,7 +192,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
                 </div>
               </div>
 
-              {/* Dosage */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Dosage Amount
@@ -211,7 +205,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
                 />
               </div>
 
-              {/* Frequency */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Frequency
@@ -229,7 +222,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
                 </select>
               </div>
 
-              {/* Times of Day */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Times of Day
@@ -263,7 +255,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
                 </div>
               </div>
 
-              {/* Start Date */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Start Date
@@ -276,7 +267,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
                 />
               </div>
 
-              {/* With Food */}
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -290,7 +280,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
                 </label>
               </div>
 
-              {/* Special Instructions */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Special Instructions (optional)
@@ -307,7 +296,6 @@ export function AssignMedicationModal({ patientId, patientName, onClose, onAssig
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t flex items-center justify-between">
           <button
             onClick={step === "select" ? onClose : () => setStep("select")}

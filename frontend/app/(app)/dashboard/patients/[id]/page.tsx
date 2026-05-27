@@ -73,7 +73,6 @@ export default function PatientDetailPage({
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
@@ -105,7 +104,6 @@ export default function PatientDetailPage({
 
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 border-b">
         {(["overview", "food", "exercise", "medications"] as Tab[]).map((tab) => (
           <button
@@ -123,7 +121,6 @@ export default function PatientDetailPage({
         ))}
       </div>
 
-      {/* Tab Content */}
       <div className="bg-white rounded-md p-4">
         {activeTab === "overview" && (
           <OverviewTab patient={patient} setActiveTab={setActiveTab} />
@@ -145,7 +142,6 @@ export default function PatientDetailPage({
 function OverviewTab({ patient, setActiveTab }: { patient: Patient; setActiveTab: (tab: Tab) => void }) {
   return (
     <div className="space-y-6">
-      {/* Basic Info */}
       <div>
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           Patient Information
@@ -174,7 +170,6 @@ function OverviewTab({ patient, setActiveTab }: { patient: Patient; setActiveTab
         </div>
       </div>
 
-      {/* Medical Conditions */}
       {patient.medical_conditions && patient.medical_conditions.length > 0 && (
         <div>
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
@@ -193,7 +188,6 @@ function OverviewTab({ patient, setActiveTab }: { patient: Patient; setActiveTab
         </div>
       )}
 
-      {/* Emergency Contact */}
       {patient.emergency_contact_name && (
         <div>
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
@@ -214,7 +208,6 @@ function OverviewTab({ patient, setActiveTab }: { patient: Patient; setActiveTab
         </div>
       )}
 
-      {/* Notes */}
       {patient.notes && (
         <div>
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
@@ -224,7 +217,6 @@ function OverviewTab({ patient, setActiveTab }: { patient: Patient; setActiveTab
         </div>
       )}
 
-      {/* Quick View */}
       <div>
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           Quick View

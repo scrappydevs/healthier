@@ -96,14 +96,12 @@ export function NotificationDropdown() {
     }
   };
 
-  // Fetch alerts on mount and periodically
   useEffect(() => {
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, []);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -118,7 +116,6 @@ export function NotificationDropdown() {
     e.stopPropagation();
     e.preventDefault();
     try {
-      // Use a placeholder user ID for now - in production this would come from auth
       await acknowledgeAlert(alertId, "00000000-0000-0000-0000-000000000001");
       setAlerts(prev => prev.filter(a => a.id !== alertId));
       setUnacknowledgedCount(prev => Math.max(0, prev - 1));
@@ -156,7 +153,6 @@ export function NotificationDropdown() {
 
       {isOpen && (
         <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-lg border shadow-lg z-50 overflow-hidden">
-          {/* Header */}
           <div className="px-4 py-3 border-b flex items-center justify-between bg-white sticky top-0 z-10">
             <div>
               <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
@@ -174,7 +170,6 @@ export function NotificationDropdown() {
             </button>
           </div>
 
-          {/* Alert List */}
           <div className="max-h-[500px] overflow-y-auto">
             {isLoading && alerts.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">
@@ -250,7 +245,6 @@ export function NotificationDropdown() {
             )}
           </div>
 
-          {/* Footer */}
           {alerts.length > 0 && (
             <div className="px-4 py-2 border-t bg-muted/20">
               <Link

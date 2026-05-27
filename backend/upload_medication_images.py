@@ -34,7 +34,6 @@ MEDICATION_IMAGES = {
     "550e8400-e29b-41d4-a716-446655440020": "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?w=800&q=80",  # Albuterol - inhaler
 }
 
-
 class MedicationImageUploader:
     def __init__(self, supabase_url: str, supabase_key: str):
         self.supabase: Client = create_client(supabase_url, supabase_key)
@@ -84,7 +83,6 @@ class MedicationImageUploader:
             with open(filepath, 'rb') as f:
                 content = f.read()
                 
-                # Delete existing file first to avoid conflicts
                 try:
                     self.supabase.storage.from_(self.bucket_name).remove([filename])
                 except:
@@ -97,7 +95,6 @@ class MedicationImageUploader:
                     file_options={"content-type": "image/jpeg", "upsert": "true"}
                 )
             
-            # Get public URL
             public_url = self.supabase.storage.from_(self.bucket_name).get_public_url(filename)
             print(f"  ✓ Uploaded to Supabase")
             return public_url
@@ -138,7 +135,6 @@ class MedicationImageUploader:
         if not storage_url:
             return False
         
-        # Update database
         self.update_database(medication_id, storage_url)
         
         # Clean up temp file
@@ -156,7 +152,6 @@ class MedicationImageUploader:
         print("MEDICATION IMAGE UPLOADER")
         print("="*60)
         
-        # Setup storage
         self.setup_storage_bucket()
         
         success_count = 0
@@ -179,18 +174,15 @@ class MedicationImageUploader:
         print(f"SUMMARY: {success_count} successful, {fail_count} failed")
         print("="*60)
         
-        # Cleanup temp directory
         try:
             self.temp_dir.rmdir()
         except:
             pass
 
-
 def main():
     """Main entry point"""
     import sys
     
-    # Get environment variables
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
     
@@ -202,7 +194,6 @@ def main():
     
     uploader = MedicationImageUploader(supabase_url, supabase_key)
     uploader.process_all()
-
 
 if __name__ == "__main__":
     main()

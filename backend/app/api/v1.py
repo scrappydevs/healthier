@@ -24,7 +24,6 @@ from app.services import PatientService, AlertService
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
 
-
 def get_cerebras_client() -> Optional[OpenAI]:
     """Get Cerebras client"""
     settings = get_settings()
@@ -34,7 +33,6 @@ def get_cerebras_client() -> Optional[OpenAI]:
         api_key=settings.cerebras_key,
         base_url="https://api.cerebras.ai/v1"
     )
-
 
 # ============================================
 # USERS
@@ -66,7 +64,6 @@ async def get_current_user(db: Client = Depends(get_db)):
             },
         }
     
-    # Return default if no user found
     return {
         "id": "00000000-0000-0000-0000-000000000001",
         "email": "clinician@healthier.app",
@@ -83,7 +80,6 @@ async def get_current_user(db: Client = Depends(get_db)):
             "missed_doses_critical": 2,
         },
     }
-
 
 @router.patch("/users/me")
 async def update_current_user(
@@ -109,7 +105,6 @@ async def update_current_user(
             "missed_doses_critical": 2,
         }),
     }
-
 
 # ============================================
 # PATIENTS
@@ -140,7 +135,6 @@ async def list_patients(
         per_page=per_page,
     )
 
-
 @router.get("/patients/{patient_id}", response_model=PatientWithAdherence)
 async def get_patient(
     patient_id: UUID,
@@ -153,7 +147,6 @@ async def get_patient(
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient
 
-
 @router.post("/patients", response_model=PatientWithAdherence, status_code=201)
 async def create_patient(
     data: PatientCreate,
@@ -162,7 +155,6 @@ async def create_patient(
     """Create a new patient."""
     service = PatientService(db)
     return await service.create_patient(data)
-
 
 @router.patch("/patients/{patient_id}", response_model=PatientWithAdherence)
 async def update_patient(
@@ -177,7 +169,6 @@ async def update_patient(
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient
 
-
 # ============================================
 # PATIENT MEALS (from iOS app)
 # ============================================
@@ -191,7 +182,6 @@ async def get_patient_meals(
     """Get meals logged by a patient via the iOS app."""
     patient_id_str = str(patient_id)
     
-    # First get the patient's user_id
     patient_response = db.table("patients").select("user_id").eq("id", patient_id_str).single().execute()
     if not patient_response.data:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -204,8 +194,6 @@ async def get_patient_meals(
     query = db.table("meals").select("*").eq("user_id", user_id).order("consumed_at", desc=True)
     
     if date:
-        # Filter by date using string-based comparison (timezone-agnostic)
-        # This matches the approach used in generate_daily_summary
         date_start = f"{date}T00:00:00"
         date_end = f"{date}T23:59:59"
         query = query.gte("consumed_at", date_start).lte("consumed_at", date_end)
@@ -217,7 +205,6 @@ async def get_patient_meals(
         "meals": meals,
         "total": len(meals),
     }
-
 
 # ============================================
 # PATIENT EXERCISES (from iOS app)
@@ -233,13 +220,11 @@ async def get_patient_exercises(
     patient_id_str = str(patient_id)
     
     # Query exercises by patient_id (primary) or user_id (fallback)
-    # First try patient_id directly - this is the most reliable
     query = db.table("exercises").select("*").eq("patient_id", patient_id_str)
     
     response = query.order("logged_at", desc=True).execute()
     exercises = response.data or []
     
-    # If no results with patient_id, try user_id as fallback
     if not exercises:
         patient_response = db.table("patients").select("user_id").eq("id", patient_id_str).single().execute()
         if patient_response.data:
@@ -249,9 +234,7 @@ async def get_patient_exercises(
                 response = query.order("logged_at", desc=True).execute()
                 exercises = response.data or []
     
-    # Apply date filter if provided (timezone-agnostic string filtering)
     if date:
-        # Filter using simple string comparison matching generate_daily_summary
         filtered_exercises = []
         for e in exercises:
             logged_at = e.get("logged_at", "")
@@ -259,7 +242,6 @@ async def get_patient_exercises(
                 filtered_exercises.append(e)
         exercises = filtered_exercises
     
-    # Calculate summary
     total_minutes = sum(e.get("duration_minutes") or 0 for e in exercises)
     total_calories = sum(e.get("calories_burned") or 0 for e in exercises)
     
@@ -271,7 +253,6 @@ async def get_patient_exercises(
             "total_calories": total_calories,
         },
     }
-
 
 # ============================================
 # PATIENT MEDICATIONS (from iOS app)
@@ -300,7 +281,6 @@ async def get_patient_medications(
             ).order("taken_at", desc=True).limit(10).execute()
             med["recent_logs"] = logs_response.data or []
             
-            # Calculate adherence for this medication
             total_logs = len(logs_response.data or [])
             on_time_logs = len([l for l in (logs_response.data or []) if l.get("was_on_time")])
             med["adherence_rate"] = round((on_time_logs / total_logs * 100) if total_logs > 0 else 100, 1)
@@ -310,7 +290,6 @@ async def get_patient_medications(
         "assigned_medications": medications,
         "total": len(medications),
     }
-
 
 @router.delete("/patients/{patient_id}/medications/{medication_id}")
 async def delete_patient_medication(
@@ -333,7 +312,6 @@ async def delete_patient_medication(
 
     return {"success": True, "message": "Medication deleted"}
 
-
 @router.post("/patients/{patient_id}/medications/assign")
 async def assign_patient_medication(
     patient_id: UUID,
@@ -344,30 +322,25 @@ async def assign_patient_medication(
     db: Client = Depends(get_db)
 ):
     """Assign a medication to a patient."""
-    # Verify patient exists
     patient_res = db.table("patients").select("id, user_id").eq("id", str(patient_id)).single().execute()
     if not patient_res.data:
         raise HTTPException(status_code=404, detail="Patient not found")
     
-    # Get pill info to extract dosage
     pill_res = db.table("pills").select("name, strength, unit, dosage_form, instructions").eq("id", pill_id).single().execute()
     if not pill_res.data:
         raise HTTPException(status_code=404, detail="Pill not found")
     
     dosage_amount = pill_res.data.get("strength", 1)  # Default to 1 if not specified
     
-    # Day name to integer mapping (0=Mon, 1=Tue, ..., 6=Sun)
     day_mapping = {
         "Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, 
         "Fri": 4, "Sat": 5, "Sun": 6
     }
     
-    # Parse arrays from comma-separated strings
     day_names = [d.strip() for d in days_of_week.split(",") if d.strip()]
     days_list = [day_mapping.get(d, 0) for d in day_names]  # Convert to integers
     times_list = [t.strip() for t in times_of_day.split(",") if t.strip()]
     
-    # Create patient_pills record
     patient_pill_data = {
         "patient_id": str(patient_id),
         "pill_id": pill_id,
@@ -411,33 +384,24 @@ async def assign_patient_medication(
         result = db.table("patient_pills").insert(patient_pill_data).execute()
         patient_pill_id = result.data[0]["id"] if result.data else None
     
-    # Create pill_logs for today's scheduled times
     if patient_pill_id and times_list:
         from datetime import datetime, timedelta
         today = date.today()
         
-        # If days_list is empty and it's a daily medication, treat as every day
         effective_days = days_list if len(days_list) > 0 else ([0,1,2,3,4,5,6] if "daily" in frequency else [])
         
-        # Check if today is in the allowed days_of_week
         today_weekday = today.weekday()  # Python: 0=Monday, 6=Sunday
         if today_weekday in effective_days:
-            # Create a pill_log for each scheduled time today
             from datetime import timezone
             for time_str in times_list:
-                # Parse time and create scheduled datetime
-                # Assume times_of_day are in US Eastern Time (EST/EDT)
                 hour, minute = map(int, time_str.split(":"))
                 
-                # Create the local datetime (what the patient sees: "08:00" = 8am local)
                 scheduled_local = datetime.combine(today, datetime.min.time().replace(hour=hour, minute=minute))
                 
-                # Convert to UTC: EST is UTC-5, so 08:00 EST = 13:00 UTC
                 # Note: This assumes EST for simplicity; production should use pytz/zoneinfo
                 utc_offset_hours = 5  # EST offset from UTC
                 scheduled_utc = scheduled_local.replace(tzinfo=timezone.utc) + timedelta(hours=utc_offset_hours)
                 
-                # Determine status using local time comparison
                 now_local = datetime.now()
                 if scheduled_local < now_local:
                     status = "missed"
@@ -481,7 +445,6 @@ async def assign_patient_medication(
                     return "Custom"
 
                 ios_medication = {
-                    # Use patient_pills.id so we can update the same record later if needed
                     "id": patient_pill_id,
                     "user_id": user_id,
                     "name": pill_name,
@@ -490,7 +453,6 @@ async def assign_patient_medication(
                     "form": (pill_res.data.get("dosage_form") or "tablet").strip().lower(),
                     "instructions": pill_res.data.get("instructions"),
                     "prescribed_by": None,
-                    # Store times as "HH:mm" strings - the iOS app can parse these into daily reminders
                     "reminder_times": times_list,
                     "is_active": True,
                 }
@@ -515,7 +477,6 @@ async def assign_patient_medication(
             patient_pill_row = None
 
     return {"success": True, "patient_pill": patient_pill_row}
-
 
 # ============================================
 # ALERTS
@@ -544,7 +505,6 @@ async def list_alerts(
         unacknowledged_count=unack,
     )
 
-
 @router.post("/alerts", response_model=AlertResponse, status_code=201)
 async def create_alert(
     data: AlertCreate,
@@ -553,7 +513,6 @@ async def create_alert(
     """Create a new alert."""
     service = AlertService(db)
     return await service.create_alert(data)
-
 
 @router.post("/alerts/{alert_id}/acknowledge", response_model=AlertResponse)
 async def acknowledge_alert(
@@ -567,7 +526,6 @@ async def acknowledge_alert(
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     return alert
-
 
 # ============================================
 # DASHBOARD STATS
@@ -593,7 +551,6 @@ async def get_dashboard_stats(
     if patients:
         avg_adherence = sum(p.adherence_rate for p in patients) / len(patients)
 
-    # Calculate timestamp for 24 hours ago
     from datetime import datetime, timedelta, timezone
     yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     
@@ -617,7 +574,6 @@ async def get_dashboard_stats(
         },
     }
 
-
 # ============================================
 # ANALYTICS
 # ============================================
@@ -630,7 +586,6 @@ async def get_analytics(
     """Get analytics data for charts."""
     patient_service = PatientService(db)
     
-    # Get patients for calculations
     patients, total_patients = await patient_service.get_patients(
         clinician_id=clinician_id, per_page=1000
     )
@@ -639,11 +594,9 @@ async def get_analytics(
     if patients:
         avg_adherence = sum(p.adherence_rate for p in patients) / len(patients)
 
-    # Get monthly adherence data (last 12 months) - return zeros if no data
     months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     monthly_adherence = []
     if avg_adherence > 0:
-        # Calculate real monthly adherence from pill_logs
         for i, month in enumerate(months):
             # For now, use current average (would need date-based calculation for real monthly data)
             monthly_adherence.append({
@@ -658,7 +611,6 @@ async def get_analytics(
                 "value": 0.0
             })
     
-    # Get medication breakdown from actual data
     meds_response = db.table("pills").select(
         "id, name", count="exact"
     ).limit(5).execute()
@@ -666,12 +618,10 @@ async def get_analytics(
     medication_breakdown = []
     if meds_response.data:
         for med in meds_response.data:
-            # Get patient_pills for this medication
             patient_pills_response = db.table("patient_pills").select(
                 "id", count="exact"
             ).eq("pill_id", med.get("id", "")).execute()
             
-            # Get logs for these patient_pills
             if patient_pills_response.data:
                 patient_pill_ids = [pp.get("id") for pp in patient_pills_response.data]
                 logs_response = db.table("pill_logs").select(
@@ -686,9 +636,7 @@ async def get_analytics(
                         "target": total
                     })
     
-    # Time of day adherence - return zeros if no data
     if avg_adherence > 0:
-        # Calculate from actual pill_logs data by time of day
         time_of_day = [
             {"label": "Morning", "value": round(avg_adherence, 1)},
             {"label": "Noon", "value": round(avg_adherence, 1)},
@@ -726,7 +674,6 @@ async def get_analytics(
             elif p.age >= 85:
                 age_distribution[4]["value"] += 1
     
-    # Get food and exercise logs count
     food_response = db.table("food").select("id", count="exact").execute()
     exercise_response = db.table("exercises").select("id", count="exact").execute()
     doses_response = db.table("pill_logs").select("id", count="exact").execute()
@@ -745,7 +692,6 @@ async def get_analytics(
         }
     }
 
-
 # ============================================
 # RECENT ACTIVITY
 # ============================================
@@ -759,17 +705,14 @@ async def get_recent_activity(
     """Get recent activity across all patients (medications, food, exercise)."""
     activities = []
     
-    # Get recent pill logs (taken medications)
     pill_logs_query = db.table("pill_logs").select(
         "id, patient_id, taken_time, status"
     ).in_("status", ["taken", "late"]).not_.is_("taken_time", "null").order("taken_time", desc=True).limit(limit).execute()
     
-    # Get patient IDs and fetch patient names
     patient_ids = set()
     for log in (pill_logs_query.data or []):
         patient_ids.add(log.get("patient_id"))
     
-    # Fetch patient names
     patient_names = {}
     if patient_ids:
         patients_query = db.table("patients").select(
@@ -790,7 +733,6 @@ async def get_recent_activity(
             "status": "completed",
         })
     
-    # Get recent food logs
     food_query = db.table("food").select(
         "id, patient_id, logged_at, meal_type, name"
     ).order("logged_at", desc=True).limit(limit).execute()
@@ -799,7 +741,6 @@ async def get_recent_activity(
         patient_id = food.get("patient_id")
         patient_name = patient_names.get(patient_id)
         if not patient_name and patient_id:
-            # Fetch this patient's name if not already fetched
             patient_res = db.table("patients").select(
                 "id, user_id, users!patients_user_id_fkey(full_name)"
             ).eq("id", patient_id).single().execute()
@@ -821,7 +762,6 @@ async def get_recent_activity(
             "timestamp": food.get("logged_at"),
         })
     
-    # Get recent exercise logs
     exercise_query = db.table("exercises").select(
         "id, patient_id, logged_at, exercise_type, duration_minutes"
     ).order("logged_at", desc=True).limit(limit).execute()
@@ -830,7 +770,6 @@ async def get_recent_activity(
         patient_id = exercise.get("patient_id")
         patient_name = patient_names.get(patient_id)
         if not patient_name and patient_id:
-            # Fetch this patient's name if not already fetched
             patient_res = db.table("patients").select(
                 "id, user_id, users!patients_user_id_fkey(full_name)"
             ).eq("id", patient_id).single().execute()
@@ -855,10 +794,8 @@ async def get_recent_activity(
             "timestamp": exercise.get("logged_at"),
         })
     
-    # Sort by timestamp and limit
     activities.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
     return {"activities": activities[:limit]}
-
 
 # ============================================
 # PILLS (Medication Reference)
@@ -874,7 +811,6 @@ async def get_pills(db: Client = Depends(get_db)):
     ).order("name").execute()
     
     return {"pills": response.data or []}
-
 
 # ============================================
 # JOURNAL LOGS
@@ -894,7 +830,6 @@ async def get_patient_journal(
         "tags, mood, sentiment_score, ai_analysis, metadata, logged_at, created_at"
     ).eq("patient_id", patient_id_str)
     
-    # Use simple string-based date filtering (timezone-agnostic)
     if start_date:
         query = query.gte("logged_at", f"{start_date}T00:00:00")
     
@@ -907,7 +842,6 @@ async def get_patient_journal(
         "entries": response.data or [],
         "total": len(response.data or [])
     }
-
 
 @router.get("/patients/{patient_id}/pill-logs")
 async def get_patient_pill_logs(
@@ -924,18 +858,15 @@ async def get_patient_pill_logs(
         "created_at"
     ).eq("patient_id", patient_id_str)
     
-    # Filter by date if provided
     if date:
         date_start = f"{date}T00:00:00"
         date_end = f"{date}T23:59:59"
         query = query.gte("scheduled_time", date_start).lte("scheduled_time", date_end)
     
-    # Check patient_pills to see if medications are assigned (needed for generating logs if none exist)
     patient_pills_response = db.table("patient_pills").select("id, patient_id, pill_id, is_active, times_of_day, frequency, days_of_week").eq("patient_id", patient_id_str).eq("is_active", True).execute()
     
     response = query.order("scheduled_time", desc=False).execute()
     
-    # If no pill_logs exist but patient has active medications, generate them for the requested date
     if date and len(response.data or []) == 0 and len(patient_pills_response.data or []) > 0:
         from datetime import datetime
         target_date = __import__('datetime').date.fromisoformat(date)
@@ -947,18 +878,14 @@ async def get_patient_pill_logs(
             times_of_day = patient_pill.get("times_of_day") or []
             frequency = patient_pill.get("frequency", "")
             
-            # If days_of_week is empty and it's a daily medication, treat as every day
             if len(days_of_week) == 0 and "daily" in frequency:
                 days_of_week = [0, 1, 2, 3, 4, 5, 6]  # All days
             
-            # Check if target date is in the schedule
             if target_weekday in days_of_week:
                 for time_str in times_of_day:
-                    # Parse time and create scheduled datetime
                     hour, minute = map(int, time_str.split(":"))
                     scheduled_datetime = datetime.combine(target_date, datetime.min.time().replace(hour=hour, minute=minute))
                     
-                    # Determine status
                     now = datetime.now()
                     if scheduled_datetime < now:
                         status = "missed"
@@ -972,7 +899,6 @@ async def get_patient_pill_logs(
                         "status": status,
                     }
                     
-                    # Insert into database
                     insert_result = db.table("pill_logs").insert(pill_log_data).execute()
                     if insert_result.data:
                         generated_logs.append(insert_result.data[0])
@@ -986,7 +912,6 @@ async def get_patient_pill_logs(
         "total": len(response.data or [])
     }
 
-
 @router.post("/patients/{patient_id}/journal/summary")
 async def generate_journal_day_summary(
     patient_id: UUID,
@@ -999,7 +924,6 @@ async def generate_journal_day_summary(
     Uses caching to avoid regenerating when no new entries have been added.
     """
     
-    # Get journal entries for the day
     date_start = f"{date}T00:00:00"
     date_end = f"{date}T23:59:59"
     
@@ -1019,7 +943,6 @@ async def generate_journal_day_summary(
             "cached": False
         }
     
-    # Check for cached summary (unless force_refresh is True)
     if not force_refresh:
         cached_res = db.table("daily_summaries").select(
             "journal_summary, entry_counts"
@@ -1030,7 +953,6 @@ async def generate_journal_day_summary(
             cached_counts = cached.get("entry_counts") or {}
             cached_journal_count = cached_counts.get("journal", 0)
             
-            # If journal count matches and we have a summary, return cached
             if cached_journal_count == current_count and cached.get("journal_summary"):
                 return {
                     "summary": cached.get("journal_summary"),
@@ -1038,7 +960,6 @@ async def generate_journal_day_summary(
                     "cached": True
                 }
     
-    # Build context from all entries
     context = ""
     for entry in entries:
         transcript = entry.get("transcript", "")
@@ -1046,7 +967,6 @@ async def generate_journal_day_summary(
         logged_at = entry.get("logged_at", "")[:16]
         context += f"[{logged_at}] Mood: {mood}\n\"{transcript}\"\n\n"
     
-    # Use Cerebras to summarize what they talked about
     cerebras = get_cerebras_client()
     if not cerebras:
         return {
@@ -1078,15 +998,12 @@ Provide a clear, natural summary of what the patient talked about:"""
     except Exception as e:
         summary = f"Error generating summary: {str(e)}"
     
-    # Store/update summary in daily_summaries table
-    # First check if record exists
     from datetime import datetime as dt
     existing = db.table("daily_summaries").select("id, entry_counts").eq(
         "patient_id", str(patient_id)
     ).eq("date", date).maybe_single().execute()
     
     if existing.data:
-        # Update existing record
         existing_counts = existing.data.get("entry_counts") or {}
         existing_counts["journal"] = current_count
         
@@ -1096,7 +1013,6 @@ Provide a clear, natural summary of what the patient talked about:"""
             "generated_at": dt.utcnow().isoformat()
         }).eq("id", existing.data.get("id")).execute()
     else:
-        # Create new record (get patient info first)
         patient_res = db.table("patients").select("user_id").eq("id", str(patient_id)).maybe_single().execute()
         user_id = patient_res.data.get("user_id") if patient_res.data else None
         
@@ -1114,7 +1030,6 @@ Provide a clear, natural summary of what the patient talked about:"""
         "entry_count": current_count,
         "cached": False
     }
-
 
 # ============================================
 # DAILY AI SUMMARY
@@ -1135,7 +1050,6 @@ async def generate_daily_summary(
     
     target_date = summary_date or date.today().isoformat()
     
-    # Get patient info
     patient_res = db.table("patients").select(
         "id, user_id, age, gender, medical_conditions"
     ).eq("id", str(patient_id)).single().execute()
@@ -1146,11 +1060,9 @@ async def generate_daily_summary(
     patient = patient_res.data
     user_id = patient.get("user_id")
     
-    # Get patient name
     user_res = db.table("users").select("full_name").eq("id", user_id).single().execute()
     patient_name = user_res.data.get("full_name", "Patient") if user_res.data else "Patient"
     
-    # Fetch all data for the day
     date_start = f"{target_date}T00:00:00"
     date_end = f"{target_date}T23:59:59"
     
@@ -1166,7 +1078,6 @@ async def generate_daily_summary(
     ).lte("logged_at", date_end).execute()
     exercises = exercises_res.data or []
     
-    # Medication logs (via patient_id)
     pill_logs_res = db.table("pill_logs").select(
         "*, patient_pills(pill_id, pills(name))"
     ).eq("patient_id", str(patient_id)).gte(
@@ -1174,13 +1085,11 @@ async def generate_daily_summary(
     ).lte("scheduled_time", date_end).execute()
     pill_logs = pill_logs_res.data or []
     
-    # Journal entries (via patient_id)
     journal_res = db.table("journal_logs").select("*").eq(
         "patient_id", str(patient_id)
     ).gte("logged_at", date_start).lte("logged_at", date_end).execute()
     journal_entries = journal_res.data or []
     
-    # Calculate current entry counts for cache comparison
     current_counts = {
         "meals": len(meals),
         "exercises": len(exercises),
@@ -1188,7 +1097,6 @@ async def generate_daily_summary(
         "pill_logs": len(pill_logs)
     }
     
-    # Check for existing cached summary (unless force_refresh is True)
     if not force_refresh:
         cached_res = db.table("daily_summaries").select("*").eq(
             "patient_id", str(patient_id)
@@ -1198,14 +1106,12 @@ async def generate_daily_summary(
             cached = cached_res.data
             cached_counts = cached.get("entry_counts") or {}
             
-            # Check if entry counts match (no new data added)
             if (cached_counts.get("meals") == current_counts["meals"] and
                 cached_counts.get("exercises") == current_counts["exercises"] and
                 cached_counts.get("journal") == current_counts["journal"] and
                 cached_counts.get("pill_logs") == current_counts["pill_logs"] and
                 cached.get("ai_summary")):
                 
-                # Return cached summary - no API call needed
                 taken = sum(1 for p in pill_logs if p.get('status') == 'taken')
                 missed = sum(1 for p in pill_logs if p.get('status') == 'missed')
                 late = sum(1 for p in pill_logs if p.get('status') == 'late')
@@ -1238,7 +1144,6 @@ async def generate_daily_summary(
                     "cached": True  # Indicate this was a cached response
                 }
     
-    # Get patient's care plans
     plans_res = db.table("patient_plans").select("*").eq(
         "patient_id", str(patient_id)
     ).eq("is_active", True).execute()
@@ -1247,14 +1152,12 @@ async def generate_daily_summary(
     diet_plan = next((p for p in plans if p.get('plan_type') == 'diet'), None)
     exercise_plan = next((p for p in plans if p.get('plan_type') == 'exercise'), None)
     
-    # Calculate totals
     total_calories = sum(m.get('total_calories', 0) or 0 for m in meals)
     total_protein = sum(m.get('total_protein', 0) or 0 for m in meals)
     total_carbs = sum(m.get('total_carbs', 0) or 0 for m in meals)
     total_fat = sum(m.get('total_fat', 0) or 0 for m in meals)
     total_exercise_min = sum(e.get('duration_minutes', 0) or 0 for e in exercises)
     
-    # Build context for AI
     context = f"""
 Patient: {patient_name}
 Age: {patient.get('age', 'Unknown')}
@@ -1304,7 +1207,6 @@ Date: {target_date}
             context += f"Fat Target: {diet_plan.get('fat_target')}g (actual: {total_fat}g, difference: {diff:+.0f}g)\n"
     context += "\n"
     
-    # Check for diet plan violations using AI
     violations = []
     if diet_plan and diet_plan.get('notes') and meals:
         diet_notes = diet_plan.get('notes', '')
@@ -1342,7 +1244,6 @@ Date: {target_date}
                             'time': meal.get('consumed_at', '')[:16],
                         })
                 except:
-                    # Fallback to keyword matching
                     diet_lower = diet_notes.lower()
                     meal_lower = f"{meal_name} {meal_analysis}".lower()
                     restriction_keywords = ['fried', 'sodium', 'salt', 'processed', 'sugar', 'dairy', 'gluten', 'alcohol', 'avoid']
@@ -1366,7 +1267,6 @@ Date: {target_date}
         for v in violations:
             context += f"- {v['meal_type'].title()}: {v['meal']} at {v['time']} - Violates dietary restrictions\n"
     
-    # Get prescribed exercises for this patient
     prescribed_exercises = db.table("prescribed_exercises").select(
         "*, exercise_catalog(name, category)"
     ).eq("patient_id", str(patient_id)).eq("is_active", True).execute()
@@ -1388,7 +1288,6 @@ Date: {target_date}
     
     context += f"\n=== LOGGED EXERCISES ({len(exercises)} logged, {total_exercise_min} min total) ===\n"
     
-    # Match logged exercises to prescribed ones
     prescribed_names = {px.get("exercise_catalog", {}).get("name", "").lower(): px for px in prescribed_list}
     completed_prescribed = set()
     off_plan_exercises = []
@@ -1419,7 +1318,6 @@ Date: {target_date}
     # Report missed prescribed exercises
     missed_prescribed = [name for name in prescribed_names.keys() if name not in completed_prescribed]
     
-    # Add explicit adherence summary for AI clarity
     context += f"\n=== EXERCISE ADHERENCE SUMMARY ===\n"
     if completed_prescribed:
         context += f"COMPLETED prescribed exercises: {', '.join(name.title() for name in completed_prescribed)}\n"
@@ -1451,7 +1349,6 @@ Date: {target_date}
         logged_at = entry.get('logged_at', '')[:16]
         context += f"- [{logged_at}] Mood: {mood}\n  What they said: \"{transcript}\"\n"
     
-    # Use Cerebras to generate summary
     cerebras = get_cerebras_client()
     if not cerebras:
         return {
@@ -1496,7 +1393,6 @@ Respond in this exact JSON format:
 Be clinical, specific, and comparison-focused. Explicitly state whether the patient followed their care plans or not."""
 
     try:
-        # Use faster 8B model for quicker responses (cached results make this fine for repeat views)
         response = cerebras.chat.completions.create(
             model="llama-3.1-8b",
             messages=[{"role": "user", "content": prompt}],
@@ -1506,9 +1402,7 @@ Be clinical, specific, and comparison-focused. Explicitly state whether the pati
         
         ai_response = response.choices[0].message.content.strip()
         
-        # Parse JSON response
         try:
-            # Handle potential markdown code blocks
             if "```json" in ai_response:
                 ai_response = ai_response.split("```json")[1].split("```")[0].strip()
             elif "```" in ai_response:
@@ -1534,12 +1428,10 @@ Be clinical, specific, and comparison-focused. Explicitly state whether the pati
         activity_summary = ""
         alerts = []
     
-    # Calculate stats
     total_calories = sum(m.get('total_calories', 0) or 0 for m in meals)
     total_exercise_min = sum(e.get('duration_minutes', 0) or 0 for e in exercises)
     calories_burned = sum(e.get('calories_burned', 0) or 0 for e in exercises)
     
-    # Store summary in database with entry counts for cache invalidation
     from datetime import datetime as dt
     summary_data = {
         "patient_id": str(patient_id),
@@ -1569,7 +1461,6 @@ Be clinical, specific, and comparison-focused. Explicitly state whether the pati
     # Valid alert types in the database
     VALID_ALERT_TYPES = {'missed_dose', 'low_adherence', 'refill_needed', 'pattern_detected', 'vital_abnormal', 'missed_meal', 'inactivity', 'fall_detected'}
     
-    # Map AI-generated types to valid database types
     def map_alert_type(ai_type: str) -> str:
         type_mapping = {
             'nutrition': 'pattern_detected',
@@ -1580,7 +1471,6 @@ Be clinical, specific, and comparison-focused. Explicitly state whether the pati
         mapped = type_mapping.get(ai_type, ai_type)
         return mapped if mapped in VALID_ALERT_TYPES else 'pattern_detected'
     
-    # Create alerts in alerts table if high or medium severity
     for alert in alerts:
         if alert.get("severity") in ["high", "medium"]:
             alert_data = {
@@ -1630,7 +1520,6 @@ Be clinical, specific, and comparison-focused. Explicitly state whether the pati
         "cached": False  # Freshly generated, not from cache
     }
 
-
 @router.get("/patients/{patient_id}/daily-summary")
 async def get_daily_summary(
     patient_id: UUID,
@@ -1648,7 +1537,6 @@ async def get_daily_summary(
         raise HTTPException(status_code=404, detail="No summary found for this date")
     
     return response.data
-
 
 # ============================================
 # PATIENT PLANS (Diet & Exercise)
@@ -1670,7 +1558,6 @@ async def get_patient_plans(
     
     return {"plans": response.data or []}
 
-
 @router.post("/patients/{patient_id}/plans")
 async def create_patient_plan(
     patient_id: UUID,
@@ -1678,7 +1565,6 @@ async def create_patient_plan(
     db: Client = Depends(get_db)
 ):
     """Create a new care plan for a patient."""
-    # Verify patient exists
     patient_res = db.table("patients").select("id").eq("id", str(patient_id)).single().execute()
     if not patient_res.data:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -1686,7 +1572,6 @@ async def create_patient_plan(
     plan_type = plan.get("plan_type", "diet")
     
     # Deactivate all existing active plans of the same type for this patient
-    # This ensures only one active plan per type per patient
     db.table("patient_plans").update({"is_active": False}).eq(
         "patient_id", str(patient_id)
     ).eq("plan_type", plan_type).eq("is_active", True).execute()
@@ -1711,7 +1596,6 @@ async def create_patient_plan(
     
     return {"plan": response.data[0] if response.data else None}
 
-
 @router.patch("/patients/{patient_id}/plans/{plan_id}")
 async def update_patient_plan(
     patient_id: UUID,
@@ -1729,7 +1613,6 @@ async def update_patient_plan(
     
     return {"plan": response.data[0]}
 
-
 @router.delete("/patients/{patient_id}/plans/{plan_id}")
 async def delete_patient_plan(
     patient_id: UUID,
@@ -1742,7 +1625,6 @@ async def delete_patient_plan(
     ).eq("patient_id", str(patient_id)).execute()
     
     return {"success": True}
-
 
 # ============================================
 # EXERCISE CATALOG & PRESCRIBED EXERCISES
@@ -1761,7 +1643,6 @@ async def get_exercise_catalog(
     
     response = query.execute()
     return {"exercises": response.data or []}
-
 
 def _exercise_plan_schedule_from_frequency(frequency: str):
     """
@@ -1786,7 +1667,6 @@ def _exercise_plan_schedule_from_frequency(frequency: str):
     # daily (or unknown -> default daily)
     return reminder_times, []
 
-
 @router.get("/patients/{patient_id}/prescribed-exercises")
 async def get_prescribed_exercises(
     patient_id: UUID,
@@ -1804,7 +1684,6 @@ async def get_prescribed_exercises(
     response = query.order("priority").execute()
     return {"prescribed_exercises": response.data or []}
 
-
 @router.post("/patients/{patient_id}/prescribed-exercises")
 async def prescribe_exercise(
     patient_id: UUID,
@@ -1818,7 +1697,6 @@ async def prescribe_exercise(
     db: Client = Depends(get_db)
 ):
     """Prescribe an exercise to a patient."""
-    # Check if already prescribed and active
     existing = db.table("prescribed_exercises").select("id").eq(
         "patient_id", str(patient_id)
     ).eq("exercise_id", str(exercise_id)).eq("is_active", True).execute()
@@ -1826,7 +1704,6 @@ async def prescribe_exercise(
     if existing.data:
         raise HTTPException(status_code=400, detail="Exercise already prescribed to this patient")
     
-    # Get defaults from catalog if not specified
     if sets is None and reps is None and duration_seconds is None:
         catalog = db.table("exercise_catalog").select("*").eq("id", str(exercise_id)).single().execute()
         if catalog.data:
@@ -1848,7 +1725,6 @@ async def prescribe_exercise(
     
     response = db.table("prescribed_exercises").insert(prescription_data).execute()
     
-    # Fetch with catalog details
     full_response = db.table("prescribed_exercises").select(
         "*, exercise_catalog(*)"
     ).eq("id", response.data[0]["id"]).single().execute()
@@ -1884,7 +1760,6 @@ async def prescribe_exercise(
 
     return {"prescribed_exercise": full_response.data}
 
-
 @router.patch("/patients/{patient_id}/prescribed-exercises/{prescription_id}")
 async def update_prescribed_exercise(
     patient_id: UUID,
@@ -1904,7 +1779,6 @@ async def update_prescribed_exercise(
     if not response.data:
         raise HTTPException(status_code=404, detail="Prescription not found")
     
-    # Fetch with catalog details
     full_response = db.table("prescribed_exercises").select(
         "*, exercise_catalog(*)"
     ).eq("id", str(prescription_id)).single().execute()
@@ -1945,7 +1819,6 @@ async def update_prescribed_exercise(
 
     return {"prescribed_exercise": full_response.data}
 
-
 @router.delete("/patients/{patient_id}/prescribed-exercises/{prescription_id}")
 async def remove_prescribed_exercise(
     patient_id: UUID,
@@ -1972,7 +1845,6 @@ async def remove_prescribed_exercise(
     
     return {"success": True}
 
-
 @router.get("/patients/{patient_id}/exercise-adherence")
 async def get_exercise_adherence(
     patient_id: UUID,
@@ -1990,12 +1862,10 @@ async def get_exercise_adherence(
     start_of_day = datetime.combine(target_date, datetime.min.time()).isoformat()
     end_of_day = datetime.combine(target_date, datetime.max.time()).isoformat()
     
-    # Get prescribed exercises
     prescribed = db.table("prescribed_exercises").select(
         "*, exercise_catalog(name, category)"
     ).eq("patient_id", str(patient_id)).eq("is_active", True).execute()
     
-    # Get logged exercises for the day
     logged = db.table("exercises").select("*").eq(
         "patient_id", str(patient_id)
     ).gte("logged_at", start_of_day).lte("logged_at", end_of_day).execute()
@@ -2003,7 +1873,6 @@ async def get_exercise_adherence(
     prescribed_list = prescribed.data or []
     logged_list = logged.data or []
     
-    # Match logged exercises to prescriptions
     completed = []
     missed = []
     off_plan = []
@@ -2013,7 +1882,6 @@ async def get_exercise_adherence(
     for log in logged_list:
         exercise_type = (log.get("exercise_type") or log.get("name") or "").lower()
         
-        # Check if it matches any prescribed exercise
         matched = False
         for name, prescription in prescribed_names.items():
             if name in exercise_type or exercise_type in name:
@@ -2028,7 +1896,6 @@ async def get_exercise_adherence(
         if not matched:
             off_plan.append(log)
     
-    # Find missed exercises (prescribed but not completed)
     completed_names = {c["prescription"]["exercise_catalog"]["name"].lower() for c in completed}
     for name, prescription in prescribed_names.items():
         if name not in completed_names:
@@ -2046,7 +1913,6 @@ async def get_exercise_adherence(
         "missed": missed,
         "off_plan": off_plan
     }
-
 
 # ============================================
 # SUMMARIES (Journal, Meals, Exercises)
@@ -2071,7 +1937,6 @@ async def generate_journal_summary(
     
     cerebras = get_cerebras_client()
     if not cerebras:
-        # Fallback: return first sentence
         import re
         first_sentence = re.split(r'[.!?]', transcript)[0] if transcript else ""
         return {"summary": first_sentence[:100] + "..." if len(first_sentence) > 100 else first_sentence}
@@ -2095,7 +1960,6 @@ async def generate_journal_summary(
         
         summary = response.choices[0].message.content.strip()
         
-        # Update entry with summary in ai_analysis
         current_analysis = entry.get("ai_analysis", {}) or {}
         if isinstance(current_analysis, str):
             try:
@@ -2108,11 +1972,9 @@ async def generate_journal_summary(
         
         return {"summary": summary}
     except Exception as e:
-        # Fallback
         import re
         first_sentence = re.split(r'[.!?]', transcript)[0] if transcript else ""
         return {"summary": first_sentence[:100] + "..." if len(first_sentence) > 100 else first_sentence}
-
 
 @router.post("/meals/{meal_id}/summary")
 async def generate_meal_summary(
@@ -2164,7 +2026,6 @@ async def generate_meal_summary(
     except Exception as e:
         return {"summary": f"{name} - {calories} cal, {protein}g protein"}
 
-
 @router.post("/exercises/{exercise_id}/summary")
 async def generate_exercise_summary(
     exercise_id: UUID,
@@ -2210,7 +2071,6 @@ async def generate_exercise_summary(
     except Exception as e:
         return {"summary": f"{name} - {duration} min, {calories} cal"}
 
-
 # ============================================
 # POSE ANALYSIS
 # ============================================
@@ -2225,12 +2085,10 @@ def _run_pose_analysis_background(
     from app.services.pose_analysis import analyze_exercise_video
     from app.core.database import get_db_sync
     
-    # Get fresh database connection for background task
     db = get_db_sync()
     cerebras = get_cerebras_client()
     
     try:
-        # Run the async analysis in a new event loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
@@ -2245,7 +2103,6 @@ def _run_pose_analysis_background(
         )
         loop.close()
         
-        # Store analysis results
         update_data = {"pose_analysis": analysis}
         if analysis.get("processed_video_url"):
             update_data["processed_video_url"] = analysis["processed_video_url"]
@@ -2256,7 +2113,6 @@ def _run_pose_analysis_background(
         # Log error but don't raise (background task)
         import logging
         logging.error(f"Background pose analysis failed for {exercise_id}: {e}")
-
 
 @router.patch("/exercises/{exercise_id}")
 async def update_exercise(
@@ -2283,7 +2139,6 @@ async def update_exercise(
     
     return {"exercise": response.data[0]}
 
-
 @router.post("/exercises/{exercise_id}/analyze-pose")
 async def analyze_exercise_pose(
     exercise_id: UUID,
@@ -2307,7 +2162,6 @@ async def analyze_exercise_pose(
     exercise = exercise_res.data
     existing_analysis = exercise.get("pose_analysis")
     
-    # Check if this is a failed analysis (contains error indicator)
     is_failed_analysis = (
         existing_analysis and 
         existing_analysis.get("summary") and 
@@ -2315,9 +2169,7 @@ async def analyze_exercise_pose(
          "not available" in existing_analysis.get("summary", ""))
     )
     
-    # If already analyzed successfully and not forcing re-analysis, return cached result
     if existing_analysis and not force and not is_failed_analysis:
-        # Check both the column and pose_analysis for processed_video_url
         processed_url = exercise.get("processed_video_url") or existing_analysis.get("processed_video_url")
         return {
             "status": "completed",
@@ -2354,7 +2206,6 @@ async def analyze_exercise_pose(
         "message": "Analysis queued. Poll GET /exercises/{id}/pose-analysis for results.",
     }
 
-
 @router.get("/exercises/{exercise_id}/pose-analysis")
 async def get_exercise_pose_analysis(
     exercise_id: UUID,
@@ -2369,7 +2220,6 @@ async def get_exercise_pose_analysis(
     exercise = exercise_res.data
     pose_analysis = exercise.get("pose_analysis")
     
-    # Check both the column and pose_analysis for processed_video_url
     processed_url = exercise.get("processed_video_url")
     if not processed_url and pose_analysis:
         processed_url = pose_analysis.get("processed_video_url")
@@ -2383,7 +2233,6 @@ async def get_exercise_pose_analysis(
         "has_analysis": pose_analysis is not None,
     }
 
-
 @router.post("/exercises/process-pending")
 async def process_pending_pose_analyses(
     limit: int = Query(5, description="Max number of videos to process"),
@@ -2395,7 +2244,6 @@ async def process_pending_pose_analyses(
     """
     from app.services.pose_analysis import analyze_exercise_video
     
-    # Find exercises with video but no analysis
     exercises_res = db.table("exercises").select(
         "id, video_url, exercise_type, name"
     ).not_.is_("video_url", "null").is_("pose_analysis", "null").limit(limit).execute()
@@ -2420,7 +2268,6 @@ async def process_pending_pose_analyses(
                 cerebras_client=cerebras,
             )
             
-            # Store results
             update_data = {"pose_analysis": analysis}
             if analysis.get("processed_video_url"):
                 update_data["processed_video_url"] = analysis["processed_video_url"]

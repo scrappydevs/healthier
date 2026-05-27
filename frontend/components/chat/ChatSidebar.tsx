@@ -69,7 +69,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     setIsTitleAnimating,
   } = useChatStore();
 
-  // Update current page context when pathname changes
   useEffect(() => {
     if (pathname) {
       setCurrentPage(pathname);
@@ -110,7 +109,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     };
   }, [sessionTitle, isTitleAnimating, setIsTitleAnimating]);
 
-  // Auto-scroll messages
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -125,7 +123,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     }
   }, [isCollapsed, shouldFocusInput, acknowledgeFocus]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -141,7 +138,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     };
   }, [showSessions]);
 
-  // Fetch sessions on mount
   const fetchSessions = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/ai/sessions?user_id=default_user`);
@@ -156,7 +152,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     fetchSessions();
   }, [fetchSessions]);
 
-  // Get context-aware suggestions based on current page
   const smartSuggestions = useMemo(() => {
     if (pathname?.includes("hospital")) {
       return [
@@ -203,7 +198,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     ];
   }, [pathname]);
 
-  // Generate follow-up questions based on response
   const generateFollowUpQuestions = useCallback((userQuery: string, response: string) => {
     const questions: string[] = [];
     const queryLower = userQuery.toLowerCase();
@@ -253,12 +247,10 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     setIsStreaming(false);
   }, [addMessage, updateLastMessage, setIsStreaming]);
 
-  // Send message to backend
   const handleSend = useCallback(async () => {
     const trimmedInput = inputValue.trim();
     if (!trimmedInput || isLoading || isStreaming) return;
 
-    // Generate title immediately for the first visible message in the UI
     // (sessionId may be persisted across reloads while messages/title are not).
     const shouldGenerateTitle =
       messages.length === 0 && (!sessionTitle || sessionTitle === "New Chat" || sessionTitle === "Chat");
@@ -308,19 +300,16 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
 
       const data = await response.json();
 
-      // Update session info
       if (data.session_id && !sessionId) {
         setSessionId(data.session_id);
       }
       if (data.session_title && data.session_title !== sessionTitle) {
-        // If we already generated a title, don't overwrite it with the backend title.
         if (!generatedTitle) {
           setIsTitleAnimating(true);
           setSessionTitle(data.session_title);
         }
       }
 
-      // Show tool indicator if tools were called
       if (data.tool_calls && data.tool_calls > 0) {
         setShowToolIndicator(true);
         setToolCallCount(data.tool_calls);
@@ -338,7 +327,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
         onCacheInvalidate(data.cache_keys || ["rooms", "patients"]);
       }
 
-      // Generate follow-ups
       const followUps = generateFollowUpQuestions(trimmedInput, responseText);
       setFollowUpQuestions(followUps);
 
@@ -369,11 +357,9 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     fetchSessions,
   ]);
 
-  // Handle suggestion click
   const handleSuggestionClick = useCallback(async (prompt: string) => {
     setInputValue("");
     
-    // Generate title immediately for the first visible message in the UI
     // (sessionId may be persisted across reloads while messages/title are not).
     const shouldGenerateTitle =
       messages.length === 0 && (!sessionTitle || sessionTitle === "New Chat" || sessionTitle === "Chat");
@@ -424,7 +410,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
         setSessionId(data.session_id);
       }
       if (data.session_title && data.session_title !== sessionTitle) {
-        // If we already generated a title, don't overwrite it with the backend title.
         if (!generatedTitle) {
           setIsTitleAnimating(true);
           setSessionTitle(data.session_title);
@@ -472,7 +457,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     fetchSessions,
   ]);
 
-  // Load a session
   const loadSession = useCallback(async (session: ChatSession) => {
     try {
       setIsLoading(true);
@@ -502,7 +486,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     }
   }, [setIsLoading, setSessionId, setSessionTitle]);
 
-  // Handle @ autocomplete
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setInputValue(value);
@@ -537,7 +520,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
     inputRef.current?.focus();
   }, [inputValue]);
 
-  // Handle keydown
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showAutocomplete && autocompleteItems.length > 0) {
       if (e.key === "ArrowDown") {
@@ -586,7 +568,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
         isCollapsed ? "opacity-0 pointer-events-none" : "opacity-100"
       )}
     >
-      {/* Header */}
       <div className="h-12 px-3 flex items-center justify-between border-b shrink-0">
         <div className="flex items-center gap-2 flex-1 min-w-0 relative">
           <button
@@ -604,7 +585,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
             <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
           </button>
 
-          {/* Sessions Dropdown */}
           {showSessions && (
             <div
               ref={dropdownRef}
@@ -673,7 +653,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
         </div>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 ? (
           <EmptyState
@@ -690,7 +669,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
               />
             ))}
 
-            {/* Tool indicator */}
             {showToolIndicator && (
               <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-md">
                 <Wrench className="h-3.5 w-3.5 text-primary animate-pulse" />
@@ -700,10 +678,8 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
               </div>
             )}
 
-            {/* Loading indicator */}
             {isLoading && !isStreaming && !showToolIndicator && <TypingIndicator />}
 
-            {/* Follow-up questions */}
             {!isLoading && !isStreaming && followUpQuestions.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-2">
                 {followUpQuestions.map((q, i) => (
@@ -722,9 +698,7 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <div className="p-3 border-t shrink-0">
-        {/* Autocomplete */}
         {showAutocomplete && autocompleteItems.length > 0 && (
           <div className="mb-2 bg-white border rounded-md shadow-lg max-h-40 overflow-y-auto">
             {autocompleteItems.map((room, idx) => (
@@ -783,7 +757,6 @@ export function ChatSidebar({ isCollapsed, onClose, onCacheInvalidate }: ChatSid
   );
 }
 
-// Empty state with suggestions
 function EmptyState({
   suggestions,
   onSuggestionClick,
@@ -842,7 +815,6 @@ function MessageBubble({
           <span className="inline-block w-1.5 h-3.5 bg-primary ml-0.5 animate-pulse" />
         )}
 
-        {/* Copy button for assistant messages */}
         {!isUser && message.content && !message.isStreaming && (
           <button
             onClick={() => onCopy(message.content)}
@@ -853,7 +825,6 @@ function MessageBubble({
           </button>
         )}
 
-        {/* Tool call indicator */}
         {message.toolCalls && message.toolCalls > 0 && (
           <div className="flex items-center gap-1 mt-2 pt-2 border-t border-current/10">
             <Wrench className="h-3 w-3 opacity-50" />

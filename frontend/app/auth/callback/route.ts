@@ -7,7 +7,6 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get("code");
   const origin = requestUrl.origin;
 
-  // Create response that we'll add cookies to
   const response = NextResponse.redirect(`${origin}/dashboard`);
 
   if (code) {

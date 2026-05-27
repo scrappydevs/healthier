@@ -18,7 +18,6 @@ const mealTypeLabels: Record<string, string> = {
   snack: "Snack",
 };
 
-// Get local date string (YYYY-MM-DD) from a date
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -26,14 +25,12 @@ function getLocalDateString(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// Get local date string from ISO timestamp
 function getLocalDateFromTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
   return getLocalDateString(date);
 }
 
 function formatDateLabel(dateStr: string): string {
-  // Parse date string as local date
   const [year, month, day] = dateStr.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   
@@ -51,13 +48,11 @@ function formatDateLabel(dateStr: string): string {
 function groupMealsByDate(meals: Meal[]): Map<string, Meal[]> {
   const grouped = new Map<string, Meal[]>();
   
-  // Sort meals by date descending (newest first)
   const sorted = [...meals].sort((a, b) => 
     new Date(b.consumed_at).getTime() - new Date(a.consumed_at).getTime()
   );
   
   for (const meal of sorted) {
-    // Use local date for grouping
     const dateKey = getLocalDateFromTimestamp(meal.consumed_at);
     if (!grouped.has(dateKey)) {
       grouped.set(dateKey, []);
@@ -80,11 +75,9 @@ export function FoodSection({ patientId }: FoodSectionProps) {
       setIsLoading(true);
       setError(null);
       try {
-        // Fetch all meals (no date filter)
         const response = await getPatientMeals(patientId);
         setMeals(response.meals);
         
-        // Auto-expand today if it has meals
         const today = getLocalDateString(new Date());
         const hasToday = response.meals.some(m => getLocalDateFromTimestamp(m.consumed_at) === today);
         if (hasToday) {
@@ -164,7 +157,6 @@ export function FoodSection({ patientId }: FoodSectionProps) {
 
         return (
           <div key={dateKey} className="bg-white">
-            {/* Day Header - Collapsible */}
             <button
               onClick={() => toggleDay(dateKey)}
               className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors"
@@ -184,11 +176,9 @@ export function FoodSection({ patientId }: FoodSectionProps) {
               )}
             </button>
 
-            {/* Day Content */}
             {isExpanded && (
               <div className="px-4 pb-4">
                 <div className="pt-3 space-y-3">
-                  {/* Day Summary (inline) */}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span>
                       <span className="font-medium text-foreground">{dayTotals.calories}</span> cal
@@ -204,7 +194,6 @@ export function FoodSection({ patientId }: FoodSectionProps) {
                     </span>
                   </div>
 
-                  {/* Meals by Type */}
                   <div className="space-y-4">
                     {mealTypeOrder.map((type) => {
                       const typeMeals = dateMeals.filter((m) => m.meal_type === type);
@@ -261,7 +250,6 @@ function MealCard({
         onClick={onToggle}
         className="w-full py-2 flex items-center gap-2.5 hover:bg-muted/20 transition-colors text-left"
       >
-        {/* Image thumbnail */}
         {meal.image_url ? (
           <img
             src={meal.image_url}
@@ -274,7 +262,6 @@ function MealCard({
           </div>
         )}
 
-        {/* Main info */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground truncate">{meal.name}</p>
           <div className="flex items-center gap-2 mt-0.5">
@@ -287,7 +274,6 @@ function MealCard({
           )}
         </div>
 
-        {/* Health rating */}
         <div className="flex items-center gap-1.5 shrink-0">
           <div
             className={cn(
@@ -309,11 +295,9 @@ function MealCard({
         </div>
       </button>
 
-      {/* Expanded details */}
       {isExpanded && (
         <div className="pl-12 pr-2 pb-2">
           <div className="space-y-2">
-            {/* Nutritional breakdown inline */}
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
               <span className="text-muted-foreground">
                 <span className="font-medium text-foreground">{meal.total_protein}g</span> protein
@@ -326,7 +310,6 @@ function MealCard({
               </span>
             </div>
 
-            {/* Food groups */}
             {meal.food_groups && meal.food_groups.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {meal.food_groups.map((group, i) => (
@@ -340,7 +323,6 @@ function MealCard({
               </div>
             )}
 
-            {/* Large image */}
             {meal.image_url && (
               <div>
                 <img

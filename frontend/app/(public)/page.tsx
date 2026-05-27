@@ -43,7 +43,6 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Navbar */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <Link href="/" className="text-2xl font-semibold text-slate-900 tracking-tight">
@@ -77,14 +76,11 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* Hero Section */}
       <section className="relative bg-slate-900 min-h-[calc(100vh-5rem)] flex items-center overflow-hidden">
-        {/* Gradient background */}
         <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
 
         <div className="relative max-w-7xl mx-auto px-6 md:px-12 lg:px-16 py-20 w-full">
           <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 xl:gap-24 items-center">
-            {/* Left: Text */}
             <div className="order-2 lg:order-1 relative z-10 pr-0 lg:pr-8">
               <h1 className="opacity-0 animate-fade-in-up text-5xl md:text-6xl lg:text-7xl font-semibold text-white leading-[1.1] tracking-tight mb-6">
                 Health tracking made simple.
@@ -117,7 +113,6 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Right: Hero video */}
             <div className="order-1 lg:order-2 opacity-0 animate-slide-in-right animation-delay-200 relative z-0">
               <div className="relative w-full">
                 <HeroVideo />
@@ -127,7 +122,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Care Section */}
       <section className="py-28 bg-slate-50">
         <div className="max-w-4xl mx-auto px-6 text-center">
           <h2 className="text-3xl md:text-4xl font-semibold text-slate-900 mb-6 tracking-tight">
@@ -141,7 +135,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="py-12 bg-slate-50 border-t border-slate-100">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
           <p className="text-sm text-slate-500">

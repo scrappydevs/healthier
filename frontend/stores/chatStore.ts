@@ -225,7 +225,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 }));
 
-// Initialize from localStorage
 if (typeof window !== "undefined") {
   const savedState = localStorage.getItem(CHAT_OPEN_KEY);
   const savedSize = localStorage.getItem(CHAT_SIZE_KEY);

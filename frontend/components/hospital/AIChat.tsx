@@ -70,7 +70,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -86,7 +85,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     };
   }, [showSessions]);
 
-  // Auto-scroll messages
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
@@ -95,7 +93,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // Fetch sessions
   const fetchSessions = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/ai/sessions?user_id=default_user`);
@@ -114,7 +111,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     fetchSessions();
   }, [fetchSessions]);
 
-  // Get smart suggestions based on current page
   const getSmartSuggestions = useCallback(() => {
     if (pathname?.includes('hospital') || pathname?.includes('floorplan')) {
       return [
@@ -127,14 +123,12 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     return ['Room status', 'Active alerts', 'Hospital statistics'];
   }, [pathname]);
 
-  // Generate follow-up questions
   const generateFollowUpQuestions = useCallback(
     (userQuery: string, response: string) => {
       const questions: string[] = [];
       const queryLower = userQuery.toLowerCase();
       const responseLower = response.toLowerCase();
 
-      // After successful operations
       if (responseLower.includes('success') || responseLower.includes('✅') || responseLower.includes('completed')) {
         if (responseLower.includes('transferred') || responseLower.includes('moved')) {
           questions.push('Show all rooms');
@@ -162,7 +156,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
         }
       }
       
-      // Patient-related queries
       if (queryLower.includes('patient')) {
         if (!queryLower.includes('all')) {
           questions.push('List all patients');
@@ -170,7 +163,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
         questions.push('Any critical patients?');
       }
       
-      // Alert queries
       if (queryLower.includes('alert') || queryLower.includes('hazard')) {
         questions.push('Show critical alerts');
         questions.push('Hospital statistics');
@@ -230,7 +222,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     setIsStreaming(false);
   }, []);
 
-  // Send message
   const handleSendMessage = useCallback(async () => {
     if (input.trim() === '' || isLoading || isStreaming) return;
 
@@ -268,7 +259,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
         setSessionTitle(data.session_title);
       }
 
-      // Show tool indicator
       if (data.tool_calls && data.tool_calls > 0) {
         setShowToolIndicator(true);
         setToolCallCount(data.tool_calls);
@@ -289,7 +279,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
           console.log('   Flash room:', data.flash_room_id);
         }
         
-        // Dispatch custom event to notify SpaceViewer to refresh
         window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
           detail: { 
             keys: data.cache_keys || ['rooms', 'alerts'], 
@@ -304,7 +293,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
         }
       }
 
-      // Generate follow-ups
       const followUps = generateFollowUpQuestions(userMessage.content, responseText);
       setFollowUpQuestions(followUps);
 
@@ -326,7 +314,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     fetchSessions,
   ]);
 
-  // Handle suggestion click
   const handleSuggestionClick = useCallback(
     async (prompt: string) => {
       setInput('');
@@ -374,7 +361,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
             console.log('   Flash room:', data.flash_room_id);
           }
           
-          // Dispatch custom event to notify SpaceViewer to refresh
           window.dispatchEvent(new CustomEvent('pillpal-invalidate-cache', {
             detail: { 
               keys: data.cache_keys || ['rooms', 'patients'], 
@@ -410,7 +396,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     ]
   );
 
-  // Start new session
   const startNewSession = useCallback(() => {
     setMessages([]);
     setSessionId(null);
@@ -421,7 +406,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     setShowSessions(false);
   }, []);
 
-  // Load session
   const loadSession = useCallback(
     async (session: ChatSession) => {
       try {
@@ -454,7 +438,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
     []
   );
 
-  // Handle key down
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -482,7 +465,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
               transformOrigin: 'bottom right',
             }}
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <div className="relative flex-1">
@@ -557,7 +539,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
               </div>
             </div>
 
-            {/* Sessions Dropdown */}
             {showSessions && (
               <motion.div
                 ref={dropdownRef}
@@ -607,7 +588,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
               </motion.div>
             )}
 
-            {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.length === 0 ? (
                 <motion.div
@@ -740,7 +720,6 @@ export default function AIChat({ onCacheInvalidate }: AIChatProps) {
               )}
             </div>
 
-            {/* Input Area */}
             <div className="border-t border-neutral-200 p-3">
               <div className="flex gap-2 items-center">
                 <input

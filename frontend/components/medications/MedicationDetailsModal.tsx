@@ -13,7 +13,6 @@ export function MedicationDetailsModal({ pill, onClose }: MedicationDetailsModal
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-lg max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-foreground">{pill.name}</h2>
@@ -29,9 +28,7 @@ export function MedicationDetailsModal({ pill, onClose }: MedicationDetailsModal
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Medication Image */}
           {pill.image_url && (
             <div className="flex justify-center">
               <div className="relative w-48 h-48 bg-muted/30 rounded-lg overflow-hidden">
@@ -44,7 +41,6 @@ export function MedicationDetailsModal({ pill, onClose }: MedicationDetailsModal
             </div>
           )}
 
-          {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Dosage</p>
@@ -76,7 +72,6 @@ export function MedicationDetailsModal({ pill, onClose }: MedicationDetailsModal
             )}
           </div>
 
-          {/* Instructions */}
           {pill.instructions && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -87,7 +82,6 @@ export function MedicationDetailsModal({ pill, onClose }: MedicationDetailsModal
             </div>
           )}
 
-          {/* Warnings */}
           {pill.warnings && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -100,7 +94,6 @@ export function MedicationDetailsModal({ pill, onClose }: MedicationDetailsModal
             </div>
           )}
 
-          {/* Side Effects */}
           {pill.side_effects && pill.side_effects.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -120,7 +113,6 @@ export function MedicationDetailsModal({ pill, onClose }: MedicationDetailsModal
             </div>
           )}
 
-          {/* Drug Interactions */}
           {pill.interactions && pill.interactions.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -140,7 +132,6 @@ export function MedicationDetailsModal({ pill, onClose }: MedicationDetailsModal
             </div>
           )}
 
-          {/* Contraindications */}
           {pill.contraindications && pill.contraindications.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -160,7 +151,6 @@ export function MedicationDetailsModal({ pill, onClose }: MedicationDetailsModal
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t flex justify-end">
           <button
             onClick={onClose}

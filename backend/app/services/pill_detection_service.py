@@ -12,14 +12,12 @@ from ultralytics import YOLO
 from PIL import Image
 import io
 
-
 class PillDetection:
     """Single pill detection result"""
     def __init__(self, bbox: List[float], confidence: float, class_id: int = 0):
         self.bbox = bbox  # [x, y, width, height]
         self.confidence = confidence
         self.class_id = class_id
-
 
 class PillDetectionService:
     """Service for detecting pills in images using YOLOv8"""
@@ -32,7 +30,6 @@ class PillDetectionService:
             model_path: Path to the YOLO model file. Defaults to pill-detection.pt in backend root.
         """
         if model_path is None:
-            # Default to pill-detection.pt in backend directory
             backend_dir = Path(__file__).parent.parent.parent
             model_path = str(backend_dir / "pill-detection.pt")
         
@@ -61,13 +58,10 @@ class PillDetectionService:
         Returns:
             Tuple of (detections list, original image as numpy array)
         """
-        # Convert bytes to PIL Image
         pil_image = Image.open(io.BytesIO(image_data))
         
-        # Convert PIL to numpy array (RGB)
         img_array = np.array(pil_image)
         
-        # Convert RGB to BGR for OpenCV (YOLO expects BGR)
         if len(img_array.shape) == 2:  # Grayscale
             img_bgr = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)
         elif img_array.shape[2] == 4:  # RGBA
@@ -75,7 +69,6 @@ class PillDetectionService:
         else:  # RGB
             img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
         
-        # Run inference
         results = self.model.predict(
             img_bgr,
             conf=conf_threshold,
@@ -83,18 +76,15 @@ class PillDetectionService:
             verbose=False
         )
         
-        # Parse detections
         detections = []
         if len(results) > 0:
             result = results[0]
             boxes = result.boxes
             
             for i in range(len(boxes)):
-                # Get box coordinates (xyxy format)
                 xyxy = boxes.xyxy[i].cpu().numpy()
                 x1, y1, x2, y2 = xyxy
                 
-                # Convert to xywh format
                 x = float(x1)
                 y = float(y1)
                 w = float(x2 - x1)
@@ -138,7 +128,6 @@ class PillDetectionService:
             x, y, w, h = detection.bbox
             confidence = detection.confidence
             
-            # Convert to integers
             x1, y1 = int(x), int(y)
             x2, y2 = int(x + w), int(y + h)
             
@@ -148,7 +137,6 @@ class PillDetectionService:
             # Prepare label
             label = f"Pill #{i+1}: {confidence:.2f}"
             
-            # Get label size for background
             (label_w, label_h), baseline = cv2.getTextSize(
                 label, 
                 cv2.FONT_HERSHEY_SIMPLEX, 
@@ -176,7 +164,6 @@ class PillDetectionService:
                 thickness=2
             )
         
-        # Add pill count at the top
         if detections:
             count_label = f"Total Pills Detected: {len(detections)}"
             cv2.putText(
@@ -218,17 +205,14 @@ class PillDetectionService:
         # Draw bounding boxes
         img_with_boxes = self.draw_bounding_boxes(img_bgr, detections)
         
-        # Convert back to JPEG bytes
         success, buffer = cv2.imencode('.jpg', img_with_boxes)
         if not success:
             raise RuntimeError("Failed to encode image with bounding boxes")
         
         return detections, buffer.tobytes()
 
-
 # Global instance (lazy loaded)
 _pill_detection_service: PillDetectionService = None
-
 
 def get_pill_detection_service() -> PillDetectionService:
     """Get or create the global pill detection service instance"""

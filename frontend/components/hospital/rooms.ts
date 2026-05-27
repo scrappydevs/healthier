@@ -49,7 +49,6 @@ export const roomTypeLabels: Record<RoomType, string> = {
 
 // Rooms matching the actual Smplrspace floor plan
 export const rooms: Room[] = [
-  // Patient Rooms (Room 1-6)
   {
     id: 'room-1',
     name: 'Room 1',
@@ -111,7 +110,6 @@ export const rooms: Room[] = [
     description: 'Hip replacement recovery - Patricia Miller',
   },
 
-  // Critical Room
   {
     id: 'critical-room',
     name: 'Critical Room',
@@ -184,7 +182,6 @@ export const rooms: Room[] = [
   },
 ];
 
-// Helper functions
 export const getRoomById = (id: string): Room | undefined =>
   rooms.find((r) => r.id === id);
 

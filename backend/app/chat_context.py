@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import uuid
 
-
 @dataclass
 class ChatContext:
     """Represents the context for a chat session"""
@@ -19,26 +18,22 @@ class ChatContext:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
-
 # In-memory session storage (for demo without database)
 _sessions: Dict[str, ChatContext] = {}
 
 # Title generator function (set by main.py)
 _title_generator: Optional[Callable[[str], str]] = None
 
-
 def set_title_generator(generator: Callable[[str], str]) -> None:
     """Set the title generator function (uses Cerebras)"""
     global _title_generator
     _title_generator = generator
-
 
 async def generate_smart_title(message: str) -> str:
     """Generate a smart, concise title for the chat session using AI"""
     global _title_generator
     
     if _title_generator is None:
-        # Fallback to simple truncation
         return message[:40] + "..." if len(message) > 40 else message
     
     try:
@@ -48,12 +43,10 @@ async def generate_smart_title(message: str) -> str:
         print(f"⚠️ Title generation failed: {e}")
         return message[:40] + "..." if len(message) > 40 else message
 
-
 async def create_session(user_id: str, initial_message: str = "") -> Dict[str, Any]:
     """Create a new chat session"""
     session_id = str(uuid.uuid4())
     
-    # Generate smart title from initial message using AI
     if initial_message:
         title = await generate_smart_title(initial_message)
     else:
@@ -73,13 +66,11 @@ async def create_session(user_id: str, initial_message: str = "") -> Dict[str, A
         "created_at": context.created_at
     }
 
-
 async def read_context(session_id: str) -> ChatContext:
     """Read context for a session"""
     if session_id in _sessions:
         return _sessions[session_id]
     
-    # Create new context if not found
     context = ChatContext(
         session_id=session_id,
         user_id="default_user"
@@ -87,12 +78,10 @@ async def read_context(session_id: str) -> ChatContext:
     _sessions[session_id] = context
     return context
 
-
 async def write_context(session_id: str, context: ChatContext) -> None:
     """Save context for a session"""
     context.updated_at = datetime.now().isoformat()
     _sessions[session_id] = context
-
 
 async def get_user_sessions(user_id: str) -> List[Dict[str, Any]]:
     """Get all sessions for a user"""
@@ -107,10 +96,8 @@ async def get_user_sessions(user_id: str) -> List[Dict[str, Any]]:
                 "message_count": len(context.messages)
             })
     
-    # Sort by updated_at descending
     sessions.sort(key=lambda x: x["updated_at"], reverse=True)
     return sessions
-
 
 async def delete_session(session_id: str) -> bool:
     """Delete a session"""
@@ -118,7 +105,6 @@ async def delete_session(session_id: str) -> bool:
         del _sessions[session_id]
         return True
     return False
-
 
 def build_system_prompt(context: ChatContext, hospital_state: Optional[Dict[str, Any]] = None) -> str:
     """Build context-aware system prompt for the AI
@@ -204,7 +190,6 @@ RULES:
 3. The floor plan auto-refreshes after changes - occupied rooms show colors, empty rooms don't
 4. When assigning tasks, they appear in the room detail panel"""
 
-    # Add page-specific context
     if "hospital" in current_page or "floorplan" in current_page:
         system_prompt += """
 
@@ -241,7 +226,6 @@ CURRENT CONTEXT: Dashboard View
 - Provide overviews and highlight issues needing attention
 """
     
-    # Add real-time hospital state if provided
     if hospital_state:
         system_prompt += "\n\n--- CURRENT HOSPITAL STATE (REAL-TIME) ---\n"
         
@@ -286,7 +270,6 @@ CURRENT CONTEXT: Dashboard View
         
         system_prompt += "\n--- END HOSPITAL STATE ---"
     
-    # Add tagged context if available
     if tagged_context:
         system_prompt += f"""
 
@@ -295,7 +278,6 @@ TAGGED CONTEXT:
 """
     
     return system_prompt
-
 
 def get_quick_suggestions(context: ChatContext) -> List[str]:
     """Get context-aware quick suggestions"""

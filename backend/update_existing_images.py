@@ -31,20 +31,17 @@ print("="*60)
 print("UPDATING MEDICATION IMAGES")
 print("="*60)
 
-# Get all pills
 result = supabase.table('pills').select('id, name, generic_name, image_url').execute()
 
 success_count = 0
 for pill in result.data:
     generic = (pill.get('generic_name') or pill.get('name', '')).lower().split()[0]
     
-    # Get image URL for this medication
     image_url = IMAGE_URLS.get(generic)
     
     if image_url:
         print(f"\n{pill['name']}...")
         try:
-            # Update the database
             supabase.table('pills').update({
                 'image_url': image_url
             }).eq('id', pill['id']).execute()

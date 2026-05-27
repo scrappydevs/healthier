@@ -50,7 +50,6 @@ export default function PatientsPage() {
     return `${diffDays} days ago`;
   };
 
-  // Filter and sort patients
   const filteredPatients = patients
     .filter(p => {
       const matchesSearch = p.full_name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -102,7 +101,6 @@ export default function PatientsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-sm">
           <span className="text-muted-foreground">Showing</span>
@@ -120,7 +118,6 @@ export default function PatientsPage() {
           )}
         </div>
 
-        {/* Search and Filters */}
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -144,9 +141,7 @@ export default function PatientsPage() {
         </div>
       </div>
 
-      {/* Two-Column Patient Layout */}
       <div className="bg-white rounded-lg border flex">
-        {/* At-Home Column */}
         <div className="flex-1 min-w-0">
           <div className="px-4 py-2.5 border-b flex items-center gap-2">
             <Home className="h-4 w-4 text-slate-400" />
@@ -209,10 +204,8 @@ export default function PatientsPage() {
           </div>
         </div>
 
-        {/* Divider */}
         <div className="w-px bg-slate-200" />
 
-        {/* In-Clinic Column */}
         <div className="flex-1 min-w-0">
           <div className="px-4 py-2.5 border-b flex items-center gap-2">
             <Building2 className="h-4 w-4 text-slate-400" />
